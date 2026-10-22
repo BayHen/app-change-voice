@@ -1,9 +1,9 @@
 export function BrandMark() {
   return (
-    <div className="relative grid size-10 place-items-center overflow-hidden rounded-xl bg-violet-500 shadow-[0_0_30px_rgba(139,92,246,0.35)]">
-      <span className="absolute h-5 w-1 rounded-full bg-white/90" />
-      <span className="absolute h-3 w-1 -translate-x-2 rounded-full bg-white/70" />
-      <span className="absolute h-7 w-1 translate-x-2 rounded-full bg-white" />
+    <div className="relative grid size-9 place-items-center overflow-hidden rounded-xl border border-cyan-200/20 bg-cyan-300 text-[#071014]">
+      <span className="absolute h-4 w-0.5 rounded-full bg-current" />
+      <span className="absolute h-2.5 w-0.5 -translate-x-1.5 rounded-full bg-current opacity-60" />
+      <span className="absolute h-5.5 w-0.5 translate-x-1.5 rounded-full bg-current" />
     </div>
   );
 }

@@ -15,8 +15,8 @@
         "title": "VoiceMorph Studio",
         "width": 1280,
         "height": 800,
-        "minWidth": 960,
-        "minHeight": 640,
+        "minWidth": 900,
+        "minHeight": 600,
         "center": true
       }
     ],

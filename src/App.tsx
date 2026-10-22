@@ -1,43 +1,55 @@
-import { useState } from "react";
-import { Sidebar } from "./components/Sidebar";
+import { useCallback, useState } from "react";
+import { AppSidebar } from "./components/AppSidebar";
+import { NotificationToast } from "./components/NotificationToast";
 import { Dashboard } from "./pages/Dashboard";
-import { PlaceholderPage } from "./pages/PlaceholderPage";
+import { Settings } from "./pages/Settings";
+import { VoiceEffects } from "./pages/VoiceEffects";
+import { VoiceStudio } from "./pages/VoiceStudio";
 import type { NavigationItem } from "./types/navigation";
-
-const pages: Record<NavigationItem, { eyebrow: string; title: string; description: string }> = {
-  dashboard: {
-    eyebrow: "Tổng quan",
-    title: "Dashboard",
-    description: "Theo dõi thiết bị, phiên thu và trạng thái xử lý giọng nói.",
-  },
-  effects: {
-    eyebrow: "Thư viện",
-    title: "Voice Effects",
-    description: "Hiệu ứng giọng nói sẽ được xây dựng trong các task tiếp theo.",
-  },
-  studio: {
-    eyebrow: "Workspace",
-    title: "Voice Studio",
-    description: "Không gian thu, nghe thử và xuất âm thanh đang được chuẩn bị.",
-  },
-  settings: {
-    eyebrow: "Hệ thống",
-    title: "Settings",
-    description: "Cấu hình thiết bị, hiệu năng và giao diện ứng dụng.",
-  },
-};
+import type { VoicePresetSummary } from "./types/preset";
+import type { ToastMessage } from "./types/ui";
 
 export default function App() {
   const [activePage, setActivePage] = useState<NavigationItem>("dashboard");
+  const [toast, setToast] = useState<ToastMessage | null>(null);
+
+  const dismissToast = useCallback(() => setToast(null), []);
+
+  function handlePresetSelected(preset: VoicePresetSummary) {
+    setToast({
+      id: Date.now(),
+      title: `${preset.name} selected`,
+      message: "Selection is stored in UI state only. Audio processing is not active.",
+      tone: "info",
+    });
+  }
+
+  const notify = useCallback((title: string, message: string) => {
+    setToast({ id: Date.now(), title, message, tone: "warning" });
+  }, []);
+
+  function renderPage() {
+    switch (activePage) {
+      case "effects":
+        return <VoiceEffects onPresetSelected={handlePresetSelected} />;
+      case "studio":
+        return <VoiceStudio />;
+      case "settings":
+        return <Settings />;
+      default:
+        return <Dashboard onNotify={notify} />;
+    }
+  }
 
   return (
-    <div className="min-h-screen bg-[#07080b] text-zinc-100">
-      <div className="mx-auto flex min-h-screen max-w-[1600px]">
-        <Sidebar activePage={activePage} onNavigate={setActivePage} />
-        <main className="min-w-0 flex-1 px-6 py-7 sm:px-8 lg:px-12 lg:py-10">
-          {activePage === "dashboard" ? <Dashboard /> : <PlaceholderPage {...pages[activePage]} />}
+    <div className="min-h-[100dvh] bg-[#080a0d] text-zinc-100">
+      <div className="mx-auto flex min-h-[100dvh] max-w-[1600px]">
+        <AppSidebar activePage={activePage} onNavigate={setActivePage} />
+        <main className="min-w-0 flex-1 px-4 pb-24 pt-6 sm:px-6 md:pb-8 lg:px-9 lg:pt-8">
+          {renderPage()}
         </main>
       </div>
+      <NotificationToast toast={toast} onDismiss={dismissToast} />
     </div>
   );
 }

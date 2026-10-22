@@ -1,90 +1,284 @@
-import { StatusBadge } from "../components/StatusBadge";
+import {
+  ArrowRight,
+  ArrowClockwise,
+  MicrophoneSlash,
+  Record,
+  SlidersHorizontal,
+  SpeakerHigh,
+} from "@phosphor-icons/react";
+import { useEffect, useMemo, useState } from "react";
+import { AppHeader } from "../components/AppHeader";
+import { AudioMeter } from "../components/AudioMeter";
+import { DeviceSelector } from "../components/DeviceSelector";
+import { StatusIndicator } from "../components/StatusIndicator";
+import { ToggleSwitch } from "../components/ToggleSwitch";
+import { VolumeSlider } from "../components/VolumeSlider";
 import { useAppStatus } from "../hooks/useAppStatus";
+import { useAudioDevices } from "../hooks/useAudioDevices";
+import type { AudioDevice, AudioUiState, DeviceOption } from "../types/audio";
 
-export function Dashboard() {
-  const { status, loading, error } = useAppStatus();
+const unavailableInput: DeviceOption[] = [
+  { id: "none-input", name: "No microphone detected", kind: "input", available: false },
+];
+
+const unavailableOutput: DeviceOption[] = [
+  { id: "none-output", name: "No output connected", kind: "output", available: false },
+];
+
+const initialAudioUiState: AudioUiState = {
+  inputDeviceId: "",
+  outputDeviceId: "",
+  microphoneVolume: 0,
+  outputVolume: 0,
+  noiseSuppression: false,
+  monitoring: false,
+};
+
+interface DashboardProps {
+  onNotify?: (title: string, message: string) => void;
+}
+
+function toOptions(devices: AudioDevice[]): DeviceOption[] {
+  return devices.map((device) => ({
+    id: device.id,
+    name: device.name,
+    kind: device.kind,
+    available: true,
+    isDefault: device.isDefault,
+  }));
+}
+
+function deviceDetails(device: AudioDevice | undefined): string {
+  if (!device) return "No device selected.";
+  const values = [
+    device.sampleRate ? `${device.sampleRate.toLocaleString()} Hz` : null,
+    device.channels ? `${device.channels} channel${device.channels === 1 ? "" : "s"}` : null,
+    device.sampleFormat,
+    device.bufferCapability?.minimumFrames && device.bufferCapability.maximumFrames
+      ? `${device.bufferCapability.minimumFrames}-${device.bufferCapability.maximumFrames} frame buffer`
+      : null,
+  ];
+  return values.filter(Boolean).join(" · ") || "Driver did not report format capabilities.";
+}
+
+export function Dashboard({ onNotify }: DashboardProps) {
+  const { loading, error } = useAppStatus();
+  const devices = useAudioDevices();
+  const [audioUi, setAudioUi] = useState<AudioUiState>(initialAudioUiState);
+  const inputDevices = useMemo(
+    () => devices.snapshot?.inputDevices ?? [],
+    [devices.snapshot?.inputDevices],
+  );
+  const outputDevices = useMemo(
+    () => devices.snapshot?.outputDevices ?? [],
+    [devices.snapshot?.outputDevices],
+  );
+  const selectedInputId = devices.snapshot?.inputSelection.selectedId ?? "";
+  const selectedOutputId = devices.snapshot?.outputSelection.selectedId ?? "";
+  const selectedInput = inputDevices.find((device) => device.id === selectedInputId);
+  const selectedOutput = outputDevices.find((device) => device.id === selectedOutputId);
+  const inputOptions = useMemo(
+    () => (inputDevices.length ? toOptions(inputDevices) : unavailableInput),
+    [inputDevices],
+  );
+  const outputOptions = useMemo(
+    () => (outputDevices.length ? toOptions(outputDevices) : unavailableOutput),
+    [outputDevices],
+  );
+
+  useEffect(() => {
+    const fallbackMessage =
+      devices.snapshot?.inputSelection.message ?? devices.snapshot?.outputSelection.message;
+    if (fallbackMessage) onNotify?.("Audio device selection updated", fallbackMessage);
+  }, [devices.snapshot, onNotify]);
 
   return (
-    <div className="mx-auto max-w-6xl">
-      <header className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
-        <div>
-          <p className="mb-2 text-xs font-medium uppercase tracking-[0.22em] text-violet-400">
-            Audio workspace
-          </p>
-          <h1 className="text-3xl font-semibold tracking-[-0.04em] text-white sm:text-4xl">
-            VoiceMorph Studio
-          </h1>
-          <p className="mt-3 max-w-xl text-sm leading-6 text-zinc-500">
-            Biến đổi giọng nói trong một workspace gọn gàng, riêng tư và sẵn sàng cho real-time
-            audio.
-          </p>
-        </div>
-        <StatusBadge
-          label={loading ? "Đang kết nối Rust…" : error ? "Chạy ở trình duyệt" : "Tauri đã kết nối"}
-          tone={status ? "ready" : "idle"}
-        />
-      </header>
+    <div className="mx-auto max-w-[1180px]">
+      <AppHeader
+        title="Dashboard"
+        description="Configure the signal path and check connection status before starting a session."
+        action={
+          <StatusIndicator
+            label={
+              loading || devices.loading
+                ? "Checking backend"
+                : error || devices.error
+                  ? "Backend unavailable"
+                  : inputDevices.length === 0
+                    ? "No microphone"
+                    : "Ready"
+            }
+            tone={
+              loading || devices.loading
+                ? "loading"
+                : error || devices.error
+                  ? "error"
+                  : inputDevices.length === 0
+                    ? "offline"
+                    : "online"
+            }
+          />
+        }
+      />
 
-      <section className="mt-9 grid gap-4 lg:grid-cols-[1.5fr_1fr]">
-        <div className="relative overflow-hidden rounded-3xl border border-white/8 bg-gradient-to-br from-violet-500/15 via-[#121118] to-[#0d0e12] p-7 sm:p-9">
-          <div className="absolute -right-24 -top-24 size-64 rounded-full bg-violet-500/15 blur-3xl" />
-          <div className="relative">
-            <p className="text-xs uppercase tracking-[0.2em] text-violet-300/70">Quick start</p>
-            <h2 className="mt-4 max-w-md text-2xl font-medium tracking-tight text-white">
-              Bắt đầu một phiên biến đổi giọng nói mới
-            </h2>
-            <p className="mt-3 max-w-lg text-sm leading-6 text-zinc-400">
-              Audio engine chưa được kích hoạt trong Task 01. Bạn có thể khám phá giao diện và kiểm
-              tra cầu nối React ↔ Rust ngay bây giờ.
-            </p>
-            <button
-              type="button"
-              disabled
-              className="mt-7 rounded-xl bg-violet-500 px-5 py-3 text-sm font-medium text-white opacity-60 shadow-[0_8px_30px_rgba(139,92,246,0.25)]"
+      {loading || devices.loading ? (
+        <div className="mt-6 grid gap-3" aria-label="Loading audio status" aria-busy="true">
+          <div className="h-16 animate-pulse rounded-2xl bg-white/[0.035]" />
+          <div className="h-44 animate-pulse rounded-2xl bg-white/[0.025]" />
+        </div>
+      ) : (
+        <>
+          {inputDevices.length === 0 || devices.error ? (
+            <section
+              role="alert"
+              className="mt-6 flex items-start gap-4 rounded-2xl border border-amber-300/15 bg-amber-300/[0.045] p-4"
             >
-              New voice session · Soon
-            </button>
-          </div>
-        </div>
+              <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-amber-300/10 text-amber-200">
+                <MicrophoneSlash size={18} aria-hidden="true" />
+              </span>
+              <div>
+                <h2 className="text-sm font-medium text-zinc-200">Microphone is not connected</h2>
+                <p className="mt-1 text-xs leading-5 text-zinc-500">
+                  Audio controls remain disabled until a backend device connection is available.
+                </p>
+                {error || devices.error ? (
+                  <p className="mt-1 text-xs text-rose-300">
+                    {devices.error ??
+                      "Desktop bridge unavailable. Open the interface through Tauri to check devices."}
+                  </p>
+                ) : null}
+              </div>
+            </section>
+          ) : null}
 
-        <div className="rounded-3xl border border-white/8 bg-[#0e0f14] p-6">
-          <p className="text-xs uppercase tracking-[0.2em] text-zinc-600">System bridge</p>
-          <dl className="mt-6 space-y-5">
-            <div className="flex items-center justify-between gap-4">
-              <dt className="text-sm text-zinc-500">Ứng dụng</dt>
-              <dd className="text-sm text-zinc-200">{status?.appName ?? "VoiceMorph Studio"}</dd>
-            </div>
-            <div className="h-px bg-white/5" />
-            <div className="flex items-center justify-between gap-4">
-              <dt className="text-sm text-zinc-500">Nền tảng</dt>
-              <dd className="font-mono text-xs text-zinc-300">
-                {status?.platform ?? "Windows x64"}
-              </dd>
-            </div>
-            <div className="h-px bg-white/5" />
-            <div className="flex items-center justify-between gap-4">
-              <dt className="text-sm text-zinc-500">Audio engine</dt>
-              <dd className="text-xs text-amber-300">Chưa triển khai</dd>
-            </div>
-          </dl>
-        </div>
-      </section>
+          <div className="mt-5 grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
+            <section className="rounded-2xl border border-white/[0.08] bg-[#0f1216] p-5 sm:p-6">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-sm font-semibold text-zinc-200">Signal path</h2>
+                  <p className="mt-1 text-xs text-zinc-600">Input and output device routing</p>
+                </div>
+                <SlidersHorizontal size={19} className="text-zinc-700" aria-hidden="true" />
+              </div>
 
-      <section className="mt-4 grid gap-4 sm:grid-cols-3">
-        {[
-          ["Input device", "Chưa chọn", "IN"],
-          ["Active effect", "Clean voice", "FX"],
-          ["Output format", "WAV · 48 kHz", "OUT"],
-        ].map(([label, value, code]) => (
-          <div key={label} className="rounded-2xl border border-white/8 bg-[#0e0f14] p-5">
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-zinc-600">{label}</p>
-              <span className="font-mono text-[10px] text-violet-400/70">{code}</span>
-            </div>
-            <p className="mt-5 text-sm font-medium text-zinc-200">{value}</p>
+              <div className="mt-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => void devices.refresh()}
+                  disabled={devices.refreshing}
+                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-white/[0.09] px-3 text-xs text-zinc-400 hover:border-cyan-300/30 hover:text-cyan-200 disabled:cursor-wait disabled:opacity-50"
+                >
+                  <ArrowClockwise
+                    size={14}
+                    className={devices.refreshing ? "animate-spin" : ""}
+                    aria-hidden="true"
+                  />
+                  {devices.refreshing ? "Refreshing" : "Refresh devices"}
+                </button>
+              </div>
+
+              <div className="mt-4 grid gap-5 sm:grid-cols-2">
+                <DeviceSelector
+                  id="input-device"
+                  label="Input device"
+                  value={selectedInputId || "none-input"}
+                  devices={inputOptions}
+                  disabled={devices.refreshing || inputDevices.length === 0}
+                  helperText={deviceDetails(selectedInput)}
+                  onChange={(id) => void devices.select("input", id)}
+                />
+                <DeviceSelector
+                  id="output-device"
+                  label="Output device"
+                  value={selectedOutputId || "none-output"}
+                  devices={outputOptions}
+                  disabled={devices.refreshing || outputDevices.length === 0}
+                  helperText={deviceDetails(selectedOutput)}
+                  onChange={(id) => void devices.select("output", id)}
+                />
+              </div>
+
+              <div className="mt-7 grid gap-6 border-t border-white/[0.07] pt-6 sm:grid-cols-2">
+                <VolumeSlider
+                  id="microphone-volume"
+                  label="Microphone volume"
+                  value={audioUi.microphoneVolume}
+                  disabled
+                  onChange={(microphoneVolume) => setAudioUi({ ...audioUi, microphoneVolume })}
+                />
+                <VolumeSlider
+                  id="output-volume"
+                  label="Output volume"
+                  value={audioUi.outputVolume}
+                  disabled
+                  onChange={(outputVolume) => setAudioUi({ ...audioUi, outputVolume })}
+                />
+              </div>
+
+              <div className="mt-7 border-t border-white/[0.07] pt-6">
+                <ToggleSwitch
+                  label="Noise suppression"
+                  description="Requires the audio processing backend."
+                  checked={audioUi.noiseSuppression}
+                  disabled
+                  onChange={(noiseSuppression) => setAudioUi({ ...audioUi, noiseSuppression })}
+                />
+              </div>
+            </section>
+
+            <section className="rounded-2xl border border-white/[0.08] bg-[#0f1216] p-5 sm:p-6">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-sm font-semibold text-zinc-200">Live levels</h2>
+                  <p className="mt-1 text-xs text-zinc-600">
+                    Meters show zero while audio is offline
+                  </p>
+                </div>
+                <SpeakerHigh size={19} className="text-zinc-700" aria-hidden="true" />
+              </div>
+              <div className="mt-7 space-y-7">
+                <AudioMeter label="Input level" level={0} disabled />
+                <AudioMeter label="Output level" level={0} disabled />
+              </div>
+            </section>
           </div>
-        ))}
-      </section>
+
+          <section className="mt-5 grid gap-5 rounded-2xl border border-white/[0.08] bg-[#0f1216] p-5 sm:p-6 lg:grid-cols-[1fr_auto] lg:items-center">
+            <div className="flex items-center gap-4">
+              <div className="grid size-11 shrink-0 place-items-center rounded-xl border border-cyan-300/15 bg-cyan-300/[0.06] text-cyan-300">
+                <span className="font-mono text-xs font-semibold">CV</span>
+              </div>
+              <div>
+                <p className="text-xs text-zinc-600">Current preset</p>
+                <h2 className="mt-1 text-sm font-semibold text-zinc-200">Clean Voice</h2>
+                <p className="mt-1 text-xs text-zinc-600">
+                  Neutral local preset, no processing applied.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <button
+                type="button"
+                disabled
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-white/[0.09] px-4 text-sm text-zinc-600 disabled:cursor-not-allowed"
+              >
+                Start monitoring
+                <ArrowRight size={15} aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                disabled
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-cyan-300/20 px-4 text-sm font-medium text-cyan-200/50 disabled:cursor-not-allowed"
+              >
+                <Record size={16} weight="fill" aria-hidden="true" />
+                Record &amp; Test
+                <span className="text-[10px] uppercase tracking-wide">Soon</span>
+              </button>
+            </div>
+          </section>
+        </>
+      )}
     </div>
   );
 }

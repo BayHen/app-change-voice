@@ -9,7 +9,7 @@ pub trait PlatformInfo {
 mod windows;
 
 #[cfg(target_os = "windows")]
-pub use windows::WindowsPlatform;
+pub use windows::{WindowsAudioDeviceProvider, WindowsPlatform};
 
 #[cfg(target_os = "windows")]
 pub fn current_platform() -> WindowsPlatform {

@@ -1,7 +1,8 @@
 # VoiceMorph Studio
 
 Ứng dụng desktop Windows để xây dựng trải nghiệm biến đổi giọng nói. Task 01 tạo nền móng
-Tauri 2 + React + TypeScript; chưa có audio engine hoặc DSP thực tế.
+Tauri 2 + React + TypeScript; Task 02 hoàn thiện desktop UI và navigation; Task 03 tích hợp quản lý
+thiết bị WASAPI qua CPAL. Audio stream và DSP thực tế chưa được triển khai.
 
 ## Công nghệ
 

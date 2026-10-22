@@ -1,5 +1,9 @@
 //! Nền tảng audio thuần Rust, không phụ thuộc API riêng của Windows.
 
+pub mod config;
+pub mod devices;
+pub mod errors;
+
 /// Hợp đồng tối thiểu của audio engine. Implementation thật sẽ được thêm sau Task 01.
 pub trait AudioEngine {
     fn is_ready(&self) -> bool;

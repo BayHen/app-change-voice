@@ -24,3 +24,11 @@ kiến trúc trước khi yêu cầu Task 02 được xác định.
 
 `tauri.conf.json` khai báo cả NSIS và MSI. Script build truyền rõ target
 `x86_64-pc-windows-msvc`; việc ký code-signing chưa nằm trong phạm vi Task 01.
+
+## ADR-006 — CPAL 0.18.2 và WASAPI cho quản lý thiết bị
+
+- Dùng CPAL `DeviceId` làm định danh chính vì có thể serialize và được thiết kế ổn định qua restart.
+- Windows adapter nằm trong `platform/windows.rs`; domain `audio` không phụ thuộc Windows API.
+- Lưu fingerprint metadata làm fallback, không dùng display name đơn lẻ làm ID.
+- Task 03 chỉ enumerate và lưu lựa chọn. Không build hoặc start audio stream trước hành động audio
+  rõ ràng của người dùng ở task sau.

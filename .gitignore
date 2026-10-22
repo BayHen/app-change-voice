@@ -36,3 +36,6 @@ target
 *.njsproj
 *.sln
 *.sw?
+
+# Local headless browser profiles used for UI screenshots
+.edge-*/
