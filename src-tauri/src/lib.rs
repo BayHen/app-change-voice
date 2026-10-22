@@ -2,6 +2,7 @@ pub mod audio;
 pub mod effects;
 pub mod platform;
 pub mod presets;
+pub mod routing;
 
 use audio::{AudioEngine, NullAudioEngine};
 use audio::{
@@ -22,6 +23,10 @@ use platform::PlatformInfo;
 use presets::{
     PresetRegistry, VoicePreset, repository::JsonPresetRepository, service::UserPresetService,
     validation::validate_preset,
+};
+use routing::{
+    AudioRoutingService, RoutingConfiguration, RoutingStatus, errors::RoutingError,
+    likely_virtual_device,
 };
 use serde::Serialize;
 use std::{path::PathBuf, sync::Mutex};
@@ -135,6 +140,15 @@ type AudioRuntimeState = Mutex<AudioStreamManager>;
 type UserPresetState = Mutex<UserPresetService>;
 struct VolumeConfigPath(PathBuf);
 struct NoiseConfigPath(PathBuf);
+struct RoutingConfigPath(PathBuf);
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VirtualOutputDevice {
+    #[serde(flatten)]
+    device: AudioDeviceInfo,
+    likely_virtual: bool,
+}
 
 fn with_audio_service<T>(
     state: State<'_, AudioDeviceState>,
@@ -219,6 +233,107 @@ fn refresh_audio_devices(
     state: State<'_, AudioDeviceState>,
 ) -> Result<AudioDeviceSnapshot, AudioDeviceError> {
     with_audio_service(state, AudioDeviceService::refresh)
+}
+
+#[tauri::command]
+fn get_virtual_output_devices(
+    state: State<'_, AudioDeviceState>,
+) -> Result<Vec<VirtualOutputDevice>, AudioDeviceError> {
+    with_audio_service(state, |service| {
+        Ok(service
+            .refresh()?
+            .output_devices
+            .into_iter()
+            .map(|device| {
+                let likely_virtual = likely_virtual_device(&device.name);
+                VirtualOutputDevice {
+                    device,
+                    likely_virtual,
+                }
+            })
+            .collect())
+    })
+}
+
+#[tauri::command]
+fn get_routing_configuration(
+    state: State<'_, AudioRuntimeState>,
+) -> Result<RoutingConfiguration, AudioDeviceError> {
+    with_audio_runtime(state, |runtime| Ok(runtime.routing_configuration().clone()))
+}
+
+#[tauri::command]
+fn select_virtual_output_device(
+    id: String,
+    devices: State<'_, AudioDeviceState>,
+    runtime: State<'_, AudioRuntimeState>,
+    path: State<'_, RoutingConfigPath>,
+) -> Result<RoutingConfiguration, RoutingError> {
+    let device = {
+        let mut service = devices
+            .lock()
+            .map_err(|_| RoutingError::new("stateLock", "Audio device state lock was poisoned"))?;
+        service
+            .refresh()
+            .map_err(|e| RoutingError::new("enumeration", e.to_string()))?
+            .output_devices
+            .into_iter()
+            .find(|device| device.id == id)
+            .ok_or_else(|| {
+                RoutingError::new(
+                    "deviceNotFound",
+                    "Selected virtual output is no longer available",
+                )
+            })?
+    };
+    let configuration = RoutingConfiguration {
+        output_device_id: Some(device.id),
+        output_device_fingerprint: Some(device.fingerprint),
+    };
+    routing::save_configuration(&path.0, &configuration)?;
+    let mut runtime = runtime
+        .lock()
+        .map_err(|_| RoutingError::new("stateLock", "Audio runtime lock was poisoned"))?;
+    runtime.stop();
+    runtime.set_routing_configuration(configuration.clone());
+    Ok(configuration)
+}
+
+#[tauri::command]
+fn get_routing_status(state: State<'_, AudioRuntimeState>) -> Result<RoutingStatus, RoutingError> {
+    let runtime = state
+        .lock()
+        .map_err(|_| RoutingError::new("stateLock", "Audio runtime lock was poisoned"))?;
+    Ok(runtime.routing_status())
+}
+
+#[tauri::command]
+fn start_virtual_routing(
+    state: State<'_, AudioRuntimeState>,
+) -> Result<RoutingStatus, RoutingError> {
+    state
+        .lock()
+        .map_err(|_| RoutingError::new("stateLock", "Audio runtime lock was poisoned"))?
+        .start_routing()
+}
+
+#[tauri::command]
+fn stop_virtual_routing(
+    state: State<'_, AudioRuntimeState>,
+) -> Result<RoutingStatus, RoutingError> {
+    state
+        .lock()
+        .map_err(|_| RoutingError::new("stateLock", "Audio runtime lock was poisoned"))?
+        .stop_routing()
+}
+
+#[tauri::command]
+fn open_windows_sound_settings() -> Result<(), RoutingError> {
+    std::process::Command::new("explorer.exe")
+        .arg("ms-settings:sound")
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| RoutingError::new("openSettings", error.to_string()))
 }
 
 fn with_audio_runtime<T>(
@@ -646,17 +761,45 @@ pub fn run() {
             let noise_settings = noise::load(&noise_path).unwrap_or_default();
             let recordings_dir = app.path().app_cache_dir()?.join("recordings");
             let user_presets_dir = app.path().app_data_dir()?.join("presets");
-            app.manage(Mutex::new(AudioDeviceService::new(
-                platform::WindowsAudioDeviceProvider,
-                preferences_path,
-            )?));
-            app.manage(Mutex::new(AudioStreamManager::with_settings(
-                volume_settings,
-                noise_settings,
-                recordings_dir,
-            )));
+            let routing_path = app.path().app_config_dir()?.join("audio-routing.json");
+            let mut routing_configuration =
+                routing::load_configuration(&routing_path).unwrap_or_default();
+            let mut device_service =
+                AudioDeviceService::new(platform::WindowsAudioDeviceProvider, preferences_path)?;
+            if let Some(id) = routing_configuration.output_device_id.as_deref() {
+                let snapshot = device_service.refresh()?;
+                let match_device = snapshot
+                    .output_devices
+                    .iter()
+                    .find(|device| device.id == id)
+                    .or_else(|| {
+                        routing_configuration
+                            .output_device_fingerprint
+                            .as_deref()
+                            .and_then(|fingerprint| {
+                                snapshot
+                                    .output_devices
+                                    .iter()
+                                    .find(|device| device.fingerprint == fingerprint)
+                            })
+                    });
+                if let Some(device) = match_device {
+                    routing_configuration.output_device_id = Some(device.id.clone());
+                    routing_configuration.output_device_fingerprint =
+                        Some(device.fingerprint.clone());
+                } else {
+                    routing_configuration = RoutingConfiguration::default();
+                    let _ = routing::save_configuration(&routing_path, &routing_configuration);
+                }
+            }
+            app.manage(Mutex::new(device_service));
+            let mut runtime =
+                AudioStreamManager::with_settings(volume_settings, noise_settings, recordings_dir);
+            runtime.set_routing_configuration(routing_configuration);
+            app.manage(Mutex::new(runtime));
             app.manage(VolumeConfigPath(volume_path));
             app.manage(NoiseConfigPath(noise_path));
+            app.manage(RoutingConfigPath(routing_path));
             app.manage(PresetRegistry::built_in().map_err(std::io::Error::other)?);
             app.manage(Mutex::new(
                 UserPresetService::new(JsonPresetRepository::new(user_presets_dir))
@@ -672,6 +815,13 @@ pub fn run() {
             select_input_device,
             select_output_device,
             refresh_audio_devices,
+            get_virtual_output_devices,
+            get_routing_configuration,
+            select_virtual_output_device,
+            get_routing_status,
+            start_virtual_routing,
+            stop_virtual_routing,
+            open_windows_sound_settings,
             start_monitoring,
             pause_monitoring,
             resume_monitoring,

@@ -1,5 +1,11 @@
 # Thiết lập Windows
 
+Hướng dẫn cài và cấu hình virtual audio cable cho Task 11 nằm tại [VIRTUAL_MIC_WINDOWS.md](VIRTUAL_MIC_WINDOWS.md).
+
+Nếu WiX báo `LGHT0217`/`0x643`, kiểm tra Windows Installer bằng `Get-Service msiserver` trong PowerShell
+Administrator và bảo đảm service không bị policy hoặc Windows component lỗi chặn. NSIS có thể vẫn được tạo
+thành công dù bước MSI thất bại; không dùng file MSI cũ còn sót trong `target` để kết luận build mới đã đạt.
+
 ## Kết quả kiểm tra ngày 22/10/2026
 
 | Thành phần            | Trạng thái trên máy hiện tại | Ghi chú                                   |

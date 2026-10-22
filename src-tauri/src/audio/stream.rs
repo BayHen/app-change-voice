@@ -13,6 +13,11 @@ use crate::effects::{
     limiter::OutputLimiter,
     parameters::{EffectParameters, SharedEffectParameters},
 };
+use crate::routing::{
+    AudioRoutingService, RoutingConfiguration, RoutingProducer, RoutingState, RoutingStatus,
+    VirtualOutputSink, amplitude_to_dbfs, errors::RoutingError, routing_queue,
+    windows::WindowsVirtualOutputSink,
+};
 use cpal::{
     BufferSize, Device, DeviceId, SampleFormat, Stream, StreamConfig, SupportedBufferSize,
     SupportedStreamConfig, SupportedStreamConfigRange,
@@ -20,7 +25,7 @@ use cpal::{
 };
 use rtrb::{Consumer, Producer, RingBuffer};
 use serde::Serialize;
-use std::{path::PathBuf, str::FromStr, time::Instant};
+use std::{path::PathBuf, str::FromStr, sync::atomic::Ordering, time::Instant};
 
 const PREFERRED_SAMPLE_RATE: u32 = 48_000;
 const REQUESTED_BUFFER_FRAMES: u32 = 256;
@@ -59,6 +64,7 @@ struct ActiveStreams {
     output_buffer_frames: u32,
     dsp_latency_frames: usize,
     metrics: SharedAudioMetrics,
+    routing: Option<WindowsVirtualOutputSink>,
 }
 
 pub struct AudioStreamManager {
@@ -73,6 +79,7 @@ pub struct AudioStreamManager {
     noise_settings: NoiseSettings,
     recording: Option<RecordingRuntime>,
     recordings_dir: PathBuf,
+    routing_configuration: RoutingConfiguration,
 }
 
 impl Default for AudioStreamManager {
@@ -89,6 +96,7 @@ impl Default for AudioStreamManager {
             noise_settings: NoiseSettings::default(),
             recording: None,
             recordings_dir: std::env::temp_dir().join("voicemorph-studio"),
+            routing_configuration: RoutingConfiguration::default(),
         }
     }
 }
@@ -112,7 +120,16 @@ impl AudioStreamManager {
             noise_settings,
             recording: None,
             recordings_dir,
+            routing_configuration: RoutingConfiguration::default(),
         }
+    }
+
+    pub fn set_routing_configuration(&mut self, configuration: RoutingConfiguration) {
+        self.routing_configuration = configuration;
+    }
+
+    pub fn routing_configuration(&self) -> &RoutingConfiguration {
+        &self.routing_configuration
     }
 
     pub fn recording_status(&self) -> RecordingStatus {
@@ -272,6 +289,21 @@ impl AudioStreamManager {
             playback_consumer,
             shared: recording_shared,
         } = recording_endpoints;
+        let (routing_producer, routing_sink) =
+            if let Some(device_id) = self.routing_configuration.output_device_id.as_deref() {
+                let (producer, consumer, shared) = routing_queue(sample_rate);
+                let sink = WindowsVirtualOutputSink::build(
+                    device_id,
+                    sample_rate,
+                    consumer,
+                    shared,
+                    self.noise_controls.clone(),
+                )
+                .map_err(|error| AudioDeviceError::backend(error.message))?;
+                (Some(producer), Some(sink))
+            } else {
+                (None, None)
+            };
         let (input_stream, dsp_latency_frames) = build_input(
             &input,
             input_config,
@@ -283,6 +315,7 @@ impl AudioStreamManager {
             self.noise_controls.clone(),
             record_producer,
             recording_shared.clone(),
+            routing_producer,
         )?;
         let output_stream = build_output(
             &output,
@@ -320,6 +353,7 @@ impl AudioStreamManager {
             output_buffer_frames,
             dsp_latency_frames,
             metrics,
+            routing: routing_sink,
         });
         self.recording = Some(recording);
         self.state = MonitoringState::Running;
@@ -364,6 +398,34 @@ impl AudioStreamManager {
         self.status()
     }
 
+    pub fn start_routing(&mut self) -> Result<RoutingStatus, RoutingError> {
+        if self.routing_configuration.output_device_id.is_none() {
+            return Err(RoutingError::new(
+                "notConfigured",
+                "Select a virtual cable playback endpoint first",
+            ));
+        }
+        let streams = self.streams.as_ref().ok_or_else(|| {
+            RoutingError::new(
+                "sessionNotRunning",
+                "Start audio processing before virtual microphone routing",
+            )
+        })?;
+        let sink = streams.routing.as_ref().ok_or_else(|| {
+            RoutingError::new(
+                "routingUnavailable",
+                "Restart audio processing after selecting the virtual output",
+            )
+        })?;
+        sink.shared.faulted.store(false, Ordering::Release);
+        sink.shared.active.store(true, Ordering::Release);
+        if let Err(error) = sink.play() {
+            sink.shared.active.store(false, Ordering::Release);
+            return Err(error);
+        }
+        Ok(self.routing_status())
+    }
+
     pub fn status(&self) -> AudioRuntimeStatus {
         match &self.streams {
             Some(streams) => AudioRuntimeStatus {
@@ -392,6 +454,83 @@ impl AudioStreamManager {
                 metrics: None,
             },
         }
+    }
+}
+
+impl AudioRoutingService for AudioStreamManager {
+    fn routing_status(&self) -> RoutingStatus {
+        let configured_id = self.routing_configuration.output_device_id.clone();
+        let Some(streams) = &self.streams else {
+            return RoutingStatus {
+                state: if configured_id.is_some() {
+                    RoutingState::Ready
+                } else {
+                    RoutingState::NotConfigured
+                },
+                output_device_id: configured_id,
+                output_device_name: None,
+                sample_rate: None,
+                channels: None,
+                underrun_count: 0,
+                overflow_count: 0,
+                output_peak_dbfs: -96.0,
+                endpoint_verified: false,
+                message: Some("Audio processing is stopped; routing is not active.".into()),
+            };
+        };
+        let Some(sink) = &streams.routing else {
+            return RoutingStatus {
+                state: RoutingState::NotConfigured,
+                output_device_id: configured_id,
+                output_device_name: None,
+                sample_rate: None,
+                channels: None,
+                underrun_count: 0,
+                overflow_count: 0,
+                output_peak_dbfs: -96.0,
+                endpoint_verified: false,
+                message: Some("Restart audio processing after selecting a virtual output.".into()),
+            };
+        };
+        let faulted = sink.shared.faulted.load(Ordering::Acquire);
+        let active = sink.shared.active.load(Ordering::Acquire);
+        RoutingStatus {
+            state: if faulted {
+                RoutingState::Faulted
+            } else if active {
+                RoutingState::Active
+            } else {
+                RoutingState::Ready
+            },
+            output_device_id: Some(sink.device_id.clone()),
+            output_device_name: Some(sink.device_name.clone()),
+            sample_rate: Some(sink.sample_rate),
+            channels: Some(sink.channels),
+            underrun_count: sink.shared.underruns.load(Ordering::Relaxed),
+            overflow_count: sink.shared.overflows.load(Ordering::Relaxed),
+            output_peak_dbfs: amplitude_to_dbfs(sink.shared.peak()),
+            endpoint_verified: active && !faulted,
+            message: if faulted {
+                Some("The virtual output endpoint disconnected or reported a stream error.".into())
+            } else if active {
+                Some("Playback endpoint is open. Verify its paired capture endpoint in the target app.".into())
+            } else {
+                None
+            },
+        }
+    }
+
+    fn stop_routing(&mut self) -> Result<RoutingStatus, RoutingError> {
+        if let Some(sink) = self
+            .streams
+            .as_ref()
+            .and_then(|streams| streams.routing.as_ref())
+        {
+            sink.shared.active.store(false, Ordering::Release);
+            sink.pause()?;
+            sink.shared.set_peak(0.0);
+        }
+        Ok(self.routing_status())
     }
 }
 
@@ -534,6 +673,7 @@ fn build_input(
     noise_controls: SharedNoiseSettings,
     record_producer: Producer<RecordingFrame>,
     recording_shared: std::sync::Arc<crate::audio::recording::Shared>,
+    routing_producer: Option<RoutingProducer>,
 ) -> Result<(Stream, usize), AudioDeviceError> {
     match format {
         SampleFormat::F32 => build_input_typed::<f32>(
@@ -546,6 +686,7 @@ fn build_input(
             noise_controls,
             record_producer,
             recording_shared,
+            routing_producer,
         ),
         SampleFormat::I16 => build_input_typed::<i16>(
             device,
@@ -557,6 +698,7 @@ fn build_input(
             noise_controls,
             record_producer,
             recording_shared,
+            routing_producer,
         ),
         SampleFormat::U16 => build_input_typed::<u16>(
             device,
@@ -568,6 +710,7 @@ fn build_input(
             noise_controls,
             record_producer,
             recording_shared,
+            routing_producer,
         ),
         _ => Err(AudioDeviceError::backend(format!(
             "Unsupported input sample format: {format}"
@@ -586,6 +729,7 @@ fn build_input_typed<T: RealtimeSample>(
     noise_controls: SharedNoiseSettings,
     mut record_producer: Producer<RecordingFrame>,
     recording_shared: std::sync::Arc<crate::audio::recording::Shared>,
+    mut routing_producer: Option<RoutingProducer>,
 ) -> Result<(Stream, usize), AudioDeviceError> {
     let channels = usize::from(config.channels);
     let error_metrics = metrics.clone();
@@ -620,6 +764,9 @@ fn build_input_typed<T: RealtimeSample>(
                             },
                         );
                         meter.push(processed);
+                        if let Some(routing) = routing_producer.as_mut() {
+                            routing.push(processed);
+                        }
                         overflowed |= producer.push(processed).is_err();
                     });
                     frames += 1;

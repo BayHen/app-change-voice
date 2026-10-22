@@ -128,6 +128,27 @@ export interface AudioRuntimeStatus {
   metrics: AudioMetrics | null;
 }
 
+export interface VirtualOutputDevice extends AudioDevice {
+  likelyVirtual: boolean;
+}
+export interface RoutingConfiguration {
+  outputDeviceId: string | null;
+  outputDeviceFingerprint: string | null;
+}
+export type RoutingState = "notConfigured" | "ready" | "active" | "faulted";
+export interface RoutingStatus {
+  state: RoutingState;
+  outputDeviceId: string | null;
+  outputDeviceName: string | null;
+  sampleRate: number | null;
+  channels: number | null;
+  underrunCount: number;
+  overflowCount: number;
+  outputPeakDbfs: number;
+  endpointVerified: boolean;
+  message: string | null;
+}
+
 export interface AudioUiState {
   inputDeviceId: string;
   outputDeviceId: string;

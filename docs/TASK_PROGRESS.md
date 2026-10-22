@@ -65,6 +65,42 @@ cài Windows x64 đã được xác nhận trong quality gate ngày 22/10/2026.
 - Code signing và phát hành.
 - Push GitHub hoặc commit tự động.
 
+## Task 11 - Windows Virtual Microphone Integration
+
+### Đã triển khai
+
+- Chọn phương án virtual cable được người dùng cài riêng; không cài/chỉnh kernel driver tự động.
+- Thêm abstraction `AudioRoutingService`, `VirtualDeviceManager`, `VirtualOutputSink`, cấu hình và status.
+- Fan-out processed audio từ cùng input/DSP pipeline sang bounded SPSC routing queue; không capture mic hoặc
+  chạy DSP lần hai.
+- Thêm WASAPI virtual output sink, conversion f32/i16/u16, mono-to-multichannel, streaming sample-rate
+  conversion, limiter, meter và underrun/overflow/fault counters.
+- Thêm trang Virtual Microphone: discovery/selection, Start/Stop, trạng thái thật, meter, Windows Sound
+  Settings, hướng dẫn endpoint ghép cặp và cảnh báo feedback.
+- Persist selection tại `app_config_dir/audio-routing.json`; không tự động mở microphone/routing khi restart.
+- Thêm `docs/VIRTUAL_MIC_WINDOWS.md`.
+
+### Giới hạn nghiệm thu
+
+- Cần VB-CABLE hoặc virtual cable tương đương được cài riêng để chạy test end-to-end.
+- `Routing active` xác nhận playback stream đã mở, không giả định capture endpoint đang được Discord/OBS dùng.
+- Chất lượng resampling hiện dùng converter streaming nhẹ, phù hợp voice; chưa phải resampler chất lượng
+  mastering. Độ trễ end-to-end phải đo loopback trên thiết bị thật.
+- Driver riêng (phương án B), installer driver, code signing và Task 12 nằm ngoài phạm vi.
+
+### Kết quả xác minh Task 11 (23/10/2026)
+
+- PASS — `npm.cmd run format`, `npm.cmd run lint`, `npm.cmd run test` (8/8) và `npm.cmd run build`.
+- PASS — `cargo fmt -- --check`, `cargo check --all-targets`,
+  `cargo clippy --all-targets -- -D warnings` và `cargo test` (55 pass, 4 manual/benchmark ignored).
+- PASS — `npm.cmd run tauri:dev` compile và mở `target/debug/voicemorph-studio.exe`; phiên được dừng chủ
+  động bằng Ctrl+C sau smoke test.
+- PASS — release binary x64 và NSIS installer được tạo.
+- FAIL (môi trường đóng gói) — MSI/WiX dừng tại ICE validation với `LGHT0217/0x643` vì Windows Installer
+  service không truy cập được. File MSI cũ trong `target` không được tính là artifact mới.
+- NOT TESTED — routing qua VB-CABLE, Discord microphone test, OBS capture, disconnect, preset/recording khi
+  route, sample-rate mismatch thực tế và latency end-to-end; máy test chưa xác minh có virtual cable endpoint.
+
 ## Task 03 - Audio Device Management
 
 ### Đã hoàn thành

@@ -45,6 +45,15 @@ const presetMocks = vi.hoisted(() => ({
   apply: vi.fn(),
   reset: vi.fn(),
 }));
+const routingMocks = vi.hoisted(() => ({
+  devices: vi.fn(),
+  configuration: vi.fn(),
+  status: vi.fn(),
+  select: vi.fn(),
+  start: vi.fn(),
+  stop: vi.fn(),
+  openSettings: vi.fn(),
+}));
 
 const preset = (id: string, name: string, category = "Character") => ({
   schemaVersion: 1,
@@ -151,6 +160,13 @@ vi.mock("../src/services/tauri", () => ({
   applyBuiltinPreset: presetMocks.apply,
   applyPreset: presetMocks.apply,
   resetToNaturalPreset: presetMocks.reset,
+  getVirtualOutputDevices: routingMocks.devices,
+  getRoutingConfiguration: routingMocks.configuration,
+  getRoutingStatus: routingMocks.status,
+  selectVirtualOutputDevice: routingMocks.select,
+  startVirtualRouting: routingMocks.start,
+  stopVirtualRouting: routingMocks.stop,
+  openWindowsSoundSettings: routingMocks.openSettings,
 }));
 
 describe("desktop navigation", () => {
@@ -261,6 +277,38 @@ describe("desktop navigation", () => {
       preset: builtInPresets[0],
       parameters: effectParameters,
     });
+    const routingStatus = {
+      state: "ready",
+      outputDeviceId: "wasapi:cable",
+      outputDeviceName: null,
+      sampleRate: null,
+      channels: null,
+      underrunCount: 0,
+      overflowCount: 0,
+      outputPeakDbfs: -96,
+      endpointVerified: false,
+      message: null,
+    };
+    routingMocks.devices.mockReset().mockResolvedValue([
+      {
+        ...connectedSnapshot.outputDevices[0],
+        id: "wasapi:cable",
+        name: "CABLE Input (VB-Audio Virtual Cable)",
+        likelyVirtual: true,
+      },
+    ]);
+    routingMocks.configuration
+      .mockReset()
+      .mockResolvedValue({ outputDeviceId: "wasapi:cable", outputDeviceFingerprint: "cable" });
+    routingMocks.status.mockReset().mockResolvedValue(routingStatus);
+    routingMocks.select
+      .mockReset()
+      .mockResolvedValue({ outputDeviceId: "wasapi:cable", outputDeviceFingerprint: "cable" });
+    routingMocks.start
+      .mockReset()
+      .mockResolvedValue({ ...routingStatus, state: "active", endpointVerified: true });
+    routingMocks.stop.mockReset().mockResolvedValue(routingStatus);
+    routingMocks.openSettings.mockReset().mockResolvedValue(undefined);
     Object.defineProperty(window, "innerWidth", { writable: true, configurable: true, value: 900 });
     window.dispatchEvent(new Event("resize"));
   });
@@ -276,6 +324,12 @@ describe("desktop navigation", () => {
 
     await user.click(screen.getAllByRole("button", { name: "Voice Studio" })[0]);
     expect(screen.getByRole("heading", { name: "Voice Studio" })).toBeInTheDocument();
+
+    await user.click(screen.getAllByRole("button", { name: "Virtual Microphone" })[0]);
+    expect(screen.getByRole("heading", { name: "Virtual Microphone" })).toBeInTheDocument();
+    expect(await screen.findByLabelText("Virtual cable playback endpoint")).toHaveValue(
+      "wasapi:cable",
+    );
 
     await user.click(screen.getAllByRole("button", { name: "Settings" })[0]);
     expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();

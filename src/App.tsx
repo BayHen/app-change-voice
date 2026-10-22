@@ -5,6 +5,7 @@ import { Dashboard } from "./pages/Dashboard";
 import { Settings } from "./pages/Settings";
 import { VoiceEffects } from "./pages/VoiceEffects";
 import { VoiceStudio } from "./pages/VoiceStudio";
+import { VirtualMicrophone } from "./pages/VirtualMicrophone";
 import type { NavigationItem } from "./types/navigation";
 import type { VoicePresetSummary } from "./types/preset";
 import type { ToastMessage } from "./types/ui";
@@ -36,6 +37,8 @@ export default function App() {
         return <VoiceStudio />;
       case "settings":
         return <Settings />;
+      case "virtual-microphone":
+        return <VirtualMicrophone />;
       default:
         return <Dashboard onNotify={notify} />;
     }

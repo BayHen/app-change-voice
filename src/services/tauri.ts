@@ -11,6 +11,9 @@ import type {
   NoiseSettings,
   RecordingSource,
   RecordingStatus,
+  RoutingConfiguration,
+  RoutingStatus,
+  VirtualOutputDevice,
 } from "../types/audio";
 
 export function getAppStatus(): Promise<AppStatus> {
@@ -147,3 +150,14 @@ export const setHearMyself = (enabled: boolean) =>
 export const exportRecording = (source: RecordingSource, path: string) =>
   invoke<RecordingStatus>("export_recording", { source, path });
 export const deleteRecording = () => invoke<RecordingStatus>("delete_recording");
+
+export const getVirtualOutputDevices = () =>
+  invoke<VirtualOutputDevice[]>("get_virtual_output_devices");
+export const getRoutingConfiguration = () =>
+  invoke<RoutingConfiguration>("get_routing_configuration");
+export const selectVirtualOutputDevice = (id: string) =>
+  invoke<RoutingConfiguration>("select_virtual_output_device", { id });
+export const getRoutingStatus = () => invoke<RoutingStatus>("get_routing_status");
+export const startVirtualRouting = () => invoke<RoutingStatus>("start_virtual_routing");
+export const stopVirtualRouting = () => invoke<RoutingStatus>("stop_virtual_routing");
+export const openWindowsSoundSettings = () => invoke<void>("open_windows_sound_settings");

@@ -1,1 +1,1 @@
-export type NavigationItem = "dashboard" | "effects" | "studio" | "settings";
+export type NavigationItem = "dashboard" | "effects" | "studio" | "virtual-microphone" | "settings";

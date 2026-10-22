@@ -154,3 +154,20 @@ Adapter macOS chưa được triển khai. `PlatformInfo` là điểm mở rộn
 2. UI chỉ gọi backend qua `services`.
 3. Code Windows-specific chỉ nằm trong `platform/windows.rs` hoặc module adapter tương lai.
 4. Tauri command mỏng: nhận/trả dữ liệu và điều phối domain, không chứa DSP.
+
+## Task 11 - Windows Virtual Microphone routing
+
+`routing/mod.rs` định nghĩa `AudioRoutingService`, `VirtualDeviceManager`, `VirtualOutputSink`,
+`RoutingConfiguration` và `RoutingStatus` độc lập với UI. Adapter CPAL/WASAPI nằm trong
+`routing/windows.rs`; DSP không import Windows API.
+
+Sau DSP và input gain, input callback fan-out processed sample sang queue monitoring/recording hiện có và
+một SPSC queue bounded riêng cho virtual sink. Virtual sink có output stream riêng nhưng không capture mic
+lần hai và không chạy processor chain thứ hai. Monitoring output gain không làm đổi mức gửi sang app đích;
+limiter cuối được áp dụng riêng cho virtual output. Toggle route dùng atomic flag, callback không mutex,
+file I/O, IPC, log hoặc heap allocation theo frame.
+
+Cấu hình endpoint lưu tại `app_config_dir/audio-routing.json`; app không tự khởi động stream sau restart.
+ID được khôi phục trước, fingerprint dùng khi WASAPI ID thay đổi; nếu endpoint mất thì cấu hình bị xóa an
+toàn và người dùng phải chọn lại. Trạng thái `Active` chỉ có nghĩa playback endpoint mở thành công, không
+được diễn giải là Discord/OBS đã nhận audio.
