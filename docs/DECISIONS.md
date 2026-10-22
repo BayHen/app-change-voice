@@ -97,3 +97,11 @@ kiến trúc trước khi yêu cầu Task 02 được xác định.
 - Atomic temp/backup/rename, validation trước save, import tối đa 256 KiB và ID không thể tạo path traversal.
 - Built-in read-only; duplicate tạo ID mới. Schema v1 được migrate trong bộ nhớ sang v2; schema tương lai bị reject.
 - Plugin requirement có metadata/version nhưng luôn bị reject cho đến khi có registry và sandbox execution an toàn.
+
+# Task 12 — Global shortcut ownership
+
+- Đăng ký global shortcut ở Rust backend bằng plugin chính thức thay vì JavaScript/WebView để action vẫn
+  hoạt động khi cửa sổ bị ẩn và quyền register không cần expose cho frontend.
+- Dùng một application action service chung cho hotkey và tray; hai adapter không thao tác trực tiếp DSP.
+- Registration update theo transaction và rollback về bộ cũ nếu Windows báo shortcut conflict.
+- Close-to-tray mặc định bật nhưng không tự resume audio khi restart; explicit Exit luôn cleanup resources.

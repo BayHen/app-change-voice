@@ -1,8 +1,11 @@
+mod application;
 pub mod audio;
 pub mod effects;
+pub mod hotkeys;
 pub mod platform;
 pub mod presets;
 pub mod routing;
+pub mod tray;
 
 use audio::{AudioEngine, NullAudioEngine};
 use audio::{
@@ -19,6 +22,10 @@ use effects::{
     gain::{self, VolumeSettings},
     parameters::EffectParameters,
 };
+use hotkeys::{
+    config::HotkeyConfiguration,
+    manager::{HotkeyManager, HotkeyState},
+};
 use platform::PlatformInfo;
 use presets::{
     PresetRegistry, VoicePreset, repository::JsonPresetRepository, service::UserPresetService,
@@ -31,6 +38,7 @@ use routing::{
 use serde::Serialize;
 use std::{path::PathBuf, sync::Mutex};
 use tauri::{Manager, State};
+use tauri_plugin_global_shortcut::ShortcutState;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -141,6 +149,7 @@ type UserPresetState = Mutex<UserPresetService>;
 struct VolumeConfigPath(PathBuf);
 struct NoiseConfigPath(PathBuf);
 struct RoutingConfigPath(PathBuf);
+struct HotkeyConfigPath(PathBuf);
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -334,6 +343,43 @@ fn open_windows_sound_settings() -> Result<(), RoutingError> {
         .spawn()
         .map(|_| ())
         .map_err(|error| RoutingError::new("openSettings", error.to_string()))
+}
+
+#[tauri::command]
+fn get_hotkey_configuration(state: State<'_, HotkeyState>) -> Result<HotkeyConfiguration, String> {
+    Ok(state
+        .lock()
+        .map_err(|_| "Hotkey state lock was poisoned")?
+        .configuration()
+        .clone())
+}
+
+#[tauri::command]
+fn set_hotkey_configuration(
+    configuration: HotkeyConfiguration,
+    app: tauri::AppHandle,
+    state: State<'_, HotkeyState>,
+    path: State<'_, HotkeyConfigPath>,
+) -> Result<HotkeyConfiguration, String> {
+    let mut manager = state.lock().map_err(|_| "Hotkey state lock was poisoned")?;
+    let previous = manager.configuration().clone();
+    manager.apply(&app, configuration.clone())?;
+    if let Err(error) = hotkeys::config::save(&path.0, &configuration) {
+        let _ = manager.apply(&app, previous);
+        return Err(format!("Could not persist hotkeys: {error}"));
+    }
+    drop(manager);
+    tray::manager::refresh(&app);
+    Ok(configuration)
+}
+
+#[tauri::command]
+fn reset_hotkey_configuration(
+    app: tauri::AppHandle,
+    state: State<'_, HotkeyState>,
+    path: State<'_, HotkeyConfigPath>,
+) -> Result<HotkeyConfiguration, String> {
+    set_hotkey_configuration(HotkeyConfiguration::default(), app, state, path)
 }
 
 fn with_audio_runtime<T>(
@@ -753,6 +799,17 @@ fn reset_to_natural_preset(
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, shortcut, event| {
+                    if event.state() == ShortcutState::Pressed
+                        && let Some(action) = hotkeys::manager::action_from_event(app, shortcut)
+                    {
+                        application::dispatch(app, action);
+                    }
+                })
+                .build(),
+        )
         .setup(|app| {
             let preferences_path = app.path().app_config_dir()?.join("audio-devices.json");
             let volume_path = app.path().app_config_dir()?.join("volume-settings.json");
@@ -761,6 +818,8 @@ pub fn run() {
             let noise_settings = noise::load(&noise_path).unwrap_or_default();
             let recordings_dir = app.path().app_cache_dir()?.join("recordings");
             let user_presets_dir = app.path().app_data_dir()?.join("presets");
+            let hotkey_path = app.path().app_config_dir()?.join("hotkeys.json");
+            let hotkey_configuration = hotkeys::config::load(&hotkey_path).unwrap_or_default();
             let routing_path = app.path().app_config_dir()?.join("audio-routing.json");
             let mut routing_configuration =
                 routing::load_configuration(&routing_path).unwrap_or_default();
@@ -800,12 +859,44 @@ pub fn run() {
             app.manage(VolumeConfigPath(volume_path));
             app.manage(NoiseConfigPath(noise_path));
             app.manage(RoutingConfigPath(routing_path));
+            app.manage(HotkeyConfigPath(hotkey_path));
             app.manage(PresetRegistry::built_in().map_err(std::io::Error::other)?);
             app.manage(Mutex::new(
                 UserPresetService::new(JsonPresetRepository::new(user_presets_dir))
                     .map_err(std::io::Error::other)?,
             ));
+            let mut hotkey_manager = HotkeyManager::new(hotkey_configuration.clone());
+            if let Err(error) = hotkey_manager.apply(app.handle(), hotkey_configuration) {
+                eprintln!("Global shortcuts unavailable: {error}");
+            }
+            app.manage(Mutex::new(hotkey_manager));
+            tray::manager::install(app)?;
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            let preferences = window.try_state::<HotkeyState>().and_then(|state| {
+                state
+                    .lock()
+                    .ok()
+                    .map(|manager| manager.configuration().tray)
+            });
+            let Some(preferences) = preferences else {
+                return;
+            };
+            match event {
+                tauri::WindowEvent::CloseRequested { api, .. } if preferences.close_to_tray => {
+                    api.prevent_close();
+                    let _ = window.hide();
+                    tray::manager::refresh(window.app_handle());
+                }
+                tauri::WindowEvent::Resized(_)
+                    if preferences.minimize_to_tray && window.is_minimized().unwrap_or(false) =>
+                {
+                    let _ = window.hide();
+                    tray::manager::refresh(window.app_handle());
+                }
+                _ => {}
+            }
         })
         .invoke_handler(tauri::generate_handler![
             get_app_status,
@@ -822,6 +913,9 @@ pub fn run() {
             start_virtual_routing,
             stop_virtual_routing,
             open_windows_sound_settings,
+            get_hotkey_configuration,
+            set_hotkey_configuration,
+            reset_hotkey_configuration,
             start_monitoring,
             pause_monitoring,
             resume_monitoring,

@@ -171,3 +171,18 @@ Cấu hình endpoint lưu tại `app_config_dir/audio-routing.json`; app không 
 ID được khôi phục trước, fingerprint dùng khi WASAPI ID thay đổi; nếu endpoint mất thì cấu hình bị xóa an
 toàn và người dùng phải chọn lại. Trạng thái `Active` chỉ có nghĩa playback endpoint mở thành công, không
 được diễn giải là Discord/OBS đã nhận audio.
+
+## Task 12 - Global hotkeys và system tray
+
+`hotkeys/config.rs` chứa schema versioned, default bindings, kiểm tra shortcut trùng/reserved và persistence
+tại `app_config_dir/hotkeys.json`. `hotkeys/manager.rs` sở hữu registrations của Tauri Global Shortcut
+Plugin; cập nhật là transactional: nếu OS từ chối một shortcut, registrations mới được gỡ và bộ cũ được
+khôi phục.
+
+Hotkey callback và tray menu cùng gọi application service trong `application.rs`. Service chỉ cập nhật
+atomic parameters hoặc stream lifecycle qua `AudioStreamManager`; không chạy công việc trong DSP callback.
+Kết quả được emit về React để thông báo, sau đó `tray/manager.rs` refresh label từ backend state thật.
+
+Tray được tạo bằng Tauri Rust API với Show/Hide, preset hiện tại, mute, effects, virtual routing, Settings và
+Exit. Close/minimize-to-tray chỉ ẩn cửa sổ. Exit chủ động stop audio/recording/routing, unregister hotkeys rồi
+thoát. App restart chỉ restore cấu hình/registration; không tự mở microphone hoặc audio stream.

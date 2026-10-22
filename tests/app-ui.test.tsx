@@ -54,6 +54,9 @@ const routingMocks = vi.hoisted(() => ({
   stop: vi.fn(),
   openSettings: vi.fn(),
 }));
+const hotkeyMocks = vi.hoisted(() => ({ get: vi.fn(), set: vi.fn(), reset: vi.fn() }));
+
+vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn().mockResolvedValue(vi.fn()) }));
 
 const preset = (id: string, name: string, category = "Character") => ({
   schemaVersion: 1,
@@ -167,6 +170,9 @@ vi.mock("../src/services/tauri", () => ({
   startVirtualRouting: routingMocks.start,
   stopVirtualRouting: routingMocks.stop,
   openWindowsSoundSettings: routingMocks.openSettings,
+  getHotkeyConfiguration: hotkeyMocks.get,
+  setHotkeyConfiguration: hotkeyMocks.set,
+  resetHotkeyConfiguration: hotkeyMocks.reset,
 }));
 
 describe("desktop navigation", () => {
@@ -309,6 +315,22 @@ describe("desktop navigation", () => {
       .mockResolvedValue({ ...routingStatus, state: "active", endpointVerified: true });
     routingMocks.stop.mockReset().mockResolvedValue(routingStatus);
     routingMocks.openSettings.mockReset().mockResolvedValue(undefined);
+    const hotkeyConfiguration = {
+      schemaVersion: 1,
+      bindings: [
+        ["toggleMicrophoneMute", "Ctrl+Alt+M"],
+        ["toggleVoiceEffects", "Ctrl+Alt+E"],
+        ["nextVoicePreset", "Ctrl+Alt+Right"],
+        ["previousVoicePreset", "Ctrl+Alt+Left"],
+        ["toggleHearMyself", "Ctrl+Alt+H"],
+        ["toggleVirtualMicrophone", "Ctrl+Alt+V"],
+        ["toggleRecording", "Ctrl+Alt+R"],
+      ].map(([action, shortcut]) => ({ action, shortcut })),
+      tray: { minimizeToTray: false, closeToTray: true },
+    };
+    hotkeyMocks.get.mockReset().mockResolvedValue(hotkeyConfiguration);
+    hotkeyMocks.set.mockReset().mockImplementation(async (value) => value);
+    hotkeyMocks.reset.mockReset().mockResolvedValue(hotkeyConfiguration);
     Object.defineProperty(window, "innerWidth", { writable: true, configurable: true, value: 900 });
     window.dispatchEvent(new Event("resize"));
   });
@@ -345,6 +367,25 @@ describe("desktop navigation", () => {
       "-60",
     );
     expect(screen.getByRole("button", { name: "Start recording" })).toBeDisabled();
+  });
+
+  it("records, detects duplicates, removes and saves global shortcuts", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getAllByRole("button", { name: "Settings" })[0]);
+    const assign = await screen.findByRole("button", {
+      name: "Assign shortcut for Toggle microphone mute",
+    });
+    await user.click(assign);
+    fireEvent.keyDown(assign, { key: "E", ctrlKey: true, altKey: true });
+    expect(
+      screen.getByText("Duplicate shortcuts must be resolved before saving."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save hotkeys" })).toBeDisabled();
+    await user.click(screen.getAllByRole("button", { name: "Remove" })[0]);
+    expect(screen.getByRole("button", { name: "Save hotkeys" })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "Save hotkeys" }));
+    expect(hotkeyMocks.set).toHaveBeenCalled();
   });
 
   it("filters and applies a validated backend preset", async () => {

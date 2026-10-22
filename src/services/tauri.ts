@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { AppStatus } from "../types/app";
 import type { VoicePresetSummary } from "../types/preset";
+import type { HotkeyConfiguration } from "../types/hotkeys";
 import type {
   AudioDevice,
   AudioDeviceSnapshot,
@@ -161,3 +162,8 @@ export const getRoutingStatus = () => invoke<RoutingStatus>("get_routing_status"
 export const startVirtualRouting = () => invoke<RoutingStatus>("start_virtual_routing");
 export const stopVirtualRouting = () => invoke<RoutingStatus>("stop_virtual_routing");
 export const openWindowsSoundSettings = () => invoke<void>("open_windows_sound_settings");
+export const getHotkeyConfiguration = () => invoke<HotkeyConfiguration>("get_hotkey_configuration");
+export const setHotkeyConfiguration = (configuration: HotkeyConfiguration) =>
+  invoke<HotkeyConfiguration>("set_hotkey_configuration", { configuration });
+export const resetHotkeyConfiguration = () =>
+  invoke<HotkeyConfiguration>("reset_hotkey_configuration");

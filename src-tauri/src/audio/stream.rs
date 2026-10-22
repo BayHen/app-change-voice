@@ -244,6 +244,15 @@ impl AudioStreamManager {
         parameters
     }
 
+    pub fn set_effect_parameters_preserving_preset(
+        &mut self,
+        parameters: EffectParameters,
+    ) -> EffectParameters {
+        let parameters = self.effect_controls.store(parameters);
+        self.effect_parameters = parameters;
+        parameters
+    }
+
     pub fn apply_preset(&mut self, id: &str, parameters: EffectParameters) -> EffectParameters {
         let parameters = self.effect_controls.store(parameters);
         self.effect_parameters = parameters;

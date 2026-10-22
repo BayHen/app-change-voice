@@ -1,6 +1,7 @@
 import { AppHeader } from "../components/AppHeader";
 import { DeviceSelector } from "../components/DeviceSelector";
 import { ToggleSwitch } from "../components/ToggleSwitch";
+import { HotkeySettings } from "../components/HotkeySettings";
 import type { DeviceOption } from "../types/audio";
 
 const noAudioDevices: DeviceOption[] = [
@@ -24,13 +25,13 @@ export function Settings() {
             disabled
             onChange={() => undefined}
           />
-          <ToggleSwitch
-            label="Minimize to system tray"
-            description="Coming Soon. Window behavior is unchanged."
-            checked={false}
-            disabled
-            onChange={() => undefined}
-          />
+        </SettingsSection>
+
+        <SettingsSection
+          title="Global hotkeys & tray"
+          description="System-wide controls and window behavior"
+        >
+          <HotkeySettings />
         </SettingsSection>
 
         <SettingsSection title="Audio" description="Default device and processing behavior">

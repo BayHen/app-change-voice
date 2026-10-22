@@ -1,4 +1,5 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { AppSidebar } from "./components/AppSidebar";
 import { NotificationToast } from "./components/NotificationToast";
 import { Dashboard } from "./pages/Dashboard";
@@ -9,6 +10,7 @@ import { VirtualMicrophone } from "./pages/VirtualMicrophone";
 import type { NavigationItem } from "./types/navigation";
 import type { VoicePresetSummary } from "./types/preset";
 import type { ToastMessage } from "./types/ui";
+import type { DesktopActionResult } from "./types/hotkeys";
 
 export default function App() {
   const [activePage, setActivePage] = useState<NavigationItem>("dashboard");
@@ -27,6 +29,38 @@ export default function App() {
 
   const notify = useCallback((title: string, message: string) => {
     setToast({ id: Date.now(), title, message, tone: "warning" });
+  }, []);
+
+  useEffect(() => {
+    const disposers: Array<() => void> = [];
+    let active = true;
+    void listen<NavigationItem>("voicemorph://navigate", (event) => setActivePage(event.payload))
+      .then((dispose) => (active ? disposers.push(dispose) : dispose()))
+      .catch(() => undefined);
+    void listen<DesktopActionResult>("voicemorph://action", (event) => {
+      setToast({
+        id: Date.now(),
+        title: "Desktop action",
+        message: event.payload.message,
+        tone: "info",
+      });
+    })
+      .then((dispose) => (active ? disposers.push(dispose) : dispose()))
+      .catch(() => undefined);
+    void listen<DesktopActionResult>("voicemorph://action-error", (event) => {
+      setToast({
+        id: Date.now(),
+        title: "Desktop action failed",
+        message: event.payload.message,
+        tone: "warning",
+      });
+    })
+      .then((dispose) => (active ? disposers.push(dispose) : dispose()))
+      .catch(() => undefined);
+    return () => {
+      active = false;
+      disposers.forEach((dispose) => dispose());
+    };
   }, []);
 
   function renderPage() {

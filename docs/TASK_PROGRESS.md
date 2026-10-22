@@ -101,6 +101,39 @@ cài Windows x64 đã được xác nhận trong quality gate ngày 22/10/2026.
 - NOT TESTED — routing qua VB-CABLE, Discord microphone test, OBS capture, disconnect, preset/recording khi
   route, sample-rate mismatch thực tế và latency end-to-end; máy test chưa xác minh có virtual cable endpoint.
 
+## Task 12 - Global Hotkeys & System Tray
+
+### Đã triển khai
+
+- Tích hợp `tauri-plugin-global-shortcut` 2.4.1 và Tauri `tray-icon` với Tauri 2.12.5.
+- Hotkey cho mute microphone, effects, preset kế/ trước, Hear Myself, virtual routing và recording.
+- Editor ghi tổ hợp phím, remove/reset, duplicate/reserved validation, OS conflict rollback và persistence.
+- Windows tray với trạng thái backend thật, Show/Hide, Settings và Exit cleanup.
+- Tùy chọn minimize/close to tray; mặc định close-to-tray bật, minimize-to-tray tắt.
+- Hotkey/tray đi qua application service; audio callback không nhận IPC, mutex hoặc UI work.
+- Cấu hình lưu tại `app_config_dir/hotkeys.json`; restart không tự capture microphone.
+
+### Kiểm thử
+
+- Unit test: default shortcut parsing, duplicate/reserved validation, save/load sau restart và hide/restore
+  decision; audio stop idempotence tiếp tục là regression test cho cleanup.
+- Frontend test: editor assign, duplicate warning, remove và save; navigation/regression tests giữ nguyên.
+- Conflict với ứng dụng bên ngoài, hotkey khi app mất focus, tray click và Windows restart cần smoke test desktop
+  thực tế; không được đánh dấu PASS chỉ từ unit test.
+
+### Kết quả xác minh Task 12 (23/10/2026)
+
+- PASS — `npm.cmd run format`, `npm.cmd run lint`, `npm.cmd run test` (9/9) và `npm.cmd run build`.
+- PASS — `cargo fmt -- --check`, `cargo check --all-targets`,
+  `cargo clippy --all-targets -- -D warnings` và `cargo test` (59 pass, 4 manual/benchmark ignored).
+- PASS — `npm.cmd run tauri:dev`: Tauri window mở, plugin đăng ký default shortcuts và tray khởi tạo không lỗi;
+  phiên được dừng chủ động bằng Ctrl+C.
+- PASS — release x64 và NSIS installer được tạo bằng `tauri build --bundles nsis`.
+- NOT TESTED — nhấn từng global hotkey khi app mất focus, menu tray bằng chuột, conflict với ứng dụng bên
+  ngoài và restart Windows; cần thao tác người dùng/desktop interactive để xác nhận end-to-end.
+- NOT TESTED — start/stop virtual routing từ tray với cable thật do Task 11 chưa có hardware acceptance trên
+  máy hiện tại. Error path vẫn trả notification thay vì giả báo thành công.
+
 ## Task 03 - Audio Device Management
 
 ### Đã hoàn thành

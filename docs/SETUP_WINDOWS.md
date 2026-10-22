@@ -6,6 +6,15 @@ Nếu WiX báo `LGHT0217`/`0x643`, kiểm tra Windows Installer bằng `Get-Serv
 Administrator và bảo đảm service không bị policy hoặc Windows component lỗi chặn. NSIS có thể vẫn được tạo
 thành công dù bước MSI thất bại; không dùng file MSI cũ còn sót trong `target` để kết luận build mới đã đạt.
 
+## Global hotkeys và system tray
+
+Task 12 dùng `tauri-plugin-global-shortcut` 2.4.1. Plugin yêu cầu Rust 1.90 trở lên; toolchain stable hiện tại
+phải đáp ứng trước khi build. Nếu Save hotkeys báo conflict, tổ hợp đã được Windows hoặc ứng dụng khác đăng
+ký; bộ shortcut cũ vẫn được giữ. Không chạy nhiều instance VoiceMorph khi kiểm thử registrations.
+
+Khi Close to tray bật, nút đóng chỉ ẩn cửa sổ. Chọn **Exit VoiceMorph Studio** từ tray để giải phóng audio
+streams và unregister hotkeys trước khi thoát hoàn toàn.
+
 ## Kết quả kiểm tra ngày 22/10/2026
 
 | Thành phần            | Trạng thái trên máy hiện tại | Ghi chú                                   |
