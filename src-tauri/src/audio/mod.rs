@@ -3,6 +3,7 @@
 pub mod config;
 pub mod devices;
 pub mod errors;
+pub mod meter;
 pub mod metrics;
 pub mod pipeline;
 pub mod processor;

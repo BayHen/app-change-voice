@@ -73,6 +73,14 @@ Pipeline ưu tiên sample rate chung 48 kHz, sau đó chọn giao của range ha
 256 frames chỉ là request và được clamp theo driver. Latency trên UI là ước tính từ buffer input,
 output và ring depth; không phải kết quả loopback measurement.
 
+Task 05 bổ sung hai gain stage độc lập. Input gain chạy sau downmix/passthrough và trước ring buffer;
+output gain chạy sau ring buffer và trước sample-format conversion. UI ghi target gain/mute vào atomics;
+mỗi callback giữ `SmoothedGain` cục bộ và ramp khoảng 10 ms. Meter peak/RMS được tính theo callback
+block trên tín hiệu sau gain, sau đó publish bằng atomics. UI chỉ đọc snapshot khoảng 25 lần/giây.
+
+Volume settings được lưu tại `app_config_dir/volume-settings.json`. Preview khi kéo slider chỉ cập
+nhật atomics; pointer/key commit mới ghi file, tránh file I/O dày đặc. Callback không đọc/ghi file.
+
 Bốn module domain được export từ library crate để tạo extension API rõ ràng và tránh che giấu các
 seam có chủ đích. Binary entry point vẫn chỉ gọi `voicemorph_studio_lib::run()`.
 

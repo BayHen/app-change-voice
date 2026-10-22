@@ -57,7 +57,20 @@ export interface AudioMetrics {
   ringDepthFrames: number;
   inputLevel: number;
   outputLevel: number;
+  inputPeakDbfs: number;
+  inputRmsDbfs: number;
+  outputPeakDbfs: number;
+  outputRmsDbfs: number;
+  inputClipping: boolean;
+  outputClipping: boolean;
   streamFaulted: boolean;
+}
+
+export interface VolumeSettings {
+  inputPercent: number;
+  outputPercent: number;
+  inputMuted: boolean;
+  outputMuted: boolean;
 }
 
 export interface AudioRuntimeStatus {

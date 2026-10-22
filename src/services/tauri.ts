@@ -5,10 +5,23 @@ import type {
   AudioDeviceSnapshot,
   AudioRuntimeStatus,
   DefaultDevices,
+  VolumeSettings,
 } from "../types/audio";
 
 export function getAppStatus(): Promise<AppStatus> {
   return invoke<AppStatus>("get_app_status");
+}
+
+export function getVolumeSettings(): Promise<VolumeSettings> {
+  return invoke<VolumeSettings>("get_volume_settings");
+}
+
+export function previewVolumeSettings(settings: VolumeSettings): Promise<VolumeSettings> {
+  return invoke<VolumeSettings>("preview_volume_settings", { settings });
+}
+
+export function setVolumeSettings(settings: VolumeSettings): Promise<VolumeSettings> {
+  return invoke<VolumeSettings>("set_volume_settings", { settings });
 }
 
 export function getInputDevices(): Promise<AudioDevice[]> {

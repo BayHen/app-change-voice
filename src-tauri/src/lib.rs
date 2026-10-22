@@ -12,6 +12,7 @@ use audio::{
     errors::AudioDeviceError,
     stream::{AudioRuntimeStatus, AudioStreamManager},
 };
+use effects::gain::{self, VolumeSettings};
 use platform::PlatformInfo;
 use serde::Serialize;
 use std::{path::PathBuf, sync::Mutex};
@@ -122,6 +123,7 @@ impl AudioDeviceService {
 
 type AudioDeviceState = Mutex<AudioDeviceService>;
 type AudioRuntimeState = Mutex<AudioStreamManager>;
+struct VolumeConfigPath(PathBuf);
 
 fn with_audio_service<T>(
     state: State<'_, AudioDeviceState>,
@@ -257,16 +259,47 @@ fn get_audio_runtime_status(
     with_audio_runtime(state, |runtime| Ok(runtime.status()))
 }
 
+#[tauri::command]
+fn get_volume_settings(
+    state: State<'_, AudioRuntimeState>,
+) -> Result<VolumeSettings, AudioDeviceError> {
+    with_audio_runtime(state, |runtime| Ok(runtime.volume_settings()))
+}
+
+#[tauri::command]
+fn set_volume_settings(
+    settings: VolumeSettings,
+    state: State<'_, AudioRuntimeState>,
+    path: State<'_, VolumeConfigPath>,
+) -> Result<VolumeSettings, AudioDeviceError> {
+    let settings = settings.validated();
+    gain::save(&path.0, settings)?;
+    with_audio_runtime(state, |runtime| Ok(runtime.set_volume_settings(settings)))
+}
+
+#[tauri::command]
+fn preview_volume_settings(
+    settings: VolumeSettings,
+    state: State<'_, AudioRuntimeState>,
+) -> Result<VolumeSettings, AudioDeviceError> {
+    with_audio_runtime(state, |runtime| Ok(runtime.set_volume_settings(settings)))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
             let preferences_path = app.path().app_config_dir()?.join("audio-devices.json");
+            let volume_path = app.path().app_config_dir()?.join("volume-settings.json");
+            let volume_settings = gain::load(&volume_path).unwrap_or_default();
             app.manage(Mutex::new(AudioDeviceService::new(
                 platform::WindowsAudioDeviceProvider,
                 preferences_path,
             )?));
-            app.manage(Mutex::new(AudioStreamManager::default()));
+            app.manage(Mutex::new(AudioStreamManager::with_volume_settings(
+                volume_settings,
+            )));
+            app.manage(VolumeConfigPath(volume_path));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -281,7 +314,10 @@ pub fn run() {
             pause_monitoring,
             resume_monitoring,
             stop_monitoring,
-            get_audio_runtime_status
+            get_audio_runtime_status,
+            get_volume_settings,
+            set_volume_settings,
+            preview_volume_settings
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

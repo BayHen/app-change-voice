@@ -42,3 +42,11 @@ kiến trúc trước khi yêu cầu Task 02 được xác định.
 - Không resample trong Task 04. Pipeline chọn sample rate nằm trong giao capability của input/output,
   ưu tiên 48 kHz; nếu không có rate chung thì trả lỗi rõ ràng.
 - Không tự start khi ứng dụng mở. Chỉ command do thao tác người dùng mới gọi `Stream::play`.
+
+## ADR-008 — Atomic gain controls và block meters
+
+- Slider 0–100% ánh xạ tuyến tính sang gain 0.0–1.0; Task 05 không cho boost trên unity để hạn chế
+  clipping và feedback.
+- Input/output gain và mute dùng atomic target độc lập. Callback ramp 10 ms thay vì đổi gain tức thời.
+- RMS/peak tính theo block callback, sanitize NaN/Infinity và clamp float32 trước output.
+- UI polling metrics ở 25 Hz; không truyền sample hoặc gọi UI từ audio callback.

@@ -2,8 +2,9 @@
 
 Ứng dụng desktop Windows để xây dựng trải nghiệm biến đổi giọng nói. Task 01 tạo nền móng
 Tauri 2 + React + TypeScript; Task 02 hoàn thiện desktop UI và navigation; Task 03 tích hợp quản lý
-thiết bị WASAPI qua CPAL; Task 04 bổ sung pipeline monitoring realtime float32 với passthrough.
-Pitch, formant và các hiệu ứng đổi giọng chưa được triển khai.
+thiết bị WASAPI qua CPAL; Task 04 bổ sung pipeline monitoring realtime float32 với passthrough;
+Task 05 bổ sung gain, mute và peak/RMS meter dBFS. Pitch, formant và các hiệu ứng đổi giọng chưa
+được triển khai.
 
 ## Công nghệ
 

@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../src/App";
 import { VoiceStudio } from "../src/pages/VoiceStudio";
+import type { AudioRuntimeStatus } from "../src/types/audio";
 
 const audioMocks = vi.hoisted(() => ({
   refresh: vi.fn(),
@@ -17,8 +18,13 @@ const runtimeMocks = vi.hoisted(() => ({
   pause: vi.fn(),
   resume: vi.fn(),
 }));
+const volumeMocks = vi.hoisted(() => ({
+  get: vi.fn(),
+  preview: vi.fn(),
+  set: vi.fn(),
+}));
 
-const stoppedRuntime = {
+const stoppedRuntime: AudioRuntimeStatus = {
   state: "stopped",
   inputDeviceId: null,
   outputDeviceId: null,
@@ -27,6 +33,7 @@ const stoppedRuntime = {
   outputChannels: null,
   metrics: null,
 };
+let currentRuntime: AudioRuntimeStatus = stoppedRuntime;
 
 const connectedSnapshot = {
   inputDevices: [
@@ -74,6 +81,9 @@ vi.mock("../src/services/tauri", () => ({
   stopMonitoring: runtimeMocks.stop,
   pauseMonitoring: runtimeMocks.pause,
   resumeMonitoring: runtimeMocks.resume,
+  getVolumeSettings: volumeMocks.get,
+  previewVolumeSettings: volumeMocks.preview,
+  setVolumeSettings: volumeMocks.set,
 }));
 
 describe("desktop navigation", () => {
@@ -86,11 +96,15 @@ describe("desktop navigation", () => {
     });
     audioMocks.selectInput.mockReset().mockResolvedValue(connectedSnapshot);
     audioMocks.selectOutput.mockReset().mockResolvedValue(connectedSnapshot);
-    runtimeMocks.status.mockReset().mockResolvedValue(stoppedRuntime);
-    runtimeMocks.stop.mockReset().mockResolvedValue(stoppedRuntime);
+    currentRuntime = stoppedRuntime;
+    runtimeMocks.status.mockReset().mockImplementation(async () => currentRuntime);
+    runtimeMocks.stop.mockReset().mockImplementation(async () => {
+      currentRuntime = stoppedRuntime;
+      return currentRuntime;
+    });
     runtimeMocks.pause.mockReset().mockResolvedValue({ ...stoppedRuntime, state: "paused" });
     runtimeMocks.resume.mockReset().mockResolvedValue({ ...stoppedRuntime, state: "running" });
-    runtimeMocks.start.mockReset().mockResolvedValue({
+    const runningRuntime: AudioRuntimeStatus = {
       ...stoppedRuntime,
       state: "running",
       inputDeviceId: "wasapi:microphone-1",
@@ -110,9 +124,28 @@ describe("desktop navigation", () => {
         ringDepthFrames: 128,
         inputLevel: 0.25,
         outputLevel: 0.25,
+        inputPeakDbfs: -12,
+        inputRmsDbfs: -18,
+        outputPeakDbfs: -12,
+        outputRmsDbfs: -18,
+        inputClipping: false,
+        outputClipping: false,
         streamFaulted: false,
       },
+    };
+    runtimeMocks.start.mockReset().mockImplementation(async () => {
+      currentRuntime = runningRuntime;
+      return currentRuntime;
     });
+    const volumeSettings = {
+      inputPercent: 100,
+      outputPercent: 100,
+      inputMuted: false,
+      outputMuted: false,
+    };
+    volumeMocks.get.mockReset().mockResolvedValue(volumeSettings);
+    volumeMocks.preview.mockReset().mockImplementation(async (settings) => settings);
+    volumeMocks.set.mockReset().mockImplementation(async (settings) => settings);
     Object.defineProperty(window, "innerWidth", { writable: true, configurable: true, value: 900 });
     window.dispatchEvent(new Event("resize"));
   });
@@ -140,7 +173,7 @@ describe("desktop navigation", () => {
     expect(screen.getByLabelText("Input device")).toBeDisabled();
     expect(screen.getByRole("meter", { name: "Input level" })).toHaveAttribute(
       "aria-valuenow",
-      "0",
+      "-60",
     );
     expect(screen.getByRole("button", { name: /Record & Test/i })).toBeDisabled();
   });
@@ -187,6 +220,20 @@ describe("desktop navigation", () => {
 
     await user.click(screen.getByRole("button", { name: "Stop monitoring" }));
     expect(runtimeMocks.stop).toHaveBeenCalledOnce();
+  });
+
+  it("updates independent gain controls and microphone mute", async () => {
+    audioMocks.refresh.mockResolvedValue(connectedSnapshot);
+    const user = userEvent.setup();
+    render(<App />);
+
+    const inputGain = await screen.findByLabelText("Microphone input gain");
+    fireEvent.change(inputGain, { target: { value: "65" } });
+    expect(volumeMocks.preview).toHaveBeenCalledWith(expect.objectContaining({ inputPercent: 65 }));
+
+    await user.click(screen.getByRole("button", { name: "Mute microphone" }));
+    expect(volumeMocks.set).toHaveBeenCalledWith(expect.objectContaining({ inputMuted: true }));
+    expect(screen.getByLabelText("Output monitoring volume")).toHaveValue("100");
   });
 });
 

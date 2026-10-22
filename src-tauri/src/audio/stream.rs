@@ -1,9 +1,11 @@
 use super::{
     errors::AudioDeviceError,
+    meter::SignalMeter,
     metrics::{AudioMetrics, SharedAudioMetrics},
     pipeline::AudioPipeline,
     processor::PassthroughProcessor,
 };
+use crate::effects::gain::{SharedGainControls, SmoothedGain, VolumeSettings};
 use cpal::{
     BufferSize, Device, DeviceId, SampleFormat, Stream, StreamConfig, SupportedBufferSize,
     SupportedStreamConfig, SupportedStreamConfigRange,
@@ -53,6 +55,8 @@ struct ActiveStreams {
 pub struct AudioStreamManager {
     streams: Option<ActiveStreams>,
     state: MonitoringState,
+    controls: SharedGainControls,
+    volume_settings: VolumeSettings,
 }
 
 impl Default for AudioStreamManager {
@@ -60,11 +64,34 @@ impl Default for AudioStreamManager {
         Self {
             streams: None,
             state: MonitoringState::Stopped,
+            controls: SharedGainControls::new(VolumeSettings::default()),
+            volume_settings: VolumeSettings::default(),
         }
     }
 }
 
 impl AudioStreamManager {
+    pub fn with_volume_settings(settings: VolumeSettings) -> Self {
+        let settings = settings.validated();
+        Self {
+            streams: None,
+            state: MonitoringState::Stopped,
+            controls: SharedGainControls::new(settings),
+            volume_settings: settings,
+        }
+    }
+
+    pub fn volume_settings(&self) -> VolumeSettings {
+        self.volume_settings
+    }
+
+    pub fn set_volume_settings(&mut self, settings: VolumeSettings) -> VolumeSettings {
+        let settings = settings.validated();
+        self.volume_settings = settings;
+        self.controls.apply(settings);
+        settings
+    }
+
     pub fn start(
         &mut self,
         input_id: &str,
@@ -97,6 +124,7 @@ impl AudioStreamManager {
             input_format,
             producer,
             metrics.clone(),
+            self.controls.clone(),
         )?;
         let output_stream = build_output(
             &output,
@@ -104,6 +132,7 @@ impl AudioStreamManager {
             output_format,
             consumer,
             metrics.clone(),
+            self.controls.clone(),
         )?;
         let input_buffer_frames = input_stream
             .buffer_size()
@@ -329,11 +358,12 @@ fn build_input(
     format: SampleFormat,
     producer: Producer<f32>,
     metrics: SharedAudioMetrics,
+    controls: SharedGainControls,
 ) -> Result<Stream, AudioDeviceError> {
     match format {
-        SampleFormat::F32 => build_input_typed::<f32>(device, config, producer, metrics),
-        SampleFormat::I16 => build_input_typed::<i16>(device, config, producer, metrics),
-        SampleFormat::U16 => build_input_typed::<u16>(device, config, producer, metrics),
+        SampleFormat::F32 => build_input_typed::<f32>(device, config, producer, metrics, controls),
+        SampleFormat::I16 => build_input_typed::<i16>(device, config, producer, metrics, controls),
+        SampleFormat::U16 => build_input_typed::<u16>(device, config, producer, metrics, controls),
         _ => Err(AudioDeviceError::backend(format!(
             "Unsupported input sample format: {format}"
         ))),
@@ -345,30 +375,32 @@ fn build_input_typed<T: RealtimeSample>(
     config: StreamConfig,
     mut producer: Producer<f32>,
     metrics: SharedAudioMetrics,
+    controls: SharedGainControls,
 ) -> Result<Stream, AudioDeviceError> {
     let channels = usize::from(config.channels);
     let error_metrics = metrics.clone();
     let mut pipeline = AudioPipeline::new(PassthroughProcessor);
+    let mut gain = SmoothedGain::new(controls.input_target(), config.sample_rate);
     device
         .build_input_stream(
             config,
             move |data: &[T], _| {
                 let started = Instant::now();
                 let mut overflowed = false;
-                let mut peak = 0.0_f32;
+                let mut meter = SignalMeter::default();
                 let mut frames = 0_u64;
                 for frame in data.chunks_exact(channels) {
                     let mono =
                         frame.iter().map(|sample| sample.to_f32()).sum::<f32>() / channels as f32;
-                    let processed = pipeline.process(mono);
-                    peak = peak.max(processed.abs());
+                    let processed = gain.process(pipeline.process(mono), controls.input_target());
+                    meter.push(processed);
                     overflowed |= producer.push(processed).is_err();
                     frames += 1;
                 }
                 if overflowed {
                     metrics.record_overflow();
                 }
-                metrics.set_input_level(peak);
+                metrics.set_input_meter(meter.finish());
                 metrics.set_ring_depth(producer.buffer().capacity() - producer.slots());
                 metrics.record_processing(
                     frames,
@@ -387,11 +419,12 @@ fn build_output(
     format: SampleFormat,
     consumer: Consumer<f32>,
     metrics: SharedAudioMetrics,
+    controls: SharedGainControls,
 ) -> Result<Stream, AudioDeviceError> {
     match format {
-        SampleFormat::F32 => build_output_typed::<f32>(device, config, consumer, metrics),
-        SampleFormat::I16 => build_output_typed::<i16>(device, config, consumer, metrics),
-        SampleFormat::U16 => build_output_typed::<u16>(device, config, consumer, metrics),
+        SampleFormat::F32 => build_output_typed::<f32>(device, config, consumer, metrics, controls),
+        SampleFormat::I16 => build_output_typed::<i16>(device, config, consumer, metrics, controls),
+        SampleFormat::U16 => build_output_typed::<u16>(device, config, consumer, metrics, controls),
         _ => Err(AudioDeviceError::backend(format!(
             "Unsupported output sample format: {format}"
         ))),
@@ -403,30 +436,33 @@ fn build_output_typed<T: RealtimeSample>(
     config: StreamConfig,
     mut consumer: Consumer<f32>,
     metrics: SharedAudioMetrics,
+    controls: SharedGainControls,
 ) -> Result<Stream, AudioDeviceError> {
     let channels = usize::from(config.channels);
     let error_metrics = metrics.clone();
+    let mut gain = SmoothedGain::new(controls.output_target(), config.sample_rate);
     device
         .build_output_stream(
             config,
             move |data: &mut [T], _| {
                 let mut underrun = false;
-                let mut peak = 0.0_f32;
+                let mut meter = SignalMeter::default();
                 for frame in data.chunks_exact_mut(channels) {
-                    let sample = match consumer.pop() {
+                    let source = match consumer.pop() {
                         Ok(sample) => sample,
                         Err(_) => {
                             underrun = true;
                             0.0
                         }
                     };
-                    peak = peak.max(sample.abs());
+                    let sample = gain.process(source, controls.output_target());
+                    meter.push(sample);
                     frame.fill(T::from_f32(sample));
                 }
                 if underrun {
                     metrics.record_underrun();
                 }
-                metrics.set_output_level(peak);
+                metrics.set_output_meter(meter.finish());
                 metrics.set_ring_depth(consumer.slots());
             },
             move |_| error_metrics.record_stream_error(),

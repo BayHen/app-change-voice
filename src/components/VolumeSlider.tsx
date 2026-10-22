@@ -7,6 +7,7 @@ interface VolumeSliderProps {
   unit?: string;
   disabled?: boolean;
   onChange: (value: number) => void;
+  onCommit?: (value: number) => void;
 }
 
 export function VolumeSlider({
@@ -18,6 +19,7 @@ export function VolumeSlider({
   unit = "%",
   disabled = false,
   onChange,
+  onCommit,
 }: VolumeSliderProps) {
   return (
     <div className="space-y-3">
@@ -38,6 +40,8 @@ export function VolumeSlider({
         value={value}
         disabled={disabled}
         onChange={(event) => onChange(Number(event.target.value))}
+        onPointerUp={(event) => onCommit?.(Number(event.currentTarget.value))}
+        onKeyUp={(event) => onCommit?.(Number(event.currentTarget.value))}
         className="audio-range w-full disabled:cursor-not-allowed disabled:opacity-40"
       />
     </div>

@@ -65,7 +65,7 @@ export function useAudioRuntime() {
       void getAudioRuntimeStatus()
         .then((next) => mounted.current && applyRuntimeStatus(next, setStatus, setError))
         .catch((reason) => mounted.current && setError(message(reason)));
-    }, 500);
+    }, 40);
     return () => {
       mounted.current = false;
       window.clearInterval(interval);

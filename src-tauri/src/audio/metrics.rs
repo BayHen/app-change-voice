@@ -1,3 +1,4 @@
+use super::meter::{MeterReading, amplitude_to_dbfs};
 use serde::Serialize;
 use std::sync::{
     Arc,
@@ -17,6 +18,10 @@ struct AudioMetricAtoms {
     ring_depth: AtomicUsize,
     input_level_bits: AtomicU64,
     output_level_bits: AtomicU64,
+    input_rms_bits: AtomicU64,
+    output_rms_bits: AtomicU64,
+    input_clipping: AtomicBool,
+    output_clipping: AtomicBool,
     stream_faulted: AtomicBool,
 }
 
@@ -34,6 +39,12 @@ pub struct AudioMetrics {
     pub ring_depth_frames: usize,
     pub input_level: f32,
     pub output_level: f32,
+    pub input_peak_dbfs: f32,
+    pub input_rms_dbfs: f32,
+    pub output_peak_dbfs: f32,
+    pub output_rms_dbfs: f32,
+    pub input_clipping: bool,
+    pub output_clipping: bool,
     pub stream_faulted: bool,
 }
 
@@ -61,16 +72,28 @@ impl SharedAudioMetrics {
         self.0.ring_depth.store(frames, Ordering::Relaxed);
     }
     #[inline]
-    pub fn set_input_level(&self, level: f32) {
+    pub fn set_input_meter(&self, reading: MeterReading) {
         self.0
             .input_level_bits
-            .store(level.to_bits() as u64, Ordering::Relaxed);
+            .store(reading.peak.to_bits() as u64, Ordering::Relaxed);
+        self.0
+            .input_rms_bits
+            .store(reading.rms.to_bits() as u64, Ordering::Relaxed);
+        self.0
+            .input_clipping
+            .store(reading.clipping, Ordering::Relaxed);
     }
     #[inline]
-    pub fn set_output_level(&self, level: f32) {
+    pub fn set_output_meter(&self, reading: MeterReading) {
         self.0
             .output_level_bits
-            .store(level.to_bits() as u64, Ordering::Relaxed);
+            .store(reading.peak.to_bits() as u64, Ordering::Relaxed);
+        self.0
+            .output_rms_bits
+            .store(reading.rms.to_bits() as u64, Ordering::Relaxed);
+        self.0
+            .output_clipping
+            .store(reading.clipping, Ordering::Relaxed);
     }
 
     pub fn snapshot(
@@ -82,6 +105,10 @@ impl SharedAudioMetrics {
         let frames = self.0.processed_frames.load(Ordering::Relaxed);
         let nanos = self.0.processing_nanos.load(Ordering::Relaxed);
         let ring_depth_frames = self.0.ring_depth.load(Ordering::Relaxed);
+        let input_level = f32::from_bits(self.0.input_level_bits.load(Ordering::Relaxed) as u32);
+        let output_level = f32::from_bits(self.0.output_level_bits.load(Ordering::Relaxed) as u32);
+        let input_rms = f32::from_bits(self.0.input_rms_bits.load(Ordering::Relaxed) as u32);
+        let output_rms = f32::from_bits(self.0.output_rms_bits.load(Ordering::Relaxed) as u32);
         AudioMetrics {
             sample_rate,
             input_buffer_frames,
@@ -103,8 +130,14 @@ impl SharedAudioMetrics {
                     / sample_rate as f64
             },
             ring_depth_frames,
-            input_level: f32::from_bits(self.0.input_level_bits.load(Ordering::Relaxed) as u32),
-            output_level: f32::from_bits(self.0.output_level_bits.load(Ordering::Relaxed) as u32),
+            input_level,
+            output_level,
+            input_peak_dbfs: amplitude_to_dbfs(input_level),
+            input_rms_dbfs: amplitude_to_dbfs(input_rms),
+            output_peak_dbfs: amplitude_to_dbfs(output_level),
+            output_rms_dbfs: amplitude_to_dbfs(output_rms),
+            input_clipping: self.0.input_clipping.load(Ordering::Relaxed),
+            output_clipping: self.0.output_clipping.load(Ordering::Relaxed),
             stream_faulted: self.0.stream_faulted.load(Ordering::Acquire),
         }
     }

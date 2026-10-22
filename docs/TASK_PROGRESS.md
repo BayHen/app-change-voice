@@ -132,3 +132,26 @@ cài Windows x64 đã được xác nhận trong quality gate ngày 22/10/2026.
 - `npm.cmd run tauri:dev`: thành công ở trạng thái monitoring tắt; cửa sổ phản hồi.
 - Manual listening, unplug khi stream đang chạy và loopback latency measurement: chưa kiểm thử vì cần
   tai nghe, thao tác phần cứng và đánh giá trực tiếp của người dùng.
+
+## Task 05 - Volume Control & Audio Meter
+
+### Đã hoàn thành
+
+- Thêm input gain và output monitoring gain độc lập, giới hạn 0–100% tương ứng gain 0.0–1.0.
+- Thêm input/output mute và gain smoothing 10 ms để hạn chế click/pop.
+- Thêm peak/RMS meter từ audio thật, hiển thị dBFS và clipping indicator.
+- Metrics được lấy 25 lần/giây qua status snapshot; callback chỉ cập nhật atomics.
+- Lưu/khôi phục gain và mute tại `app_config_dir/volume-settings.json`.
+- Slider preview cập nhật audio ngay; chỉ commit mới ghi persistence.
+- Không triển khai boost trên 100%, pitch hoặc formant.
+
+### Kết quả xác minh
+
+- `npm.cmd run test`: thành công, 8/8 frontend tests.
+- `npm.cmd run build`, `npm.cmd run lint -- --max-warnings=0`, `npm.cmd run format`: thành công.
+- `cargo test`: thành công, 23 tests; 3 hardware tests bị bỏ qua mặc định.
+- `cargo check --all-targets`, `cargo fmt -- --check`,
+  `cargo clippy --all-targets -- -D warnings`: thành công.
+- `npm.cmd run tauri:dev`: thành công ở trạng thái monitoring tắt; cửa sổ phản hồi.
+- Listening test xác nhận thay đổi gain/mute và meter với microphone thật: chưa thực hiện vì cần tai
+  nghe và đánh giá trực tiếp của người dùng.

@@ -10,14 +10,18 @@ import {
 } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
 import { AppHeader } from "../components/AppHeader";
-import { AudioMeter } from "../components/AudioMeter";
+import { ClippingIndicator } from "../components/ClippingIndicator";
 import { DeviceSelector } from "../components/DeviceSelector";
 import { StatusIndicator } from "../components/StatusIndicator";
+import { InputLevelMeter } from "../components/InputLevelMeter";
+import { OutputLevelMeter } from "../components/OutputLevelMeter";
+import { MuteButton } from "../components/MuteButton";
 import { ToggleSwitch } from "../components/ToggleSwitch";
 import { VolumeSlider } from "../components/VolumeSlider";
 import { useAppStatus } from "../hooks/useAppStatus";
 import { useAudioDevices } from "../hooks/useAudioDevices";
 import { useAudioRuntime } from "../hooks/useAudioRuntime";
+import { useVolumeSettings } from "../hooks/useVolumeSettings";
 import type { AudioDevice, AudioUiState, DeviceOption } from "../types/audio";
 
 const unavailableInput: DeviceOption[] = [
@@ -68,6 +72,7 @@ export function Dashboard({ onNotify }: DashboardProps) {
   const { loading, error } = useAppStatus();
   const devices = useAudioDevices();
   const runtime = useAudioRuntime();
+  const volume = useVolumeSettings();
   const [audioUi, setAudioUi] = useState<AudioUiState>(initialAudioUiState);
   const inputDevices = useMemo(
     () => devices.snapshot?.inputDevices ?? [],
@@ -171,6 +176,14 @@ export function Dashboard({ onNotify }: DashboardProps) {
               Audio pipeline error: {runtime.error}
             </section>
           ) : null}
+          {volume.error ? (
+            <section
+              role="alert"
+              className="mt-4 rounded-xl border border-rose-300/20 bg-rose-300/[0.05] px-4 py-3 text-xs text-rose-200"
+            >
+              Volume settings error: {volume.error}
+            </section>
+          ) : null}
 
           <div className="mt-5 grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
             <section className="rounded-2xl border border-white/[0.08] bg-[#0f1216] p-5 sm:p-6">
@@ -220,20 +233,50 @@ export function Dashboard({ onNotify }: DashboardProps) {
               </div>
 
               <div className="mt-7 grid gap-6 border-t border-white/[0.07] pt-6 sm:grid-cols-2">
-                <VolumeSlider
-                  id="microphone-volume"
-                  label="Microphone volume"
-                  value={audioUi.microphoneVolume}
-                  disabled
-                  onChange={(microphoneVolume) => setAudioUi({ ...audioUi, microphoneVolume })}
-                />
-                <VolumeSlider
-                  id="output-volume"
-                  label="Output volume"
-                  value={audioUi.outputVolume}
-                  disabled
-                  onChange={(outputVolume) => setAudioUi({ ...audioUi, outputVolume })}
-                />
+                <div className="space-y-3">
+                  <VolumeSlider
+                    id="microphone-volume"
+                    label="Microphone input gain"
+                    value={volume.settings.inputPercent}
+                    disabled={volume.loading}
+                    onChange={(inputPercent) =>
+                      volume.preview({ ...volume.settings, inputPercent })
+                    }
+                    onCommit={(inputPercent) =>
+                      void volume.commit({ ...volume.settings, inputPercent })
+                    }
+                  />
+                  <MuteButton
+                    label="microphone"
+                    muted={volume.settings.inputMuted}
+                    disabled={volume.loading}
+                    onChange={(inputMuted) =>
+                      void volume.commit({ ...volume.settings, inputMuted })
+                    }
+                  />
+                </div>
+                <div className="space-y-3">
+                  <VolumeSlider
+                    id="output-volume"
+                    label="Output monitoring volume"
+                    value={volume.settings.outputPercent}
+                    disabled={volume.loading}
+                    onChange={(outputPercent) =>
+                      volume.preview({ ...volume.settings, outputPercent })
+                    }
+                    onCommit={(outputPercent) =>
+                      void volume.commit({ ...volume.settings, outputPercent })
+                    }
+                  />
+                  <MuteButton
+                    label="output"
+                    muted={volume.settings.outputMuted}
+                    disabled={volume.loading}
+                    onChange={(outputMuted) =>
+                      void volume.commit({ ...volume.settings, outputMuted })
+                    }
+                  />
+                </div>
               </div>
 
               <div className="mt-7 border-t border-white/[0.07] pt-6">
@@ -258,16 +301,22 @@ export function Dashboard({ onNotify }: DashboardProps) {
                 <SpeakerHigh size={19} className="text-zinc-700" aria-hidden="true" />
               </div>
               <div className="mt-7 space-y-7">
-                <AudioMeter
-                  label="Input level"
-                  level={(runtime.status.metrics?.inputLevel ?? 0) * 100}
-                  disabled={runtime.status.state !== "running"}
-                />
-                <AudioMeter
-                  label="Output level"
-                  level={(runtime.status.metrics?.outputLevel ?? 0) * 100}
-                  disabled={runtime.status.state !== "running"}
-                />
+                <div className="space-y-2">
+                  <InputLevelMeter
+                    peakDbfs={runtime.status.metrics?.inputPeakDbfs ?? -96}
+                    rmsDbfs={runtime.status.metrics?.inputRmsDbfs ?? -96}
+                    disabled={runtime.status.state !== "running"}
+                  />
+                  <ClippingIndicator clipping={runtime.status.metrics?.inputClipping ?? false} />
+                </div>
+                <div className="space-y-2">
+                  <OutputLevelMeter
+                    peakDbfs={runtime.status.metrics?.outputPeakDbfs ?? -96}
+                    rmsDbfs={runtime.status.metrics?.outputRmsDbfs ?? -96}
+                    disabled={runtime.status.state !== "running"}
+                  />
+                  <ClippingIndicator clipping={runtime.status.metrics?.outputClipping ?? false} />
+                </div>
               </div>
               {runtime.status.metrics ? (
                 <dl className="mt-7 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-white/[0.07] pt-5 text-xs">
