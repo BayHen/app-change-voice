@@ -19,7 +19,7 @@ export default function App() {
     setToast({
       id: Date.now(),
       title: `${preset.name} selected`,
-      message: "Selection is stored in UI state only. Audio processing is not active.",
+      message: "Preset validated and applied to the realtime Rust DSP chain.",
       tone: "info",
     });
   }

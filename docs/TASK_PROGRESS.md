@@ -155,3 +155,69 @@ cài Windows x64 đã được xác nhận trong quality gate ngày 22/10/2026.
 - `npm.cmd run tauri:dev`: thành công ở trạng thái monitoring tắt; cửa sổ phản hồi.
 - Listening test xác nhận thay đổi gain/mute và meter với microphone thật: chưa thực hiện vì cần tai
   nghe và đánh giá trực tiếp của người dùng.
+
+## Task 06 - Pitch Shifting & Formant Control
+
+### Đã triển khai
+
+- Tích hợp Signalsmith Stretch 0.1.3 (MIT) qua Rust wrapper; không thay sample rate phát để giả lập pitch.
+- Pitch −12…+12 semitone, formant −6…+6 semitone độc lập, bước UI 0.1 semitone.
+- `PitchShiftProcessor`, `FormantProcessor`, `ProcessorChain` và `EffectParameters` tách khỏi code Windows.
+- Parameter smoothing 50 ms và bypass crossfade 10 ms sang dry signal đã căn latency.
+- FFT/internal buffer, block 256 frame và delay buffer được cấp phát/warm-up trước khi stream chạy.
+- Voice Studio kết nối backend thật; có enable, bypass, reset, giá trị hiện tại và trạng thái live/idle.
+- Bass, Treble, Studio gain và Save preset vẫn disabled/Coming Soon; Task 06 không thêm preset.
+
+### Đo và kiểm thử
+
+- Test tín hiệu tự tạo xác nhận pitch −6/−3/0/+3/+6 theo tần số kỳ vọng, output giữ nguyên số frame
+  theo block, silence không sinh NaN/Infinity, output được clamp và đổi tham số nhanh không crash.
+- Test formant xác nhận output thay đổi khi pitch giữ 0; đây là kiểm tra DSP, chưa thay thế đánh giá nghe.
+- Bản release trên máy hiện tại: algorithm/pipeline latency 48.00 ms ở 48 kHz; xử lý 10 giây tín hiệu
+  trong 105.04 ms, realtime CPU ratio 0.011. Đây không phải total round-trip latency hay CPU toàn app.
+- Preset mặc định của thư viện đã được đo 145.33 ms nên không dùng cho live monitoring.
+- Listening test với microphone thật, đánh giá robotic/cartoon artifact và round-trip loopback:
+  **NOT TESTED**, cần tai nghe và đánh giá trực tiếp. Vì vậy chưa tuyên bố chất lượng formant hoàn tất.
+
+### Dependency build
+
+- Wrapper dùng MSVC/C++ và Bindgen; Windows cần LLVM/libclang. Máy kiểm thử đã cài LLVM 23.1.4.
+
+### Kết quả lệnh
+
+- `npm.cmd run test`: PASS, 8/8 frontend tests.
+- `npm.cmd run build`, lint và format: PASS; TypeScript không có lỗi.
+- `cargo test --all-targets`: PASS; hardware/listening tests được giữ ở nhóm manual/ignored.
+- `cargo check --all-targets`, rustfmt và Clippy `-D warnings`: PASS.
+- `npm.cmd run tauri:dev`: PASS; Vite và executable Tauri khởi động, monitoring mặc định tắt.
+- `npm.cmd run tauri:build:windows`: PASS; tạo NSIS và MSI x64.
+
+## Task 07 - Voice Effects & Built-in Presets
+
+### Đã triển khai
+
+- Tám preset built-in: Natural, Deep, High, Masculine, Feminine, Robot, Radio và Cartoon.
+- Preset JSON schema version 1 gồm ID, metadata, category, pitch, formant, makeup gain và tagged effect
+  list có thể mở rộng.
+- Tách `models`, `loader`, `validation`, `registry`; built-in registry không trộn với user preset.
+- Apply/reset qua Tauri command sau validation; cập nhật atomic parameters và active ID mà không restart
+  CPAL stream.
+- Robot dùng ring modulation; Radio dùng band-limit + soft drive; Cartoon dùng pitch/formant + tremolo.
+- Voice Effects lấy catalog từ Rust, hỗ trợ search, category filter, details, apply, active highlight và
+  Reset to Natural. Không còn catalog giả trong TypeScript.
+- Masculine/Feminine được ghi rõ là acoustic shaping, không phải AI voice conversion.
+
+### Kết quả kiểm thử
+
+- `cargo test --all-targets`: PASS, 35 test tự động; 4 hardware/performance test manual/ignored.
+- PASS: load đủ 8 preset, duplicate ID, schema/effect lạ, invalid/non-finite range, chuyển cả 8 preset
+  trên cùng pipeline, clipping bound và regression pitch/formant/silence.
+- `npm.cmd run test`: PASS, 8/8; kiểm tra search, apply command, notification và active state.
+- TypeScript/Vite build, ESLint, Prettier, Cargo check, rustfmt và Clippy `-D warnings`: PASS.
+- Chất lượng nghe từng preset trên microphone thật: **NOT TESTED**; cần tai nghe và đánh giá trực tiếp.
+
+### Giới hạn
+
+- Masculine/Feminine chỉ là pitch/formant shaping; không thể đảm bảo tự nhiên như mô hình AI voice conversion.
+- Radio dùng filter bậc thấp và Robot dùng ring modulation nên chủ ý có màu lo-fi/metallic.
+- Favorite persistence, preset editor, user preset loader và import/export không thuộc Task 07.

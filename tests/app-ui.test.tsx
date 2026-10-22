@@ -23,6 +23,40 @@ const volumeMocks = vi.hoisted(() => ({
   preview: vi.fn(),
   set: vi.fn(),
 }));
+const effectMocks = vi.hoisted(() => ({
+  get: vi.fn(),
+  set: vi.fn(),
+  reset: vi.fn(),
+}));
+const presetMocks = vi.hoisted(() => ({
+  list: vi.fn(),
+  active: vi.fn(),
+  apply: vi.fn(),
+  reset: vi.fn(),
+}));
+
+const preset = (id: string, name: string, category = "Character") => ({
+  schemaVersion: 1,
+  id,
+  name,
+  description: `${name} description`,
+  category,
+  pitchSemitones: id === "deep" ? -4 : 0,
+  formantSemitones: 0,
+  gain: { makeupDb: 0 },
+  effects: [],
+  builtIn: true,
+});
+const builtInPresets = [
+  preset("natural", "Natural Voice", "Natural"),
+  preset("deep", "Deep Voice"),
+  preset("high", "High Voice"),
+  preset("masculine", "Masculine Voice"),
+  preset("feminine", "Feminine Voice"),
+  preset("robot", "Robot Voice", "Creative"),
+  preset("radio", "Radio Voice", "Utility"),
+  preset("cartoon", "Cartoon Voice", "Creative"),
+];
 
 const stoppedRuntime: AudioRuntimeStatus = {
   state: "stopped",
@@ -31,6 +65,7 @@ const stoppedRuntime: AudioRuntimeStatus = {
   sampleRate: null,
   inputChannels: null,
   outputChannels: null,
+  dspLatencyFrames: null,
   metrics: null,
 };
 let currentRuntime: AudioRuntimeStatus = stoppedRuntime;
@@ -84,6 +119,13 @@ vi.mock("../src/services/tauri", () => ({
   getVolumeSettings: volumeMocks.get,
   previewVolumeSettings: volumeMocks.preview,
   setVolumeSettings: volumeMocks.set,
+  getEffectParameters: effectMocks.get,
+  setEffectParameters: effectMocks.set,
+  resetEffectParameters: effectMocks.reset,
+  getBuiltinPresets: presetMocks.list,
+  getActivePresetId: presetMocks.active,
+  applyBuiltinPreset: presetMocks.apply,
+  resetToNaturalPreset: presetMocks.reset,
 }));
 
 describe("desktop navigation", () => {
@@ -112,10 +154,12 @@ describe("desktop navigation", () => {
       sampleRate: 48000,
       inputChannels: 2,
       outputChannels: 2,
+      dspLatencyFrames: 2048,
       metrics: {
         sampleRate: 48000,
         inputBufferFrames: 256,
         outputBufferFrames: 256,
+        dspLatencyFrames: 2048,
         underrunCount: 0,
         overflowCount: 0,
         streamErrorCount: 0,
@@ -146,6 +190,25 @@ describe("desktop navigation", () => {
     volumeMocks.get.mockReset().mockResolvedValue(volumeSettings);
     volumeMocks.preview.mockReset().mockImplementation(async (settings) => settings);
     volumeMocks.set.mockReset().mockImplementation(async (settings) => settings);
+    const effectParameters = {
+      pitchSemitones: 0,
+      formantSemitones: 0,
+      enabled: true,
+      bypassed: false,
+    };
+    effectMocks.get.mockReset().mockResolvedValue(effectParameters);
+    effectMocks.set.mockReset().mockImplementation(async (parameters) => parameters);
+    effectMocks.reset.mockReset().mockResolvedValue(effectParameters);
+    presetMocks.list.mockReset().mockResolvedValue(builtInPresets);
+    presetMocks.active.mockReset().mockResolvedValue("natural");
+    presetMocks.apply.mockReset().mockImplementation(async (id) => ({
+      preset: builtInPresets.find((item) => item.id === id),
+      parameters: effectParameters,
+    }));
+    presetMocks.reset.mockReset().mockResolvedValue({
+      preset: builtInPresets[0],
+      parameters: effectParameters,
+    });
     Object.defineProperty(window, "innerWidth", { writable: true, configurable: true, value: 900 });
     window.dispatchEvent(new Event("resize"));
   });
@@ -178,19 +241,20 @@ describe("desktop navigation", () => {
     expect(screen.getByRole("button", { name: /Record & Test/i })).toBeDisabled();
   });
 
-  it("filters presets and reports that selection is UI-only", async () => {
+  it("filters and applies a validated backend preset", async () => {
     const user = userEvent.setup();
     render(<App />);
 
     await user.click(screen.getAllByRole("button", { name: "Voice Effects" })[0]);
     await user.type(screen.getByLabelText("Search presets"), "Deep");
 
-    expect(screen.getByRole("button", { name: /Deep Character/i })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Clean Voice/i })).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /Deep Voice/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Natural Voice/i })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /Deep Character/i }));
-    expect(screen.getByRole("status")).toHaveTextContent("UI state only");
-    expect(screen.getByRole("button", { name: /Apply preset/i })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: /Deep Voice/i }));
+    await user.click(screen.getByRole("button", { name: "Apply preset" }));
+    expect(presetMocks.apply).toHaveBeenCalledWith("deep");
+    expect(await screen.findByRole("status")).toHaveTextContent("validated and applied");
   });
 
   it("renders backend devices and refreshes without opening an audio stream", async () => {
@@ -238,19 +302,32 @@ describe("desktop navigation", () => {
 });
 
 describe("voice controls", () => {
-  it("updates local slider and bypass values without claiming backend processing", async () => {
+  it("sends pitch, formant, bypass and reset controls to the DSP backend", async () => {
+    const effectParameters = {
+      pitchSemitones: 0,
+      formantSemitones: 0,
+      enabled: true,
+      bypassed: false,
+    };
+    effectMocks.get.mockResolvedValue(effectParameters);
+    effectMocks.set.mockImplementation(async (parameters) => parameters);
+    effectMocks.reset.mockResolvedValue(effectParameters);
+    runtimeMocks.status.mockResolvedValue(stoppedRuntime);
     const user = userEvent.setup();
     render(<VoiceStudio />);
 
-    const pitch = screen.getByLabelText("Pitch");
+    const pitch = await screen.findByLabelText("Pitch");
     fireEvent.change(pitch, { target: { value: "4" } });
     expect(pitch).toHaveValue("4");
-    expect(screen.getAllByText("4 st")).toHaveLength(2);
+    expect(effectMocks.set).toHaveBeenCalledWith(expect.objectContaining({ pitchSemitones: 4 }));
 
     const bypass = screen.getByRole("switch", { name: "Effect bypass" });
     expect(bypass).toHaveAttribute("aria-checked", "false");
     await user.click(bypass);
     expect(bypass).toHaveAttribute("aria-checked", "true");
+    expect(effectMocks.set).toHaveBeenCalledWith(expect.objectContaining({ bypassed: true }));
+    await user.click(screen.getByRole("button", { name: "Reset defaults" }));
+    expect(effectMocks.reset).toHaveBeenCalledOnce();
     expect(screen.getByRole("button", { name: /Save preset/i })).toBeDisabled();
   });
 });

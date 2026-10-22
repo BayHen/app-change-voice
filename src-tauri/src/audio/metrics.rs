@@ -31,6 +31,7 @@ pub struct AudioMetrics {
     pub sample_rate: u32,
     pub input_buffer_frames: u32,
     pub output_buffer_frames: u32,
+    pub dsp_latency_frames: usize,
     pub underrun_count: u64,
     pub overflow_count: u64,
     pub stream_error_count: u64,
@@ -101,6 +102,7 @@ impl SharedAudioMetrics {
         sample_rate: u32,
         input_buffer_frames: u32,
         output_buffer_frames: u32,
+        dsp_latency_frames: usize,
     ) -> AudioMetrics {
         let frames = self.0.processed_frames.load(Ordering::Relaxed);
         let nanos = self.0.processing_nanos.load(Ordering::Relaxed);
@@ -113,6 +115,7 @@ impl SharedAudioMetrics {
             sample_rate,
             input_buffer_frames,
             output_buffer_frames,
+            dsp_latency_frames,
             underrun_count: self.0.underruns.load(Ordering::Relaxed),
             overflow_count: self.0.overflows.load(Ordering::Relaxed),
             stream_error_count: self.0.stream_errors.load(Ordering::Relaxed),
@@ -124,8 +127,10 @@ impl SharedAudioMetrics {
             estimated_latency_ms: if sample_rate == 0 {
                 0.0
             } else {
-                (input_buffer_frames as usize + output_buffer_frames as usize + ring_depth_frames)
-                    as f64
+                (input_buffer_frames as usize
+                    + output_buffer_frames as usize
+                    + ring_depth_frames
+                    + dsp_latency_frames) as f64
                     * 1_000.0
                     / sample_rate as f64
             },

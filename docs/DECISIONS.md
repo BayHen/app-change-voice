@@ -50,3 +50,27 @@ kiến trúc trước khi yêu cầu Task 02 được xác định.
 - Input/output gain và mute dùng atomic target độc lập. Callback ramp 10 ms thay vì đổi gain tức thời.
 - RMS/peak tính theo block callback, sanitize NaN/Infinity và clamp float32 trước output.
 - UI polling metrics ở 25 Hz; không truyền sample hoặc gọi UI từ audio callback.
+
+## ADR-009 — Signalsmith Stretch cho pitch và formant
+
+- Chọn `signalsmith-stretch` 0.1.3 (MIT), wrapper của Signalsmith Stretch, thay vì đổi playback sample
+  rate. Thuật toán giữ số frame input/output bằng nhau trong stream và hỗ trợ formant độc lập.
+- PSOLA phù hợp giọng đơn âm nhưng cần pitch tracking ổn định; phase vocoder thuần không có formant
+  compensation; WSOLA chủ yếu time-stretch. Signalsmith cho trade-off chất lượng/CPU và API C++
+  portable sang macOS tốt hơn trong phạm vi Task 06.
+- Cấu hình realtime dùng analysis window 2048/interval 512 ở 44.1/48 kHz (4096/1024 ở 96 kHz),
+  block Rust 256 frame. Buffer, FFT state và dry delay được cấp phát/warm-up trước `Stream::play`.
+- UI ghi target qua atomic; callback smooth 50 ms cho pitch/formant và crossfade bypass 10 ms. Dry path
+  được delay theo wet path để tránh thay đổi latency khi bypass.
+- Wrapper build-time cần LLVM/libclang. Không có file I/O, network, mutex hay Tauri IPC trong callback.
+
+## ADR-010 — Preset JSON versioned và DSP nội bộ
+
+- Built-in preset dùng schema version 1 và tagged effect list, cho phép thêm effect type mà không đổi các
+  field cấp cao. Deserialize dùng `deny_unknown_fields`; semantic validator kiểm tra ID, duplicate,
+  finite/range, quan hệ cutoff và processor type hỗ trợ.
+- Built-in và user preset có cờ/source tách biệt. Task 07 chỉ khởi tạo built-in registry; không tự động
+  load file user để tránh vô tình biến import/export thành phạm vi của task này.
+- Robot dùng ring modulation; Radio dùng one-pole high-pass/low-pass và soft saturation; Cartoon dùng
+  pitch/formant cùng tremolo nhẹ. Đây là DSP truyền thống, không được mô tả là AI voice conversion.
+- Preset gain là makeup gain trong effect chain, không ghi đè input/output volume cá nhân của Task 05.

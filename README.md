@@ -3,8 +3,9 @@
 Ứng dụng desktop Windows để xây dựng trải nghiệm biến đổi giọng nói. Task 01 tạo nền móng
 Tauri 2 + React + TypeScript; Task 02 hoàn thiện desktop UI và navigation; Task 03 tích hợp quản lý
 thiết bị WASAPI qua CPAL; Task 04 bổ sung pipeline monitoring realtime float32 với passthrough;
-Task 05 bổ sung gain, mute và peak/RMS meter dBFS. Pitch, formant và các hiệu ứng đổi giọng chưa
-được triển khai.
+Task 05 bổ sung gain, mute và peak/RMS meter dBFS. Task 06 tích hợp pitch shifting và formant
+processing realtime bằng Signalsmith Stretch. Task 07 bổ sung registry JSON versioned với tám preset
+built-in và DSP Robot/Radio/Cartoon; preset editor và import/export chưa được triển khai.
 
 ## Công nghệ
 
@@ -19,6 +20,7 @@ Task 05 bổ sung gain, mute và peak/RMS meter dBFS. Pitch, formant và các hi
 2. Rust stable với target `x86_64-pc-windows-msvc`.
 3. Visual Studio 2022 Build Tools, workload **Desktop development with C++**.
 4. Windows 10/11 SDK và Microsoft Edge WebView2 Runtime.
+5. LLVM/Clang (cần `libclang.dll` để build Rust wrapper của Signalsmith Stretch).
 
 Chi tiết cài đặt và trạng thái máy hiện tại xem tại [docs/SETUP_WINDOWS.md](docs/SETUP_WINDOWS.md).
 

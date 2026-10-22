@@ -15,6 +15,7 @@ const stoppedStatus: AudioRuntimeStatus = {
   sampleRate: null,
   inputChannels: null,
   outputChannels: null,
+  dspLatencyFrames: null,
   metrics: null,
 };
 

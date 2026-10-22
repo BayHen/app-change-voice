@@ -11,6 +11,7 @@
 | Rust / Cargo / rustup | Có — rustc/cargo 1.99.1      | Stable `x86_64-pc-windows-msvc`           |
 | MSVC Build Tools      | Có — Build Tools 2026        | Hoạt động                                 |
 | Windows SDK           | Có — 10.0.26100.0            | Hoạt động                                 |
+| LLVM / libclang       | Có — 23.1.4                  | Bindgen cho Signalsmith Stretch           |
 
 ## Cài dependency còn thiếu
 
@@ -43,6 +44,17 @@ Hướng dẫn Tauri chính thức: <https://v2.tauri.app/start/prerequisites/>
 
 Cấu hình tạo cả NSIS `.exe` và MSI. Nếu build MSI báo `failed to run light.exe`, mở
 **Settings → Apps → Optional features → More Windows features** và bật VBSCRIPT theo hướng dẫn Tauri.
+
+### 4. LLVM/Clang cho DSP
+
+Task 06 dùng `signalsmith-stretch` 0.1.3. Build script của wrapper sinh FFI binding bằng Bindgen nên
+cần `libclang.dll`. Cài LLVM rồi mở lại terminal/VS Code:
+
+```powershell
+winget install --id LLVM.LLVM --exact
+```
+
+Nếu LLVM không ở đường dẫn mặc định, đặt `LIBCLANG_PATH` trỏ tới thư mục chứa `libclang.dll`.
 
 ## Khởi chạy sau khi cài đủ
 

@@ -81,6 +81,30 @@ block trên tín hiệu sau gain, sau đó publish bằng atomics. UI chỉ đ�
 Volume settings được lưu tại `app_config_dir/volume-settings.json`. Preview khi kéo slider chỉ cập
 nhật atomics; pointer/key commit mới ghi file, tránh file I/O dày đặc. Callback không đọc/ghi file.
 
+Task 06 thay passthrough bằng `ProcessorChain`: mono f32 được gom thành block 256 frame, qua
+`PitchShiftProcessor`/Signalsmith Stretch và `FormantProcessor`, sau đó mới qua input gain. Tham số
+`EffectParameters` được chia sẻ bằng atomic; không truyền frame qua IPC. Bypass crossfade sang dry
+delay đã căn latency, vì vậy bật/tắt effect không làm thay đổi timing của stream. DSP không import
+Windows API; backend có thể dùng lại với CPAL host cho macOS trong tương lai.
+
+## Preset pipeline
+
+Task 07 đặt built-in preset JSON trong `src-tauri/presets/builtin.json`. Dữ liệu đi qua loader, model versioned, semantic
+validation và `PresetRegistry` trước khi Tauri command có thể trả hoặc áp dụng preset. Registry built-in
+không đọc chung storage với user preset; loader cho user preset/import chưa được nối trong Task 07.
+
+```text
+Built-in JSON → loader → schema/model → validation → registry
+                                               ↓ apply
+React Voice Effects → Tauri command → SharedEffectParameters (atomic)
+                                      ↓
+Pitch/Formant → Ring Mod → Radio Filter/Drive → Tremolo → Makeup Gain
+```
+
+Apply preset chỉ ghi một snapshot parameter mới vào atomics và cập nhật active preset ID; CPAL streams
+không bị drop/restart. `ProcessorChain` smooth pitch/formant, creative-effect mix và makeup gain. State
+oscillator/filter nằm trong callback-owned chain, không có mutex hay allocation theo sample.
+
 Bốn module domain được export từ library crate để tạo extension API rõ ràng và tránh che giấu các
 seam có chủ đích. Binary entry point vẫn chỉ gọi `voicemorph_studio_lib::run()`.
 

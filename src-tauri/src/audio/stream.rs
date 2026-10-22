@@ -3,9 +3,11 @@ use super::{
     meter::SignalMeter,
     metrics::{AudioMetrics, SharedAudioMetrics},
     pipeline::AudioPipeline,
-    processor::PassthroughProcessor,
 };
-use crate::effects::gain::{SharedGainControls, SmoothedGain, VolumeSettings};
+use crate::effects::{
+    gain::{SharedGainControls, SmoothedGain, VolumeSettings},
+    parameters::{EffectParameters, SharedEffectParameters},
+};
 use cpal::{
     BufferSize, Device, DeviceId, SampleFormat, Stream, StreamConfig, SupportedBufferSize,
     SupportedStreamConfig, SupportedStreamConfigRange,
@@ -36,6 +38,7 @@ pub struct AudioRuntimeStatus {
     pub sample_rate: Option<u32>,
     pub input_channels: Option<u16>,
     pub output_channels: Option<u16>,
+    pub dsp_latency_frames: Option<usize>,
     pub metrics: Option<AudioMetrics>,
 }
 
@@ -49,6 +52,7 @@ struct ActiveStreams {
     output_channels: u16,
     input_buffer_frames: u32,
     output_buffer_frames: u32,
+    dsp_latency_frames: usize,
     metrics: SharedAudioMetrics,
 }
 
@@ -57,6 +61,9 @@ pub struct AudioStreamManager {
     state: MonitoringState,
     controls: SharedGainControls,
     volume_settings: VolumeSettings,
+    effect_controls: SharedEffectParameters,
+    effect_parameters: EffectParameters,
+    active_preset_id: Option<String>,
 }
 
 impl Default for AudioStreamManager {
@@ -66,6 +73,9 @@ impl Default for AudioStreamManager {
             state: MonitoringState::Stopped,
             controls: SharedGainControls::new(VolumeSettings::default()),
             volume_settings: VolumeSettings::default(),
+            effect_controls: SharedEffectParameters::new(EffectParameters::default()),
+            effect_parameters: EffectParameters::default(),
+            active_preset_id: Some("natural".into()),
         }
     }
 }
@@ -78,6 +88,9 @@ impl AudioStreamManager {
             state: MonitoringState::Stopped,
             controls: SharedGainControls::new(settings),
             volume_settings: settings,
+            effect_controls: SharedEffectParameters::new(EffectParameters::default()),
+            effect_parameters: EffectParameters::default(),
+            active_preset_id: Some("natural".into()),
         }
     }
 
@@ -90,6 +103,28 @@ impl AudioStreamManager {
         self.volume_settings = settings;
         self.controls.apply(settings);
         settings
+    }
+
+    pub fn effect_parameters(&self) -> EffectParameters {
+        self.effect_parameters
+    }
+
+    pub fn set_effect_parameters(&mut self, parameters: EffectParameters) -> EffectParameters {
+        let parameters = self.effect_controls.store(parameters);
+        self.effect_parameters = parameters;
+        self.active_preset_id = None;
+        parameters
+    }
+
+    pub fn apply_preset(&mut self, id: &str, parameters: EffectParameters) -> EffectParameters {
+        let parameters = self.effect_controls.store(parameters);
+        self.effect_parameters = parameters;
+        self.active_preset_id = Some(id.to_owned());
+        parameters
+    }
+
+    pub fn active_preset_id(&self) -> Option<&str> {
+        self.active_preset_id.as_deref()
     }
 
     pub fn start(
@@ -118,13 +153,14 @@ impl AudioStreamManager {
             let _ = producer.push(0.0);
         }
         let metrics = SharedAudioMetrics::default();
-        let input_stream = build_input(
+        let (input_stream, dsp_latency_frames) = build_input(
             &input,
             input_config,
             input_format,
             producer,
             metrics.clone(),
             self.controls.clone(),
+            self.effect_controls.clone(),
         )?;
         let output_stream = build_output(
             &output,
@@ -157,6 +193,7 @@ impl AudioStreamManager {
             output_channels,
             input_buffer_frames,
             output_buffer_frames,
+            dsp_latency_frames,
             metrics,
         });
         self.state = MonitoringState::Running;
@@ -206,10 +243,12 @@ impl AudioStreamManager {
                 sample_rate: Some(streams.sample_rate),
                 input_channels: Some(streams.input_channels),
                 output_channels: Some(streams.output_channels),
+                dsp_latency_frames: Some(streams.dsp_latency_frames),
                 metrics: Some(streams.metrics.snapshot(
                     streams.sample_rate,
                     streams.input_buffer_frames,
                     streams.output_buffer_frames,
+                    streams.dsp_latency_frames,
                 )),
             },
             None => AudioRuntimeStatus {
@@ -219,6 +258,7 @@ impl AudioStreamManager {
                 sample_rate: None,
                 input_channels: None,
                 output_channels: None,
+                dsp_latency_frames: None,
                 metrics: None,
             },
         }
@@ -359,11 +399,18 @@ fn build_input(
     producer: Producer<f32>,
     metrics: SharedAudioMetrics,
     controls: SharedGainControls,
-) -> Result<Stream, AudioDeviceError> {
+    effect_controls: SharedEffectParameters,
+) -> Result<(Stream, usize), AudioDeviceError> {
     match format {
-        SampleFormat::F32 => build_input_typed::<f32>(device, config, producer, metrics, controls),
-        SampleFormat::I16 => build_input_typed::<i16>(device, config, producer, metrics, controls),
-        SampleFormat::U16 => build_input_typed::<u16>(device, config, producer, metrics, controls),
+        SampleFormat::F32 => {
+            build_input_typed::<f32>(device, config, producer, metrics, controls, effect_controls)
+        }
+        SampleFormat::I16 => {
+            build_input_typed::<i16>(device, config, producer, metrics, controls, effect_controls)
+        }
+        SampleFormat::U16 => {
+            build_input_typed::<u16>(device, config, producer, metrics, controls, effect_controls)
+        }
         _ => Err(AudioDeviceError::backend(format!(
             "Unsupported input sample format: {format}"
         ))),
@@ -376,10 +423,12 @@ fn build_input_typed<T: RealtimeSample>(
     mut producer: Producer<f32>,
     metrics: SharedAudioMetrics,
     controls: SharedGainControls,
-) -> Result<Stream, AudioDeviceError> {
+    effect_controls: SharedEffectParameters,
+) -> Result<(Stream, usize), AudioDeviceError> {
     let channels = usize::from(config.channels);
     let error_metrics = metrics.clone();
-    let mut pipeline = AudioPipeline::new(PassthroughProcessor);
+    let mut pipeline = AudioPipeline::new(config.sample_rate, effect_controls);
+    let dsp_latency_frames = pipeline.latency_frames();
     let mut gain = SmoothedGain::new(controls.input_target(), config.sample_rate);
     device
         .build_input_stream(
@@ -392,9 +441,11 @@ fn build_input_typed<T: RealtimeSample>(
                 for frame in data.chunks_exact(channels) {
                     let mono =
                         frame.iter().map(|sample| sample.to_f32()).sum::<f32>() / channels as f32;
-                    let processed = gain.process(pipeline.process(mono), controls.input_target());
-                    meter.push(processed);
-                    overflowed |= producer.push(processed).is_err();
+                    pipeline.push(mono, |processed| {
+                        let processed = gain.process(processed, controls.input_target());
+                        meter.push(processed);
+                        overflowed |= producer.push(processed).is_err();
+                    });
                     frames += 1;
                 }
                 if overflowed {
@@ -410,6 +461,7 @@ fn build_input_typed<T: RealtimeSample>(
             move |_| error_metrics.record_stream_error(),
             None,
         )
+        .map(|stream| (stream, dsp_latency_frames))
         .map_err(audio_error)
 }
 

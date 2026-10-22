@@ -1,10 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { AppStatus } from "../types/app";
+import type { VoicePresetSummary } from "../types/preset";
 import type {
   AudioDevice,
   AudioDeviceSnapshot,
   AudioRuntimeStatus,
   DefaultDevices,
+  EffectParameters,
   VolumeSettings,
 } from "../types/audio";
 
@@ -69,4 +71,37 @@ export function stopMonitoring(): Promise<AudioRuntimeStatus> {
 
 export function getAudioRuntimeStatus(): Promise<AudioRuntimeStatus> {
   return invoke<AudioRuntimeStatus>("get_audio_runtime_status");
+}
+
+export function getEffectParameters(): Promise<EffectParameters> {
+  return invoke<EffectParameters>("get_effect_parameters");
+}
+
+export function setEffectParameters(parameters: EffectParameters): Promise<EffectParameters> {
+  return invoke<EffectParameters>("set_effect_parameters", { parameters });
+}
+
+export function resetEffectParameters(): Promise<EffectParameters> {
+  return invoke<EffectParameters>("reset_effect_parameters");
+}
+
+export interface AppliedPreset {
+  preset: VoicePresetSummary;
+  parameters: EffectParameters;
+}
+
+export function getBuiltinPresets(): Promise<VoicePresetSummary[]> {
+  return invoke<VoicePresetSummary[]>("get_builtin_presets");
+}
+
+export function getActivePresetId(): Promise<string | null> {
+  return invoke<string | null>("get_active_preset_id");
+}
+
+export function applyBuiltinPreset(id: string): Promise<AppliedPreset> {
+  return invoke<AppliedPreset>("apply_builtin_preset", { id });
+}
+
+export function resetToNaturalPreset(): Promise<AppliedPreset> {
+  return invoke<AppliedPreset>("reset_to_natural_preset");
 }

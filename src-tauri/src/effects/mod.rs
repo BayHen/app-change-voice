@@ -1,6 +1,10 @@
 //! Các thuật toán DSP độc lập hệ điều hành.
 
+pub mod chain;
+pub mod formant;
 pub mod gain;
+pub mod parameters;
+pub mod pitch_shift;
 
 pub trait VoiceEffect {
     fn process(&mut self, samples: &mut [f32]);

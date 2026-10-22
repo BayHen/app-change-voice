@@ -1,0 +1,100 @@
+[
+  {
+    "schemaVersion": 1,
+    "id": "natural",
+    "name": "Natural Voice",
+    "description": "Neutral reference with no intentional tonal coloration.",
+    "category": "Natural",
+    "pitchSemitones": 0.0,
+    "formantSemitones": 0.0,
+    "gain": { "makeupDb": 0.0 },
+    "effects": [],
+    "builtIn": true
+  },
+  {
+    "schemaVersion": 1,
+    "id": "deep",
+    "name": "Deep Voice",
+    "description": "Lower pitch and resonance for a deeper character voice.",
+    "category": "Character",
+    "pitchSemitones": -4.0,
+    "formantSemitones": -2.0,
+    "gain": { "makeupDb": -0.5 },
+    "effects": [],
+    "builtIn": true
+  },
+  {
+    "schemaVersion": 1,
+    "id": "high",
+    "name": "High Voice",
+    "description": "Raises pitch while keeping the original speaking duration.",
+    "category": "Character",
+    "pitchSemitones": 4.0,
+    "formantSemitones": 1.5,
+    "gain": { "makeupDb": -1.0 },
+    "effects": [],
+    "builtIn": true
+  },
+  {
+    "schemaVersion": 1,
+    "id": "masculine",
+    "name": "Masculine Voice",
+    "description": "Acoustic pitch and formant shaping; not AI voice conversion.",
+    "category": "Character",
+    "pitchSemitones": -2.0,
+    "formantSemitones": -3.0,
+    "gain": { "makeupDb": -0.5 },
+    "effects": [],
+    "builtIn": true
+  },
+  {
+    "schemaVersion": 1,
+    "id": "feminine",
+    "name": "Feminine Voice",
+    "description": "Acoustic pitch and formant shaping; not AI voice conversion.",
+    "category": "Character",
+    "pitchSemitones": 2.0,
+    "formantSemitones": 3.0,
+    "gain": { "makeupDb": -1.0 },
+    "effects": [],
+    "builtIn": true
+  },
+  {
+    "schemaVersion": 1,
+    "id": "robot",
+    "name": "Robot Voice",
+    "description": "Metallic ring modulation layered over pitch-neutral speech.",
+    "category": "Creative",
+    "pitchSemitones": 0.0,
+    "formantSemitones": 0.0,
+    "gain": { "makeupDb": -3.0 },
+    "effects": [{ "type": "ringModulator", "frequencyHz": 72.0, "mix": 0.82 }],
+    "builtIn": true
+  },
+  {
+    "schemaVersion": 1,
+    "id": "radio",
+    "name": "Radio Voice",
+    "description": "Band-limited, lightly driven communication-radio character.",
+    "category": "Utility",
+    "pitchSemitones": 0.0,
+    "formantSemitones": 0.0,
+    "gain": { "makeupDb": -3.0 },
+    "effects": [
+      { "type": "radioFilter", "highPassHz": 280.0, "lowPassHz": 3400.0, "drive": 1.8, "mix": 1.0 }
+    ],
+    "builtIn": true
+  },
+  {
+    "schemaVersion": 1,
+    "id": "cartoon",
+    "name": "Cartoon Voice",
+    "description": "Raised pitch and formant with subtle animated tremolo.",
+    "category": "Creative",
+    "pitchSemitones": 6.0,
+    "formantSemitones": 4.0,
+    "gain": { "makeupDb": -2.0 },
+    "effects": [{ "type": "tremolo", "rateHz": 5.2, "depth": 0.12 }],
+    "builtIn": true
+  }
+]

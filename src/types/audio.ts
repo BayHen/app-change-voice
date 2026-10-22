@@ -49,6 +49,7 @@ export interface AudioMetrics {
   sampleRate: number;
   inputBufferFrames: number;
   outputBufferFrames: number;
+  dspLatencyFrames: number;
   underrunCount: number;
   overflowCount: number;
   streamErrorCount: number;
@@ -73,6 +74,22 @@ export interface VolumeSettings {
   outputMuted: boolean;
 }
 
+export interface EffectParameters {
+  pitchSemitones: number;
+  formantSemitones: number;
+  enabled: boolean;
+  bypassed: boolean;
+  makeupGainDb: number;
+  ringModFrequencyHz: number;
+  ringModMix: number;
+  radioHighPassHz: number;
+  radioLowPassHz: number;
+  radioDrive: number;
+  radioMix: number;
+  tremoloRateHz: number;
+  tremoloDepth: number;
+}
+
 export interface AudioRuntimeStatus {
   state: MonitoringState;
   inputDeviceId: string | null;
@@ -80,6 +97,7 @@ export interface AudioRuntimeStatus {
   sampleRate: number | null;
   inputChannels: number | null;
   outputChannels: number | null;
+  dspLatencyFrames: number | null;
   metrics: AudioMetrics | null;
 }
 

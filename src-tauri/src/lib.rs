@@ -12,8 +12,12 @@ use audio::{
     errors::AudioDeviceError,
     stream::{AudioRuntimeStatus, AudioStreamManager},
 };
-use effects::gain::{self, VolumeSettings};
+use effects::{
+    gain::{self, VolumeSettings},
+    parameters::EffectParameters,
+};
 use platform::PlatformInfo;
+use presets::{PresetRegistry, VoicePreset, validation::validate_preset};
 use serde::Serialize;
 use std::{path::PathBuf, sync::Mutex};
 use tauri::{Manager, State};
@@ -285,6 +289,86 @@ fn preview_volume_settings(
     with_audio_runtime(state, |runtime| Ok(runtime.set_volume_settings(settings)))
 }
 
+#[tauri::command]
+fn get_effect_parameters(
+    state: State<'_, AudioRuntimeState>,
+) -> Result<EffectParameters, AudioDeviceError> {
+    with_audio_runtime(state, |runtime| Ok(runtime.effect_parameters()))
+}
+
+#[tauri::command]
+fn set_effect_parameters(
+    parameters: EffectParameters,
+    state: State<'_, AudioRuntimeState>,
+) -> Result<EffectParameters, AudioDeviceError> {
+    with_audio_runtime(state, |runtime| {
+        Ok(runtime.set_effect_parameters(parameters))
+    })
+}
+
+#[tauri::command]
+fn reset_effect_parameters(
+    state: State<'_, AudioRuntimeState>,
+) -> Result<EffectParameters, AudioDeviceError> {
+    with_audio_runtime(state, |runtime| {
+        Ok(runtime.set_effect_parameters(EffectParameters::default()))
+    })
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AppliedPreset {
+    preset: VoicePreset,
+    parameters: EffectParameters,
+}
+
+#[tauri::command]
+fn get_builtin_presets(registry: State<'_, PresetRegistry>) -> Vec<VoicePreset> {
+    registry.all().to_vec()
+}
+
+#[tauri::command]
+fn get_active_preset_id(
+    state: State<'_, AudioRuntimeState>,
+) -> Result<Option<String>, AudioDeviceError> {
+    with_audio_runtime(state, |runtime| {
+        Ok(runtime.active_preset_id().map(str::to_owned))
+    })
+}
+
+#[tauri::command]
+fn apply_builtin_preset(
+    id: String,
+    registry: State<'_, PresetRegistry>,
+    state: State<'_, AudioRuntimeState>,
+) -> Result<AppliedPreset, AudioDeviceError> {
+    let preset = registry
+        .get(&id)
+        .map_err(AudioDeviceError::backend)?
+        .clone();
+    validate_preset(&preset).map_err(AudioDeviceError::backend)?;
+    let requested = preset.effect_parameters();
+    let parameters = with_audio_runtime(state, |runtime| {
+        Ok(runtime.apply_preset(&preset.id, requested))
+    })?;
+    Ok(AppliedPreset { preset, parameters })
+}
+
+#[tauri::command]
+fn reset_to_natural_preset(
+    registry: State<'_, PresetRegistry>,
+    state: State<'_, AudioRuntimeState>,
+) -> Result<AppliedPreset, AudioDeviceError> {
+    let preset = registry
+        .get("natural")
+        .map_err(AudioDeviceError::backend)?
+        .clone();
+    let parameters = with_audio_runtime(state, |runtime| {
+        Ok(runtime.apply_preset(&preset.id, preset.effect_parameters()))
+    })?;
+    Ok(AppliedPreset { preset, parameters })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -300,6 +384,7 @@ pub fn run() {
                 volume_settings,
             )));
             app.manage(VolumeConfigPath(volume_path));
+            app.manage(PresetRegistry::built_in().map_err(std::io::Error::other)?);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -317,7 +402,14 @@ pub fn run() {
             get_audio_runtime_status,
             get_volume_settings,
             set_volume_settings,
-            preview_volume_settings
+            preview_volume_settings,
+            get_effect_parameters,
+            set_effect_parameters,
+            reset_effect_parameters,
+            get_builtin_presets,
+            get_active_preset_id,
+            apply_builtin_preset,
+            reset_to_natural_preset
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

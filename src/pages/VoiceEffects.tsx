@@ -1,42 +1,75 @@
-import { MagnifyingGlass, SlidersHorizontal } from "@phosphor-icons/react";
+import { ArrowCounterClockwise, MagnifyingGlass, SlidersHorizontal } from "@phosphor-icons/react";
 import { useMemo, useState } from "react";
 import { AppHeader } from "../components/AppHeader";
 import { EffectCard } from "../components/EffectCard";
-import { presetCategories, voicePresets } from "../data/presets";
-import type { PresetCategory, VoicePresetSummary } from "../types/preset";
+import { usePresets } from "../hooks/usePresets";
+import type { PresetCategory, PresetEffect, VoicePresetSummary } from "../types/preset";
 
 interface VoiceEffectsProps {
   onPresetSelected: (preset: VoicePresetSummary) => void;
 }
+const categories: Array<"All" | PresetCategory> = [
+  "All",
+  "Natural",
+  "Character",
+  "Creative",
+  "Utility",
+];
+
+function effectName(effect: PresetEffect) {
+  if (effect.type === "ringModulator") return `Ring mod ${effect.frequencyHz} Hz`;
+  if (effect.type === "radioFilter") return `Radio ${effect.highPassHz}–${effect.lowPassHz} Hz`;
+  return `Tremolo ${effect.rateHz} Hz`;
+}
 
 export function VoiceEffects({ onPresetSelected }: VoiceEffectsProps) {
+  const library = usePresets();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<"All" | PresetCategory>("All");
-  const [selectedPreset, setSelectedPreset] = useState(voicePresets[0]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
+  const effectiveSelectedId = selectedId ?? library.activeId ?? library.presets[0]?.id;
+  const selectedPreset =
+    library.presets.find((preset) => preset.id === effectiveSelectedId) ?? library.presets[0];
   const filteredPresets = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
-    return voicePresets.filter((preset) => {
-      const categoryMatches = category === "All" || preset.category === category;
-      const queryMatches =
-        !normalizedQuery ||
-        preset.name.toLowerCase().includes(normalizedQuery) ||
-        preset.description.toLowerCase().includes(normalizedQuery);
-      return categoryMatches && queryMatches;
-    });
-  }, [category, query]);
+    const normalized = query.trim().toLowerCase();
+    return library.presets.filter(
+      (preset) =>
+        (category === "All" || preset.category === category) &&
+        (!normalized ||
+          preset.name.toLowerCase().includes(normalized) ||
+          preset.description.toLowerCase().includes(normalized)),
+    );
+  }, [category, library.presets, query]);
 
-  function selectPreset(preset: VoicePresetSummary) {
-    setSelectedPreset(preset);
-    onPresetSelected(preset);
+  async function applySelected() {
+    if (!selectedPreset) return;
+    const applied = await library.apply(selectedPreset.id);
+    if (applied) onPresetSelected(applied);
+  }
+
+  async function resetNatural() {
+    const applied = await library.reset();
+    if (applied) {
+      setSelectedId(applied.id);
+      onPresetSelected(applied);
+    }
   }
 
   return (
     <div className="mx-auto max-w-[1180px]">
       <AppHeader
         title="Voice Effects"
-        description="Browse the preset catalog. Selection works locally, while audio application remains disabled."
+        description="Validated built-in DSP presets. Effects run locally and are not AI voice conversion."
       />
+      {library.error ? (
+        <p
+          role="alert"
+          className="mt-4 rounded-xl border border-rose-400/20 bg-rose-400/[0.06] p-3 text-xs text-rose-200"
+        >
+          {library.error}
+        </p>
+      ) : null}
 
       <div className="mt-6 grid gap-5 xl:grid-cols-[1fr_300px]">
         <section className="min-w-0">
@@ -59,19 +92,14 @@ export function VoiceEffects({ onPresetSelected }: VoiceEffectsProps) {
                 className="h-11 w-full rounded-xl border border-white/[0.09] bg-[#101318] pl-10 pr-4 text-sm text-zinc-200 outline-none placeholder:text-zinc-700 focus:border-cyan-300/60"
               />
             </div>
-
             <div className="flex gap-1 overflow-x-auto pb-1" aria-label="Preset category filter">
-              {presetCategories.map((item) => (
+              {categories.map((item) => (
                 <button
                   key={item}
                   type="button"
                   aria-pressed={category === item}
                   onClick={() => setCategory(item)}
-                  className={`h-9 shrink-0 rounded-lg px-3 text-xs transition-colors active:translate-y-px ${
-                    category === item
-                      ? "bg-cyan-300/12 font-medium text-cyan-200"
-                      : "text-zinc-600 hover:bg-white/[0.04] hover:text-zinc-300"
-                  }`}
+                  className={`h-9 shrink-0 rounded-lg px-3 text-xs transition-colors ${category === item ? "bg-cyan-300/12 font-medium text-cyan-200" : "text-zinc-600 hover:bg-white/[0.04] hover:text-zinc-300"}`}
                 >
                   {item}
                 </button>
@@ -79,14 +107,19 @@ export function VoiceEffects({ onPresetSelected }: VoiceEffectsProps) {
             </div>
           </div>
 
-          {filteredPresets.length ? (
+          {library.loading ? (
+            <div className="mt-5 rounded-2xl border border-white/[0.08] p-10 text-center text-sm text-zinc-500">
+              Loading validated presets…
+            </div>
+          ) : filteredPresets.length ? (
             <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {filteredPresets.map((preset) => (
                 <EffectCard
                   key={preset.id}
                   preset={preset}
-                  selected={selectedPreset.id === preset.id}
-                  onSelect={selectPreset}
+                  selected={selectedPreset?.id === preset.id}
+                  active={library.activeId === preset.id}
+                  onSelect={(item) => setSelectedId(item.id)}
                 />
               ))}
             </div>
@@ -99,7 +132,7 @@ export function VoiceEffects({ onPresetSelected }: VoiceEffectsProps) {
                   setQuery("");
                   setCategory("All");
                 }}
-                className="mt-3 text-xs font-medium text-cyan-300 hover:text-cyan-200"
+                className="mt-3 text-xs font-medium text-cyan-300"
               >
                 Clear filters
               </button>
@@ -112,34 +145,55 @@ export function VoiceEffects({ onPresetSelected }: VoiceEffectsProps) {
             <p className="text-xs font-medium text-zinc-500">Preset details</p>
             <SlidersHorizontal size={17} className="text-zinc-700" aria-hidden="true" />
           </div>
-          <h2 className="mt-6 text-lg font-semibold tracking-[-0.02em] text-zinc-100">
-            {selectedPreset.name}
-          </h2>
-          <p className="mt-2 text-xs leading-5 text-zinc-500">{selectedPreset.description}</p>
-          <dl className="mt-6 space-y-4 border-t border-white/[0.07] pt-5 text-xs">
-            <div className="flex justify-between gap-4">
-              <dt className="text-zinc-600">Category</dt>
-              <dd className="text-zinc-300">{selectedPreset.category}</dd>
-            </div>
-            <div className="flex justify-between gap-4">
-              <dt className="text-zinc-600">Pitch</dt>
-              <dd className="font-mono text-zinc-300">{selectedPreset.pitch} st</dd>
-            </div>
-            <div className="flex justify-between gap-4">
-              <dt className="text-zinc-600">Formant</dt>
-              <dd className="font-mono text-zinc-300">{selectedPreset.formant}%</dd>
-            </div>
-          </dl>
-          <button
-            type="button"
-            disabled
-            className="mt-7 h-10 w-full rounded-xl bg-cyan-300/15 text-sm font-medium text-cyan-200/45 disabled:cursor-not-allowed"
-          >
-            Apply preset - Coming Soon
-          </button>
-          <p className="mt-3 text-center text-[11px] leading-4 text-zinc-700">
-            Applying presets requires the audio engine.
-          </p>
+          {selectedPreset ? (
+            <>
+              <h2 className="mt-6 text-lg font-semibold text-zinc-100">{selectedPreset.name}</h2>
+              <p className="mt-2 text-xs leading-5 text-zinc-500">{selectedPreset.description}</p>
+              <dl className="mt-6 space-y-3 border-t border-white/[0.07] pt-5 text-xs">
+                <div className="flex justify-between">
+                  <dt className="text-zinc-600">Pitch</dt>
+                  <dd className="font-mono text-zinc-300">{selectedPreset.pitchSemitones} st</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-zinc-600">Formant</dt>
+                  <dd className="font-mono text-zinc-300">{selectedPreset.formantSemitones} st</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-zinc-600">Makeup gain</dt>
+                  <dd className="font-mono text-zinc-300">{selectedPreset.gain.makeupDb} dB</dd>
+                </div>
+                <div>
+                  <dt className="text-zinc-600">Additional DSP</dt>
+                  <dd className="mt-1 text-zinc-300">
+                    {selectedPreset.effects.length
+                      ? selectedPreset.effects.map(effectName).join(", ")
+                      : "None"}
+                  </dd>
+                </div>
+              </dl>
+              <button
+                type="button"
+                onClick={() => void applySelected()}
+                disabled={Boolean(library.applyingId) || library.activeId === selectedPreset.id}
+                className="mt-7 h-10 w-full rounded-xl bg-cyan-300 text-sm font-semibold text-[#071014] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {library.applyingId === selectedPreset.id
+                  ? "Applying…"
+                  : library.activeId === selectedPreset.id
+                    ? "Active preset"
+                    : "Apply preset"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void resetNatural()}
+                disabled={Boolean(library.applyingId) || library.activeId === "natural"}
+                className="mt-3 inline-flex h-9 w-full items-center justify-center gap-2 rounded-xl border border-white/10 text-xs text-zinc-400 disabled:opacity-40"
+              >
+                <ArrowCounterClockwise size={14} />
+                Reset to Natural
+              </button>
+            </>
+          ) : null}
         </aside>
       </div>
     </div>

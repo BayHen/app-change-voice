@@ -4,6 +4,7 @@ interface VolumeSliderProps {
   value: number;
   min?: number;
   max?: number;
+  step?: number;
   unit?: string;
   disabled?: boolean;
   onChange: (value: number) => void;
@@ -16,6 +17,7 @@ export function VolumeSlider({
   value,
   min = 0,
   max = 100,
+  step = 1,
   unit = "%",
   disabled = false,
   onChange,
@@ -37,6 +39,7 @@ export function VolumeSlider({
         type="range"
         min={min}
         max={max}
+        step={step}
         value={value}
         disabled={disabled}
         onChange={(event) => onChange(Number(event.target.value))}
