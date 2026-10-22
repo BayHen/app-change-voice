@@ -25,6 +25,8 @@ pub struct EffectParameters {
     pub radio_mix: f32,
     pub tremolo_rate_hz: f32,
     pub tremolo_depth: f32,
+    pub bass_db: f32,
+    pub treble_db: f32,
 }
 
 impl Default for EffectParameters {
@@ -43,6 +45,8 @@ impl Default for EffectParameters {
             radio_mix: 0.0,
             tremolo_rate_hz: 5.0,
             tremolo_depth: 0.0,
+            bass_db: 0.0,
+            treble_db: 0.0,
         }
     }
 }
@@ -73,6 +77,8 @@ impl EffectParameters {
             radio_mix: finite_clamp(self.radio_mix, 0.0, 1.0, 0.0),
             tremolo_rate_hz: finite_clamp(self.tremolo_rate_hz, 0.1, 20.0, 5.0),
             tremolo_depth: finite_clamp(self.tremolo_depth, 0.0, 0.8, 0.0),
+            bass_db: finite_clamp(self.bass_db, -12.0, 12.0, 0.0),
+            treble_db: finite_clamp(self.treble_db, -12.0, 12.0, 0.0),
         }
     }
 }
@@ -102,6 +108,8 @@ struct EffectParameterAtoms {
     radio_mix: AtomicU32,
     tremolo_rate_hz: AtomicU32,
     tremolo_depth: AtomicU32,
+    bass_db: AtomicU32,
+    treble_db: AtomicU32,
 }
 
 impl SharedEffectParameters {
@@ -121,6 +129,8 @@ impl SharedEffectParameters {
             radio_mix: atom(p.radio_mix),
             tremolo_rate_hz: atom(p.tremolo_rate_hz),
             tremolo_depth: atom(p.tremolo_depth),
+            bass_db: atom(p.bass_db),
+            treble_db: atom(p.treble_db),
         }))
     }
 
@@ -138,6 +148,8 @@ impl SharedEffectParameters {
             (&self.0.radio_mix, p.radio_mix),
             (&self.0.tremolo_rate_hz, p.tremolo_rate_hz),
             (&self.0.tremolo_depth, p.tremolo_depth),
+            (&self.0.bass_db, p.bass_db),
+            (&self.0.treble_db, p.treble_db),
         ] {
             target.store(value.to_bits(), Ordering::Relaxed);
         }
@@ -161,6 +173,8 @@ impl SharedEffectParameters {
             radio_mix: load(&self.0.radio_mix),
             tremolo_rate_hz: load(&self.0.tremolo_rate_hz),
             tremolo_depth: load(&self.0.tremolo_depth),
+            bass_db: load(&self.0.bass_db),
+            treble_db: load(&self.0.treble_db),
         }
     }
 }

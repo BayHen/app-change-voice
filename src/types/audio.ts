@@ -113,6 +113,8 @@ export interface EffectParameters {
   radioMix: number;
   tremoloRateHz: number;
   tremoloDepth: number;
+  bassDb: number;
+  trebleDb: number;
 }
 
 export interface AudioRuntimeStatus {

@@ -264,3 +264,29 @@ cài Windows x64 đã được xác nhận trong quality gate ngày 22/10/2026.
   rustfmt, Cargo check và Clippy `-D warnings` PASS; `tauri:dev` PASS.
 - Windows release executable và NSIS x64 được tạo. MSI **BLOCKED** tại WiX `light.exe` LGHT0217 vì
   Windows Installer Service không truy cập được trên máy kiểm thử; đây là lỗi môi trường, không phải compile.
+
+## Task 10 - Custom Voice Preset Management
+
+### Đã triển khai
+
+- Create, edit/rename, duplicate, delete có confirmation, save/load, favorite cho custom preset.
+- Import/export JSON qua native Tauri dialog; search/category filter tiếp tục áp dụng cho catalog hợp nhất.
+- Editor có Pitch, Formant, input/output gain, Bass/Treble EQ thật, noise suppression/gate, limiter và bypass.
+- Preview cập nhật audio backend thật; Reset/Save/Cancel/Duplicate và validation error/status đầy đủ.
+- Built-in read-only, chỉ duplicate; custom lưu từng file tại `app_data_dir/presets`.
+- Schema v2, migration v1, atomic write + backup rollback, 256 KiB import limit, path-safe ID, reject effect/schema/plugin lạ.
+- Repository abstraction không phụ thuộc Windows và có thể thay bằng database/cloud implementation sau này.
+
+### Giới hạn
+
+- Favorite của built-in chưa được lưu vì built-in immutable; cần preference overlay riêng nếu muốn favorite built-in.
+- Effect order giữ cố định do chain hiện tại chưa có contract reorder realtime-safe; UI không hiển thị control giả.
+- Plugin chỉ có metadata/dependency validation, không load hoặc thực thi binary.
+
+### Quality gate
+
+- `cargo test --all-targets`: PASS, 52 tự động; 4 hardware/performance tests ignored/manual.
+- CRUD, persistence restart, corruption isolation, path traversal, v1 migration/future schema, import/export,
+  duplicate ID, invalid effect/parameter và Bass/Treble DSP đều có test PASS.
+- Frontend Vitest 8/8, TypeScript/Vite build, ESLint, Prettier, rustfmt, Cargo check và Clippy `-D warnings`: PASS.
+- `npm.cmd run tauri:dev`: PASS; ứng dụng Tauri khởi động với catalog/editor và native import/export dialog.

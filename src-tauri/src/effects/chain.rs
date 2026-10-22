@@ -14,6 +14,10 @@ pub struct AdditionalEffectChain {
     current_tremolo_depth: f32,
     current_makeup_gain: f32,
     target_makeup_gain: f32,
+    bass_filter: LowPass,
+    treble_filter: LowPass,
+    current_bass_gain: f32,
+    current_treble_gain: f32,
 }
 
 impl AdditionalEffectChain {
@@ -29,6 +33,10 @@ impl AdditionalEffectChain {
             current_tremolo_depth: 0.0,
             current_makeup_gain: 1.0,
             target_makeup_gain: 1.0,
+            bass_filter: LowPass::default(),
+            treble_filter: LowPass::default(),
+            current_bass_gain: 1.0,
+            current_treble_gain: 1.0,
         }
     }
 
@@ -38,6 +46,8 @@ impl AdditionalEffectChain {
         self.low_pass
             .set_cutoff(parameters.radio_low_pass_hz, self.sample_rate);
         self.target_makeup_gain = 10.0_f32.powf(parameters.makeup_gain_db / 20.0);
+        self.bass_filter.set_cutoff(200.0, self.sample_rate);
+        self.treble_filter.set_cutoff(4_000.0, self.sample_rate);
     }
 
     #[inline]
@@ -48,6 +58,10 @@ impl AdditionalEffectChain {
             (target.tremolo_depth - self.current_tremolo_depth) * smoothing;
         self.current_makeup_gain +=
             (self.target_makeup_gain - self.current_makeup_gain) * smoothing;
+        self.current_bass_gain +=
+            (10.0_f32.powf(target.bass_db / 20.0) - self.current_bass_gain) * smoothing;
+        self.current_treble_gain +=
+            (10.0_f32.powf(target.treble_db / 20.0) - self.current_treble_gain) * smoothing;
 
         self.ring_phase =
             (self.ring_phase + TAU * target.ring_mod_frequency_hz / self.sample_rate) % TAU;
@@ -62,6 +76,9 @@ impl AdditionalEffectChain {
             (self.tremolo_phase + TAU * target.tremolo_rate_hz / self.sample_rate) % TAU;
         let tremolo_gain =
             1.0 - self.current_tremolo_depth * (0.5 + 0.5 * self.tremolo_phase.sin());
+        let low = self.bass_filter.process(output);
+        let high = output - self.treble_filter.process(output);
+        output += low * (self.current_bass_gain - 1.0) + high * (self.current_treble_gain - 1.0);
         (output * tremolo_gain * self.current_makeup_gain).clamp(-1.0, 1.0)
     }
 }
@@ -158,5 +175,24 @@ mod tests {
                 / 48_000.0;
             assert!(difference > 0.001);
         }
+    }
+
+    #[test]
+    fn bass_and_treble_eq_change_output_without_non_finite_samples() {
+        let mut chain = AdditionalEffectChain::new(48_000);
+        let parameters = EffectParameters {
+            bass_db: 6.0,
+            treble_db: -6.0,
+            ..EffectParameters::default()
+        };
+        chain.prepare_block(parameters);
+        let mut difference = 0.0;
+        for index in 0..48_000 {
+            let input = (index as f32 * 0.07).sin() * 0.2;
+            let output = chain.process_sample(input, parameters, 0.01);
+            difference += (input - output).abs();
+            assert!(output.is_finite());
+        }
+        assert!(difference > 1.0);
     }
 }

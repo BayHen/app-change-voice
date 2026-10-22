@@ -5,7 +5,7 @@ use crate::effects::parameters::{
 use std::collections::HashSet;
 
 pub fn validate_preset(preset: &VoicePreset) -> Result<(), String> {
-    if preset.schema_version != PRESET_SCHEMA_VERSION {
+    if !matches!(preset.schema_version, 1 | PRESET_SCHEMA_VERSION) {
         return Err(format!(
             "Unsupported preset schema version: {}",
             preset.schema_version
@@ -35,6 +35,41 @@ pub fn validate_preset(preset: &VoicePreset) -> Result<(), String> {
         MAX_FORMANT_SEMITONES,
     )?;
     finite_range("makeupDb", preset.gain.makeup_db, -12.0, 6.0)?;
+    finite_range(
+        "inputGainPercent",
+        preset.parameters.input_gain_percent,
+        0.0,
+        100.0,
+    )?;
+    finite_range(
+        "outputGainPercent",
+        preset.parameters.output_gain_percent,
+        0.0,
+        100.0,
+    )?;
+    finite_range("bassDb", preset.parameters.bass_db, -12.0, 12.0)?;
+    finite_range("trebleDb", preset.parameters.treble_db, -12.0, 12.0)?;
+    finite_range(
+        "suppressionStrength",
+        preset.parameters.suppression_strength,
+        0.0,
+        1.0,
+    )?;
+    finite_range(
+        "gateThresholdDbfs",
+        preset.parameters.gate_threshold_dbfs,
+        -80.0,
+        -20.0,
+    )?;
+    finite_range(
+        "limiterCeilingDbfs",
+        preset.parameters.limiter_ceiling_dbfs,
+        -12.0,
+        -0.1,
+    )?;
+    if !preset.plugin_requirements.is_empty() {
+        return Err("Plugin dependencies are not supported by this application version".into());
+    }
     let mut effect_kinds = HashSet::new();
     for effect in &preset.effects {
         let kind = match effect {

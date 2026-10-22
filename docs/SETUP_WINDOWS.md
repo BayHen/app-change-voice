@@ -92,10 +92,10 @@ npm.cmd run tauri:build:windows
 
 Tauri hỗ trợ chính thức Windows target `x86_64-pc-windows-msvc`. WebView2 Evergreen Runtime được
 dùng để render React UI.
+
 # Khắc phục MSI/WiX LGHT0217
 
 Nếu NSIS build thành công nhưng MSI dừng ở `light.exe` với `LGHT0217` và thông báo Windows Installer
 Service không truy cập được, kiểm tra service `msiserver` trong `services.msc`, khởi động lại Windows
 Installer và chạy terminal với quyền phù hợp. Có thể dùng bộ cài NSIS x64 đã tạo trong khi sửa môi trường
 MSI; lỗi này xảy ra sau khi Rust executable đã link thành công.
-

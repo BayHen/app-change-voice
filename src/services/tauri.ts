@@ -105,6 +105,24 @@ export interface AppliedPreset {
 export function getBuiltinPresets(): Promise<VoicePresetSummary[]> {
   return invoke<VoicePresetSummary[]>("get_builtin_presets");
 }
+export const getAllPresets = () => invoke<VoicePresetSummary[]>("get_all_presets");
+export const getPresetWarnings = () => invoke<string[]>("get_preset_warnings");
+export const createUserPreset = (preset: VoicePresetSummary) =>
+  invoke<VoicePresetSummary>("create_user_preset", { preset });
+export const updateUserPreset = (preset: VoicePresetSummary) =>
+  invoke<VoicePresetSummary>("update_user_preset", { preset });
+export const duplicatePreset = (id: string) =>
+  invoke<VoicePresetSummary>("duplicate_preset", { id });
+export const deleteUserPreset = (id: string) => invoke<void>("delete_user_preset", { id });
+export const setPresetFavorite = (id: string, favorite: boolean) =>
+  invoke<VoicePresetSummary>("set_preset_favorite", { id, favorite });
+export const importUserPreset = (path: string) =>
+  invoke<VoicePresetSummary>("import_user_preset", { path });
+export const exportUserPreset = (id: string, path: string) =>
+  invoke<void>("export_user_preset", { id, path });
+export const applyPreset = (id: string) => invoke<AppliedPreset>("apply_preset", { id });
+export const previewPreset = (preset: VoicePresetSummary) =>
+  invoke<EffectParameters>("preview_preset", { preset });
 
 export function getActivePresetId(): Promise<string | null> {
   return invoke<string | null>("get_active_preset_id");

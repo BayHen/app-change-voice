@@ -90,3 +90,10 @@ kiến trúc trước khi yêu cầu Task 02 được xác định.
   dropped-frame counter và UI đánh dấu recording không hoàn chỉnh.
 - Playback tái sử dụng output stream CPAL đang tồn tại; ưu tiên playback hơn Hear Myself để tránh double audio.
 - File tạm nằm trong app cache, không upload; export dùng plugin Dialog chính thức của Tauri 2.
+
+## ADR-013 — File-per-preset repository và schema v2
+
+- Dùng repository trait và một JSON file cho mỗi user preset để corruption/delete không ảnh hưởng toàn bộ catalog.
+- Atomic temp/backup/rename, validation trước save, import tối đa 256 KiB và ID không thể tạo path traversal.
+- Built-in read-only; duplicate tạo ID mới. Schema v1 được migrate trong bộ nhớ sang v2; schema tương lai bị reject.
+- Plugin requirement có metadata/version nhưng luôn bị reject cho đến khi có registry và sandbox execution an toàn.

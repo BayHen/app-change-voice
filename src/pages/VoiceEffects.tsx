@@ -1,7 +1,16 @@
-import { ArrowCounterClockwise, MagnifyingGlass, SlidersHorizontal } from "@phosphor-icons/react";
+import {
+  ArrowCounterClockwise,
+  DownloadSimple,
+  Heart,
+  MagnifyingGlass,
+  Plus,
+  SlidersHorizontal,
+  UploadSimple,
+} from "@phosphor-icons/react";
 import { useMemo, useState } from "react";
 import { AppHeader } from "../components/AppHeader";
 import { EffectCard } from "../components/EffectCard";
+import { PresetEditor } from "../components/PresetEditor";
 import { usePresets } from "../hooks/usePresets";
 import type { PresetCategory, PresetEffect, VoicePresetSummary } from "../types/preset";
 
@@ -27,6 +36,10 @@ export function VoiceEffects({ onPresetSelected }: VoiceEffectsProps) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<"All" | PresetCategory>("All");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [editor, setEditor] = useState<{
+    mode: "create" | "edit";
+    preset: VoicePresetSummary;
+  } | null>(null);
 
   const effectiveSelectedId = selectedId ?? library.activeId ?? library.presets[0]?.id;
   const selectedPreset =
@@ -56,6 +69,38 @@ export function VoiceEffects({ onPresetSelected }: VoiceEffectsProps) {
     }
   }
 
+  function blankPreset(): VoicePresetSummary {
+    return {
+      schemaVersion: 2,
+      id: "custom",
+      name: "My Voice",
+      description: "Custom local voice preset.",
+      category: "Character",
+      pitchSemitones: 0,
+      formantSemitones: 0,
+      gain: { makeupDb: 0 },
+      effects: [],
+      builtIn: false,
+      createdAt: "",
+      updatedAt: "",
+      favorite: false,
+      parameters: {
+        inputGainPercent: 100,
+        outputGainPercent: 100,
+        bassDb: 0,
+        trebleDb: 0,
+        noiseSuppression: false,
+        suppressionStrength: 0.8,
+        noiseGate: true,
+        gateThresholdDbfs: -52,
+        limiterEnabled: true,
+        limiterCeilingDbfs: -1,
+        effectBypassed: false,
+      },
+      pluginRequirements: [],
+    };
+  }
+
   return (
     <div className="mx-auto max-w-[1180px]">
       <AppHeader
@@ -70,6 +115,33 @@ export function VoiceEffects({ onPresetSelected }: VoiceEffectsProps) {
           {library.error}
         </p>
       ) : null}
+      {library.notice ? (
+        <p
+          role="status"
+          className="mt-4 rounded-xl border border-emerald-300/20 bg-emerald-300/[0.05] p-3 text-xs text-emerald-200"
+        >
+          {library.notice}
+        </p>
+      ) : null}
+
+      <div className="mt-5 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => setEditor({ mode: "create", preset: blankPreset() })}
+          className="inline-flex h-10 items-center gap-2 rounded-xl bg-cyan-300 px-4 text-sm font-semibold text-[#071014]"
+        >
+          <Plus size={15} />
+          Create preset
+        </button>
+        <button
+          type="button"
+          onClick={() => void library.importJson()}
+          className="inline-flex h-10 items-center gap-2 rounded-xl border border-white/10 px-4 text-sm text-zinc-300"
+        >
+          <UploadSimple size={15} />
+          Import JSON
+        </button>
+      </div>
 
       <div className="mt-6 grid gap-5 xl:grid-cols-[1fr_300px]">
         <section className="min-w-0">
@@ -136,6 +208,54 @@ export function VoiceEffects({ onPresetSelected }: VoiceEffectsProps) {
               >
                 Clear filters
               </button>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => void library.duplicate(selectedPreset.id)}
+                  className="h-9 rounded-xl border border-white/10 text-xs text-zinc-300"
+                >
+                  Duplicate
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void library.exportJson(selectedPreset.id)}
+                  className="inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-white/10 text-xs text-zinc-300"
+                >
+                  <DownloadSimple size={14} />
+                  Export
+                </button>
+                {!selectedPreset.builtIn ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setEditor({ mode: "edit", preset: selectedPreset })}
+                      className="h-9 rounded-xl border border-white/10 text-xs text-zinc-300"
+                    >
+                      Edit / Rename
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void library.favorite(selectedPreset.id, !selectedPreset.favorite)
+                      }
+                      className="inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-white/10 text-xs text-zinc-300"
+                    >
+                      <Heart size={14} weight={selectedPreset.favorite ? "fill" : "regular"} />
+                      {selectedPreset.favorite ? "Favorited" : "Favorite"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm(`Delete ${selectedPreset.name}?`))
+                          void library.remove(selectedPreset.id);
+                      }}
+                      className="col-span-2 h-9 rounded-xl border border-rose-300/15 text-xs text-rose-300"
+                    >
+                      Delete custom preset
+                    </button>
+                  </>
+                ) : null}
+              </div>
             </div>
           )}
         </section>
@@ -196,6 +316,15 @@ export function VoiceEffects({ onPresetSelected }: VoiceEffectsProps) {
           ) : null}
         </aside>
       </div>
+      {editor ? (
+        <PresetEditor
+          preset={editor.preset}
+          mode={editor.mode}
+          onClose={() => setEditor(null)}
+          onSave={editor.mode === "create" ? library.create : library.update}
+          onDuplicate={library.duplicate}
+        />
+      ) : null}
     </div>
   );
 }

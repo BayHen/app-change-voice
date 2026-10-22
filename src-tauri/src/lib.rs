@@ -19,7 +19,10 @@ use effects::{
     parameters::EffectParameters,
 };
 use platform::PlatformInfo;
-use presets::{PresetRegistry, VoicePreset, validation::validate_preset};
+use presets::{
+    PresetRegistry, VoicePreset, repository::JsonPresetRepository, service::UserPresetService,
+    validation::validate_preset,
+};
 use serde::Serialize;
 use std::{path::PathBuf, sync::Mutex};
 use tauri::{Manager, State};
@@ -129,6 +132,7 @@ impl AudioDeviceService {
 
 type AudioDeviceState = Mutex<AudioDeviceService>;
 type AudioRuntimeState = Mutex<AudioStreamManager>;
+type UserPresetState = Mutex<UserPresetService>;
 struct VolumeConfigPath(PathBuf);
 struct NoiseConfigPath(PathBuf);
 
@@ -408,6 +412,187 @@ fn get_builtin_presets(registry: State<'_, PresetRegistry>) -> Vec<VoicePreset> 
 }
 
 #[tauri::command]
+fn get_all_presets(
+    registry: State<'_, PresetRegistry>,
+    users: State<'_, UserPresetState>,
+) -> Result<Vec<VoicePreset>, AudioDeviceError> {
+    let mut result = registry.all().to_vec();
+    let users = users
+        .lock()
+        .map_err(|_| AudioDeviceError::backend("User preset state lock was poisoned"))?;
+    result.extend_from_slice(users.all());
+    Ok(result)
+}
+#[tauri::command]
+fn get_preset_warnings(users: State<'_, UserPresetState>) -> Result<Vec<String>, AudioDeviceError> {
+    Ok(users
+        .lock()
+        .map_err(|_| AudioDeviceError::backend("User preset state lock was poisoned"))?
+        .warnings()
+        .to_vec())
+}
+fn builtin_ids(registry: &PresetRegistry) -> Vec<&str> {
+    registry.all().iter().map(|p| p.id.as_str()).collect()
+}
+#[tauri::command]
+fn create_user_preset(
+    preset: VoicePreset,
+    registry: State<'_, PresetRegistry>,
+    users: State<'_, UserPresetState>,
+) -> Result<VoicePreset, AudioDeviceError> {
+    let ids = builtin_ids(&registry);
+    users
+        .lock()
+        .map_err(|_| AudioDeviceError::backend("User preset state lock was poisoned"))?
+        .create(preset, &ids)
+        .map_err(AudioDeviceError::backend)
+}
+#[tauri::command]
+fn update_user_preset(
+    preset: VoicePreset,
+    users: State<'_, UserPresetState>,
+) -> Result<VoicePreset, AudioDeviceError> {
+    users
+        .lock()
+        .map_err(|_| AudioDeviceError::backend("User preset state lock was poisoned"))?
+        .update(preset)
+        .map_err(AudioDeviceError::backend)
+}
+#[tauri::command]
+fn duplicate_preset(
+    id: String,
+    registry: State<'_, PresetRegistry>,
+    users: State<'_, UserPresetState>,
+) -> Result<VoicePreset, AudioDeviceError> {
+    let mut users = users
+        .lock()
+        .map_err(|_| AudioDeviceError::backend("User preset state lock was poisoned"))?;
+    let source = registry
+        .get(&id)
+        .ok()
+        .cloned()
+        .or_else(|| users.get(&id).ok().cloned())
+        .ok_or_else(|| AudioDeviceError::backend(format!("Preset not found: {id}")))?;
+    let ids = builtin_ids(&registry);
+    users
+        .duplicate(&source, &ids)
+        .map_err(AudioDeviceError::backend)
+}
+#[tauri::command]
+fn delete_user_preset(
+    id: String,
+    registry: State<'_, PresetRegistry>,
+    users: State<'_, UserPresetState>,
+) -> Result<(), AudioDeviceError> {
+    if registry.get(&id).is_ok() {
+        return Err(AudioDeviceError::backend(
+            "Built-in presets cannot be deleted",
+        ));
+    }
+    users
+        .lock()
+        .map_err(|_| AudioDeviceError::backend("User preset state lock was poisoned"))?
+        .delete(&id)
+        .map_err(AudioDeviceError::backend)
+}
+#[tauri::command]
+fn set_preset_favorite(
+    id: String,
+    favorite: bool,
+    users: State<'_, UserPresetState>,
+) -> Result<VoicePreset, AudioDeviceError> {
+    users
+        .lock()
+        .map_err(|_| AudioDeviceError::backend("User preset state lock was poisoned"))?
+        .favorite(&id, favorite)
+        .map_err(AudioDeviceError::backend)
+}
+#[tauri::command]
+fn import_user_preset(
+    path: PathBuf,
+    registry: State<'_, PresetRegistry>,
+    users: State<'_, UserPresetState>,
+) -> Result<VoicePreset, AudioDeviceError> {
+    let ids = builtin_ids(&registry);
+    users
+        .lock()
+        .map_err(|_| AudioDeviceError::backend("User preset state lock was poisoned"))?
+        .import(&path, &ids)
+        .map_err(AudioDeviceError::backend)
+}
+#[tauri::command]
+fn export_user_preset(
+    id: String,
+    path: PathBuf,
+    registry: State<'_, PresetRegistry>,
+    users: State<'_, UserPresetState>,
+) -> Result<(), AudioDeviceError> {
+    if let Ok(preset) = registry.get(&id) {
+        return presets::import_export::export(&path, preset).map_err(AudioDeviceError::backend);
+    }
+    users
+        .lock()
+        .map_err(|_| AudioDeviceError::backend("User preset state lock was poisoned"))?
+        .export(&id, &path)
+        .map_err(AudioDeviceError::backend)
+}
+
+#[tauri::command]
+fn apply_preset(
+    id: String,
+    registry: State<'_, PresetRegistry>,
+    users: State<'_, UserPresetState>,
+    state: State<'_, AudioRuntimeState>,
+) -> Result<AppliedPreset, AudioDeviceError> {
+    let preset = registry
+        .get(&id)
+        .ok()
+        .cloned()
+        .or_else(|| users.lock().ok()?.get(&id).ok().cloned())
+        .ok_or_else(|| AudioDeviceError::backend(format!("Preset not found: {id}")))?;
+    validate_preset(&preset).map_err(AudioDeviceError::backend)?;
+    let parameters = with_audio_runtime(state, |runtime| {
+        let mut volume = runtime.volume_settings();
+        volume.input_percent = preset.parameters.input_gain_percent.round() as u8;
+        volume.output_percent = preset.parameters.output_gain_percent.round() as u8;
+        runtime.set_volume_settings(volume);
+        let mut noise = runtime.noise_settings();
+        noise.enabled = preset.parameters.noise_suppression;
+        noise.suppression_strength = preset.parameters.suppression_strength;
+        noise.gate_enabled = preset.parameters.noise_gate;
+        noise.gate_threshold_dbfs = preset.parameters.gate_threshold_dbfs;
+        noise.limiter_enabled = preset.parameters.limiter_enabled;
+        noise.limiter_ceiling_dbfs = preset.parameters.limiter_ceiling_dbfs;
+        runtime.set_noise_settings(noise);
+        Ok(runtime.apply_preset(&preset.id, preset.effect_parameters()))
+    })?;
+    Ok(AppliedPreset { preset, parameters })
+}
+
+#[tauri::command]
+fn preview_preset(
+    preset: VoicePreset,
+    state: State<'_, AudioRuntimeState>,
+) -> Result<EffectParameters, AudioDeviceError> {
+    validate_preset(&preset).map_err(AudioDeviceError::backend)?;
+    with_audio_runtime(state, |runtime| {
+        let mut volume = runtime.volume_settings();
+        volume.input_percent = preset.parameters.input_gain_percent.round() as u8;
+        volume.output_percent = preset.parameters.output_gain_percent.round() as u8;
+        runtime.set_volume_settings(volume);
+        let mut noise = runtime.noise_settings();
+        noise.enabled = preset.parameters.noise_suppression;
+        noise.suppression_strength = preset.parameters.suppression_strength;
+        noise.gate_enabled = preset.parameters.noise_gate;
+        noise.gate_threshold_dbfs = preset.parameters.gate_threshold_dbfs;
+        noise.limiter_enabled = preset.parameters.limiter_enabled;
+        noise.limiter_ceiling_dbfs = preset.parameters.limiter_ceiling_dbfs;
+        runtime.set_noise_settings(noise);
+        Ok(runtime.set_effect_parameters(preset.effect_parameters()))
+    })
+}
+
+#[tauri::command]
 fn get_active_preset_id(
     state: State<'_, AudioRuntimeState>,
 ) -> Result<Option<String>, AudioDeviceError> {
@@ -460,6 +645,7 @@ pub fn run() {
             let noise_path = app.path().app_config_dir()?.join("noise-settings.json");
             let noise_settings = noise::load(&noise_path).unwrap_or_default();
             let recordings_dir = app.path().app_cache_dir()?.join("recordings");
+            let user_presets_dir = app.path().app_data_dir()?.join("presets");
             app.manage(Mutex::new(AudioDeviceService::new(
                 platform::WindowsAudioDeviceProvider,
                 preferences_path,
@@ -472,6 +658,10 @@ pub fn run() {
             app.manage(VolumeConfigPath(volume_path));
             app.manage(NoiseConfigPath(noise_path));
             app.manage(PresetRegistry::built_in().map_err(std::io::Error::other)?);
+            app.manage(Mutex::new(
+                UserPresetService::new(JsonPresetRepository::new(user_presets_dir))
+                    .map_err(std::io::Error::other)?,
+            ));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -505,6 +695,17 @@ pub fn run() {
             set_effect_parameters,
             reset_effect_parameters,
             get_builtin_presets,
+            get_all_presets,
+            get_preset_warnings,
+            create_user_preset,
+            update_user_preset,
+            duplicate_preset,
+            delete_user_preset,
+            set_preset_favorite,
+            import_user_preset,
+            export_user_preset,
+            apply_preset,
+            preview_preset,
             get_active_preset_id,
             apply_builtin_preset,
             reset_to_natural_preset

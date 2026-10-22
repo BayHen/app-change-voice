@@ -145,8 +145,11 @@ vi.mock("../src/services/tauri", () => ({
   setEffectParameters: effectMocks.set,
   resetEffectParameters: effectMocks.reset,
   getBuiltinPresets: presetMocks.list,
+  getAllPresets: presetMocks.list,
+  getPresetWarnings: vi.fn().mockResolvedValue([]),
   getActivePresetId: presetMocks.active,
   applyBuiltinPreset: presetMocks.apply,
+  applyPreset: presetMocks.apply,
   resetToNaturalPreset: presetMocks.reset,
 }));
 

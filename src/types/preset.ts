@@ -16,4 +16,21 @@ export interface VoicePresetSummary {
   gain: { makeupDb: number };
   effects: PresetEffect[];
   builtIn: boolean;
+  createdAt: string;
+  updatedAt: string;
+  favorite: boolean;
+  parameters: {
+    inputGainPercent: number;
+    outputGainPercent: number;
+    bassDb: number;
+    trebleDb: number;
+    noiseSuppression: boolean;
+    suppressionStrength: number;
+    noiseGate: boolean;
+    gateThresholdDbfs: number;
+    limiterEnabled: boolean;
+    limiterCeilingDbfs: number;
+    effectBypassed: boolean;
+  };
+  pluginRequirements: Array<{ id: string; compatibilityVersion: string }>;
 }

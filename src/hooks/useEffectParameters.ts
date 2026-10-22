@@ -16,6 +16,8 @@ const defaults: EffectParameters = {
   radioMix: 0,
   tremoloRateHz: 5,
   tremoloDepth: 0,
+  bassDb: 0,
+  trebleDb: 0,
 };
 
 const message = (reason: unknown) => (reason instanceof Error ? reason.message : String(reason));

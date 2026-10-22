@@ -108,6 +108,22 @@ Playback worker đọc WAV ngoài callback và nạp bounded queue. Output callb
 playback, processed monitoring khi Hear Myself bật, hoặc silence. Vì vậy không tạo output stream thứ hai.
 Temporary recording bị xóa qua lệnh rõ ràng và không có network/upload.
 
+## Task 10 - Custom preset repository
+
+`PresetRepository` tách domain khỏi `JsonPresetRepository`. Mỗi custom preset là một file JSON riêng tại
+`app_data_dir/presets/<validated-id>.json`; ID chỉ cho phép lowercase ASCII, số và dấu gạch ngang nên
+không thể path traversal. Save ghi file `.tmp`, chuyển bản cũ thành `.bak`, rồi rename và rollback nếu lỗi.
+Một file hỏng chỉ tạo warning khi load, không làm mất các preset hợp lệ khác.
+
+Schema v2 bổ sung `createdAt`, `updatedAt`, `favorite`, `parameters` và `pluginRequirements`. Import giới
+hạn 256 KiB, migrate v1 sang v2, reject schema tương lai, unknown effect và plugin dependency chưa hỗ trợ.
+Built-in nằm trong binary và read-only; chỉ duplicate thành user preset. Effect list là tagged enum để có
+thể đăng ký processor mới về sau nhưng Task 10 không load hoặc thực thi plugin binary.
+
+Apply/Preview cập nhật atomic DSP parameters, volume và noise controls mà không restart stream. Bass/Treble
+dùng EQ nội bộ allocation-free. Effect order giữ cố định theo pipeline hiện tại vì reorder chưa có contract
+realtime-safe; UI không cung cấp control giả.
+
 ## Preset pipeline
 
 Task 07 đặt built-in preset JSON trong `src-tauri/presets/builtin.json`. Dữ liệu đi qua loader, model versioned, semantic

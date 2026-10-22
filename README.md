@@ -7,6 +7,7 @@ Task 05 bổ sung gain, mute và peak/RMS meter dBFS. Task 06 tích hợp pitch 
 processing realtime bằng Signalsmith Stretch. Task 07 bổ sung registry JSON versioned với tám preset
 built-in và DSP Robot/Radio/Cartoon; preset editor và import/export chưa được triển khai.
 Task 08 bổ sung RNNoise/noise gate/limiter; Task 09 bổ sung recording, A/B playback và WAV export local.
+Task 10 bổ sung custom preset schema v2, repository local an toàn, editor, favorite và import/export JSON.
 
 ## Công nghệ
 

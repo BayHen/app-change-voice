@@ -1,7 +1,7 @@
 use crate::effects::parameters::EffectParameters;
 use serde::{Deserialize, Serialize};
 
-pub const PRESET_SCHEMA_VERSION: u32 = 1;
+pub const PRESET_SCHEMA_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
@@ -16,6 +16,47 @@ pub enum PresetCategory {
 #[serde(rename_all = "camelCase")]
 pub struct PresetGain {
     pub makeup_db: f32,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct PresetParameters {
+    pub input_gain_percent: f32,
+    pub output_gain_percent: f32,
+    pub bass_db: f32,
+    pub treble_db: f32,
+    pub noise_suppression: bool,
+    pub suppression_strength: f32,
+    pub noise_gate: bool,
+    pub gate_threshold_dbfs: f32,
+    pub limiter_enabled: bool,
+    pub limiter_ceiling_dbfs: f32,
+    pub effect_bypassed: bool,
+}
+
+impl Default for PresetParameters {
+    fn default() -> Self {
+        Self {
+            input_gain_percent: 100.0,
+            output_gain_percent: 100.0,
+            bass_db: 0.0,
+            treble_db: 0.0,
+            noise_suppression: false,
+            suppression_strength: 0.8,
+            noise_gate: true,
+            gate_threshold_dbfs: -52.0,
+            limiter_enabled: true,
+            limiter_ceiling_dbfs: -1.0,
+            effect_bypassed: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PluginRequirement {
+    pub id: String,
+    pub compatibility_version: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -55,6 +96,16 @@ pub struct VoicePreset {
     #[serde(default)]
     pub effects: Vec<PresetEffect>,
     pub built_in: bool,
+    #[serde(default)]
+    pub created_at: String,
+    #[serde(default)]
+    pub updated_at: String,
+    #[serde(default)]
+    pub favorite: bool,
+    #[serde(default)]
+    pub parameters: PresetParameters,
+    #[serde(default)]
+    pub plugin_requirements: Vec<PluginRequirement>,
 }
 
 impl VoicePreset {
@@ -63,6 +114,9 @@ impl VoicePreset {
             pitch_semitones: self.pitch_semitones,
             formant_semitones: self.formant_semitones,
             makeup_gain_db: self.gain.makeup_db,
+            bypassed: self.parameters.effect_bypassed,
+            bass_db: self.parameters.bass_db,
+            treble_db: self.parameters.treble_db,
             ..EffectParameters::default()
         };
         for effect in &self.effects {
