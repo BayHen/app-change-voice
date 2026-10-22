@@ -10,6 +10,24 @@ const audioMocks = vi.hoisted(() => ({
   selectOutput: vi.fn(),
 }));
 
+const runtimeMocks = vi.hoisted(() => ({
+  status: vi.fn(),
+  start: vi.fn(),
+  stop: vi.fn(),
+  pause: vi.fn(),
+  resume: vi.fn(),
+}));
+
+const stoppedRuntime = {
+  state: "stopped",
+  inputDeviceId: null,
+  outputDeviceId: null,
+  sampleRate: null,
+  inputChannels: null,
+  outputChannels: null,
+  metrics: null,
+};
+
 const connectedSnapshot = {
   inputDevices: [
     {
@@ -51,6 +69,11 @@ vi.mock("../src/services/tauri", () => ({
   refreshAudioDevices: audioMocks.refresh,
   selectInputDevice: audioMocks.selectInput,
   selectOutputDevice: audioMocks.selectOutput,
+  getAudioRuntimeStatus: runtimeMocks.status,
+  startMonitoring: runtimeMocks.start,
+  stopMonitoring: runtimeMocks.stop,
+  pauseMonitoring: runtimeMocks.pause,
+  resumeMonitoring: runtimeMocks.resume,
 }));
 
 describe("desktop navigation", () => {
@@ -63,6 +86,33 @@ describe("desktop navigation", () => {
     });
     audioMocks.selectInput.mockReset().mockResolvedValue(connectedSnapshot);
     audioMocks.selectOutput.mockReset().mockResolvedValue(connectedSnapshot);
+    runtimeMocks.status.mockReset().mockResolvedValue(stoppedRuntime);
+    runtimeMocks.stop.mockReset().mockResolvedValue(stoppedRuntime);
+    runtimeMocks.pause.mockReset().mockResolvedValue({ ...stoppedRuntime, state: "paused" });
+    runtimeMocks.resume.mockReset().mockResolvedValue({ ...stoppedRuntime, state: "running" });
+    runtimeMocks.start.mockReset().mockResolvedValue({
+      ...stoppedRuntime,
+      state: "running",
+      inputDeviceId: "wasapi:microphone-1",
+      outputDeviceId: "wasapi:speakers-1",
+      sampleRate: 48000,
+      inputChannels: 2,
+      outputChannels: 2,
+      metrics: {
+        sampleRate: 48000,
+        inputBufferFrames: 256,
+        outputBufferFrames: 256,
+        underrunCount: 0,
+        overflowCount: 0,
+        streamErrorCount: 0,
+        averageProcessingMicros: 0.1,
+        estimatedLatencyMs: 10.7,
+        ringDepthFrames: 128,
+        inputLevel: 0.25,
+        outputLevel: 0.25,
+        streamFaulted: false,
+      },
+    });
     Object.defineProperty(window, "innerWidth", { writable: true, configurable: true, value: 900 });
     window.dispatchEvent(new Event("resize"));
   });
@@ -122,6 +172,21 @@ describe("desktop navigation", () => {
 
     await user.click(screen.getByRole("button", { name: "Refresh devices" }));
     expect(audioMocks.refresh).toHaveBeenCalledTimes(2);
+  });
+
+  it("starts and stops monitoring only after an explicit user action", async () => {
+    audioMocks.refresh.mockResolvedValue(connectedSnapshot);
+    const user = userEvent.setup();
+    render(<App />);
+
+    const start = await screen.findByRole("button", { name: "Start monitoring" });
+    expect(runtimeMocks.start).not.toHaveBeenCalled();
+    await user.click(start);
+    expect(runtimeMocks.start).toHaveBeenCalledWith("wasapi:microphone-1", "wasapi:speakers-1");
+    expect(await screen.findByRole("button", { name: "Stop monitoring" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Stop monitoring" }));
+    expect(runtimeMocks.stop).toHaveBeenCalledOnce();
   });
 });
 

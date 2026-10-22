@@ -94,3 +94,41 @@ cài Windows x64 đã được xác nhận trong quality gate ngày 22/10/2026.
 - `cargo test manual_hardware_tests -- --ignored --nocapture`: thành công 2/2 trên máy Windows hiện
   tại; WASAPI báo ít nhất một input và CPAL ID không trùng trong snapshot.
 - `cargo check`, `cargo fmt -- --check`, `cargo clippy --all-targets -- -D warnings`: thành công.
+
+## Task 04 - Real-Time Audio Pipeline
+
+### Đã hoàn thành
+
+- Thêm `AudioProcessor`, `PassthroughProcessor`, `AudioPipeline`, `AudioStreamManager` và
+  `AudioMetrics`.
+- Tạo CPAL input/output stream với internal mono float32 và conversion f32/i16/u16.
+- Thêm bounded lock-free SPSC ring buffer `rtrb` 0.4.0; underrun phát silence, overflow bỏ sample mới.
+- Ưu tiên 48 kHz khi cả hai thiết bị hỗ trợ; fallback sang sample rate chung.
+- Hỗ trợ downmix input nhiều channel và nhân mono ra mọi output channel.
+- Thêm start, stop, pause, resume, status/metrics Tauri commands; không truyền frame qua IPC.
+- Dashboard kết nối monitoring thật, meters từ peak thật, cảnh báo tai nghe và hiển thị metrics.
+- Chọn thiết bị trong lúc monitoring sẽ stop/drop stream trước khi thay đổi lựa chọn.
+- Không tự động bật monitoring khi khởi động.
+
+### Realtime safety
+
+- Callback không lock mutex, không I/O, không log, không network và không gọi UI/IPC.
+- Ring buffer được allocate trước khi stream chạy; callback không cấp phát heap.
+- Metrics dùng atomics. Error callback chỉ tăng counter và đặt fault flag.
+- Estimated latency không phải kết quả đo loopback và chưa dùng để khẳng định mục tiêu dưới 50 ms.
+
+### Hardware acceptance
+
+- Test mở microphone/output thật được đánh dấu `#[ignore]` và yêu cầu đeo tai nghe trước khi chạy.
+- Chưa tuyên bố PASS cho chất lượng nghe hoặc latency thực tế nếu chưa thực hiện manual listening test.
+
+### Kết quả xác minh
+
+- `npm.cmd run test`: thành công, 7/7 frontend tests.
+- `npm.cmd run build`, `npm.cmd run lint -- --max-warnings=0`, `npm.cmd run format`: thành công.
+- `cargo test`: thành công, 15 tests; 3 hardware tests bị bỏ qua mặc định.
+- `cargo check --all-targets`, `cargo fmt -- --check`,
+  `cargo clippy --all-targets -- -D warnings`: thành công.
+- `npm.cmd run tauri:dev`: thành công ở trạng thái monitoring tắt; cửa sổ phản hồi.
+- Manual listening, unplug khi stream đang chạy và loopback latency measurement: chưa kiểm thử vì cần
+  tai nghe, thao tác phần cứng và đánh giá trực tiếp của người dùng.

@@ -49,6 +49,30 @@ Lựa chọn được lưu tại `app_config_dir/audio-devices.json`. Mỗi lầ
 snapshot được tạo lại nên thiết bị bị tháo sẽ biến mất khỏi UI. Nếu lựa chọn cũ không còn tồn tại,
 resolver ưu tiên thiết bị default hiện tại rồi thiết bị đầu tiên; UI nhận message để thông báo fallback.
 
+## Pipeline realtime
+
+Task 04 dùng hai CPAL stream và bounded SPSC ring buffer `rtrb`:
+
+```text
+WASAPI input callback
+  -> convert sample về f32
+  -> downmix input channels thành mono
+  -> AudioPipeline<PassthroughProcessor>
+  -> lock-free bounded ring buffer
+  -> output callback hoặc silence khi underrun
+  -> nhân mono ra số channel của output
+  -> convert sang sample format của output
+```
+
+`AudioStreamManager` sở hữu hai stream và quản lý start, pause, resume, stop. Drop manager hoặc stop
+sẽ drop cả hai CPAL stream. Callback không gọi Tauri IPC, không khóa mutex, không ghi file/log, không
+network và không cấp phát heap. Overflow bỏ sample mới; underrun ghi silence. Counters, peak level và
+processing time dùng atomic relaxed; stream fault dùng atomic acquire/release.
+
+Pipeline ưu tiên sample rate chung 48 kHz, sau đó chọn giao của range hai thiết bị. Kích thước callback
+256 frames chỉ là request và được clamp theo driver. Latency trên UI là ước tính từ buffer input,
+output và ring depth; không phải kết quả loopback measurement.
+
 Bốn module domain được export từ library crate để tạo extension API rõ ràng và tránh che giấu các
 seam có chủ đích. Binary entry point vẫn chỉ gọi `voicemorph_studio_lib::run()`.
 

@@ -3,6 +3,10 @@
 pub mod config;
 pub mod devices;
 pub mod errors;
+pub mod metrics;
+pub mod pipeline;
+pub mod processor;
+pub mod stream;
 
 /// Hợp đồng tối thiểu của audio engine. Implementation thật sẽ được thêm sau Task 01.
 pub trait AudioEngine {

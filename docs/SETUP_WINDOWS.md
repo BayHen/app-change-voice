@@ -51,6 +51,27 @@ npm.cmd install
 npm.cmd run tauri:dev
 ```
 
+Các hook `beforeDevCommand` và `beforeBuildCommand` trong `tauri.conf.json` cũng gọi trực tiếp
+`npm.cmd`. Cấu hình này tránh việc PowerShell chọn `npm.ps1` và thất bại do Execution Policy.
+
+Nếu Tauri báo `beforeDevCommand terminated with a non-zero status code`, kiểm tra port cố định 1420:
+
+```powershell
+Get-NetTCPConnection -LocalPort 1420 -State Listen
+```
+
+Đóng Vite/Tauri dev cũ đang giữ port rồi chạy lại; không chạy riêng `npm.cmd run dev` đồng thời với
+`npm.cmd run tauri:dev` vì Tauri tự khởi động Vite.
+
+Nếu log có `EPERM: operation not permitted, unlink node_modules\\.vite\\deps\\...`, đóng ứng dụng
+VoiceMorph/Vite đang chạy và đóng các tab editor đang mở trực tiếp file trong `node_modules/.vite`.
+Sau đó xóa cache có thể tái tạo và chạy lại:
+
+```powershell
+Remove-Item -LiteralPath .\node_modules\.vite -Recurse -Force
+npm.cmd run tauri:dev
+```
+
 Build x64:
 
 ```powershell

@@ -1,7 +1,9 @@
 import {
   ArrowRight,
   ArrowClockwise,
+  Headphones,
   MicrophoneSlash,
+  Pause,
   Record,
   SlidersHorizontal,
   SpeakerHigh,
@@ -15,6 +17,7 @@ import { ToggleSwitch } from "../components/ToggleSwitch";
 import { VolumeSlider } from "../components/VolumeSlider";
 import { useAppStatus } from "../hooks/useAppStatus";
 import { useAudioDevices } from "../hooks/useAudioDevices";
+import { useAudioRuntime } from "../hooks/useAudioRuntime";
 import type { AudioDevice, AudioUiState, DeviceOption } from "../types/audio";
 
 const unavailableInput: DeviceOption[] = [
@@ -64,6 +67,7 @@ function deviceDetails(device: AudioDevice | undefined): string {
 export function Dashboard({ onNotify }: DashboardProps) {
   const { loading, error } = useAppStatus();
   const devices = useAudioDevices();
+  const runtime = useAudioRuntime();
   const [audioUi, setAudioUi] = useState<AudioUiState>(initialAudioUiState);
   const inputDevices = useMemo(
     () => devices.snapshot?.inputDevices ?? [],
@@ -104,18 +108,26 @@ export function Dashboard({ onNotify }: DashboardProps) {
                 ? "Checking backend"
                 : error || devices.error
                   ? "Backend unavailable"
-                  : inputDevices.length === 0
-                    ? "No microphone"
-                    : "Ready"
+                  : runtime.status.state === "running"
+                    ? "Monitoring live"
+                    : runtime.status.state === "paused"
+                      ? "Monitoring paused"
+                      : inputDevices.length === 0
+                        ? "No microphone"
+                        : "Ready"
             }
             tone={
               loading || devices.loading
                 ? "loading"
                 : error || devices.error
                   ? "error"
-                  : inputDevices.length === 0
-                    ? "offline"
-                    : "online"
+                  : runtime.error
+                    ? "error"
+                    : runtime.status.state === "running"
+                      ? "online"
+                      : inputDevices.length === 0
+                        ? "offline"
+                        : "offline"
             }
           />
         }
@@ -148,6 +160,15 @@ export function Dashboard({ onNotify }: DashboardProps) {
                   </p>
                 ) : null}
               </div>
+            </section>
+          ) : null}
+
+          {runtime.error ? (
+            <section
+              role="alert"
+              className="mt-4 rounded-xl border border-rose-300/20 bg-rose-300/[0.05] px-4 py-3 text-xs text-rose-200"
+            >
+              Audio pipeline error: {runtime.error}
             </section>
           ) : null}
 
@@ -237,9 +258,57 @@ export function Dashboard({ onNotify }: DashboardProps) {
                 <SpeakerHigh size={19} className="text-zinc-700" aria-hidden="true" />
               </div>
               <div className="mt-7 space-y-7">
-                <AudioMeter label="Input level" level={0} disabled />
-                <AudioMeter label="Output level" level={0} disabled />
+                <AudioMeter
+                  label="Input level"
+                  level={(runtime.status.metrics?.inputLevel ?? 0) * 100}
+                  disabled={runtime.status.state !== "running"}
+                />
+                <AudioMeter
+                  label="Output level"
+                  level={(runtime.status.metrics?.outputLevel ?? 0) * 100}
+                  disabled={runtime.status.state !== "running"}
+                />
               </div>
+              {runtime.status.metrics ? (
+                <dl className="mt-7 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-white/[0.07] pt-5 text-xs">
+                  <div>
+                    <dt className="text-zinc-600">Sample rate</dt>
+                    <dd className="mt-1 text-zinc-300">
+                      {runtime.status.metrics.sampleRate.toLocaleString()} Hz
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-zinc-600">Estimated latency</dt>
+                    <dd className="mt-1 text-zinc-300">
+                      {runtime.status.metrics.estimatedLatencyMs.toFixed(1)} ms
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-zinc-600">Underruns</dt>
+                    <dd className="mt-1 font-mono text-zinc-300">
+                      {runtime.status.metrics.underrunCount}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-zinc-600">Overflows</dt>
+                    <dd className="mt-1 font-mono text-zinc-300">
+                      {runtime.status.metrics.overflowCount}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-zinc-600">Processing/frame</dt>
+                    <dd className="mt-1 text-zinc-300">
+                      {runtime.status.metrics.averageProcessingMicros.toFixed(2)} µs
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-zinc-600">Ring depth</dt>
+                    <dd className="mt-1 text-zinc-300">
+                      {runtime.status.metrics.ringDepthFrames} frames
+                    </dd>
+                  </div>
+                </dl>
+              ) : null}
             </section>
           </div>
 
@@ -258,12 +327,34 @@ export function Dashboard({ onNotify }: DashboardProps) {
             </div>
 
             <div className="flex flex-col gap-2 sm:flex-row">
+              <div className="mr-2 flex max-w-[250px] items-center gap-2 text-[11px] leading-4 text-amber-200/70">
+                <Headphones size={17} className="shrink-0" aria-hidden="true" />
+                Use headphones before monitoring to prevent acoustic feedback.
+              </div>
+              {runtime.status.state !== "stopped" ? (
+                <button
+                  type="button"
+                  disabled={runtime.busy}
+                  onClick={() =>
+                    void (runtime.status.state === "running" ? runtime.pause() : runtime.resume())
+                  }
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-white/[0.09] px-4 text-sm text-zinc-300 disabled:cursor-wait disabled:opacity-50"
+                >
+                  <Pause size={15} aria-hidden="true" />
+                  {runtime.status.state === "running" ? "Pause" : "Resume"}
+                </button>
+              ) : null}
               <button
                 type="button"
-                disabled
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-white/[0.09] px-4 text-sm text-zinc-600 disabled:cursor-not-allowed"
+                disabled={runtime.busy || !selectedInputId || !selectedOutputId}
+                onClick={() =>
+                  void (runtime.status.state === "stopped"
+                    ? runtime.start(selectedInputId, selectedOutputId)
+                    : runtime.stop())
+                }
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-white/[0.09] px-4 text-sm text-zinc-300 hover:border-cyan-300/30 hover:text-cyan-200 disabled:cursor-not-allowed disabled:text-zinc-600"
               >
-                Start monitoring
+                {runtime.status.state === "stopped" ? "Start monitoring" : "Stop monitoring"}
                 <ArrowRight size={15} aria-hidden="true" />
               </button>
               <button

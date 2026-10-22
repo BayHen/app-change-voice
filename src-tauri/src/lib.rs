@@ -10,6 +10,7 @@ use audio::{
         AudioDeviceInfo, AudioDeviceProvider, AudioDeviceSnapshot, DeviceKind, resolve_selection,
     },
     errors::AudioDeviceError,
+    stream::{AudioRuntimeStatus, AudioStreamManager},
 };
 use platform::PlatformInfo;
 use serde::Serialize;
@@ -120,6 +121,7 @@ impl AudioDeviceService {
 }
 
 type AudioDeviceState = Mutex<AudioDeviceService>;
+type AudioRuntimeState = Mutex<AudioStreamManager>;
 
 fn with_audio_service<T>(
     state: State<'_, AudioDeviceState>,
@@ -177,7 +179,12 @@ fn get_default_devices(
 fn select_input_device(
     id: String,
     state: State<'_, AudioDeviceState>,
+    runtime: State<'_, AudioRuntimeState>,
 ) -> Result<AudioDeviceSnapshot, AudioDeviceError> {
+    runtime
+        .lock()
+        .map_err(|_| AudioDeviceError::backend("Audio runtime lock was poisoned"))?
+        .stop();
     with_audio_service(state, |service| service.select(DeviceKind::Input, &id))
 }
 
@@ -185,7 +192,12 @@ fn select_input_device(
 fn select_output_device(
     id: String,
     state: State<'_, AudioDeviceState>,
+    runtime: State<'_, AudioRuntimeState>,
 ) -> Result<AudioDeviceSnapshot, AudioDeviceError> {
+    runtime
+        .lock()
+        .map_err(|_| AudioDeviceError::backend("Audio runtime lock was poisoned"))?
+        .stop();
     with_audio_service(state, |service| service.select(DeviceKind::Output, &id))
 }
 
@@ -194,6 +206,55 @@ fn refresh_audio_devices(
     state: State<'_, AudioDeviceState>,
 ) -> Result<AudioDeviceSnapshot, AudioDeviceError> {
     with_audio_service(state, AudioDeviceService::refresh)
+}
+
+fn with_audio_runtime<T>(
+    state: State<'_, AudioRuntimeState>,
+    operation: impl FnOnce(&mut AudioStreamManager) -> Result<T, AudioDeviceError>,
+) -> Result<T, AudioDeviceError> {
+    let mut runtime = state
+        .lock()
+        .map_err(|_| AudioDeviceError::backend("Audio runtime lock was poisoned"))?;
+    operation(&mut runtime)
+}
+
+#[tauri::command]
+fn start_monitoring(
+    input_device_id: String,
+    output_device_id: String,
+    state: State<'_, AudioRuntimeState>,
+) -> Result<AudioRuntimeStatus, AudioDeviceError> {
+    with_audio_runtime(state, |runtime| {
+        runtime.start(&input_device_id, &output_device_id)
+    })
+}
+
+#[tauri::command]
+fn pause_monitoring(
+    state: State<'_, AudioRuntimeState>,
+) -> Result<AudioRuntimeStatus, AudioDeviceError> {
+    with_audio_runtime(state, AudioStreamManager::pause)
+}
+
+#[tauri::command]
+fn resume_monitoring(
+    state: State<'_, AudioRuntimeState>,
+) -> Result<AudioRuntimeStatus, AudioDeviceError> {
+    with_audio_runtime(state, AudioStreamManager::resume)
+}
+
+#[tauri::command]
+fn stop_monitoring(
+    state: State<'_, AudioRuntimeState>,
+) -> Result<AudioRuntimeStatus, AudioDeviceError> {
+    with_audio_runtime(state, |runtime| Ok(runtime.stop()))
+}
+
+#[tauri::command]
+fn get_audio_runtime_status(
+    state: State<'_, AudioRuntimeState>,
+) -> Result<AudioRuntimeStatus, AudioDeviceError> {
+    with_audio_runtime(state, |runtime| Ok(runtime.status()))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -205,6 +266,7 @@ pub fn run() {
                 platform::WindowsAudioDeviceProvider,
                 preferences_path,
             )?));
+            app.manage(Mutex::new(AudioStreamManager::default()));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -214,7 +276,12 @@ pub fn run() {
             get_default_devices,
             select_input_device,
             select_output_device,
-            refresh_audio_devices
+            refresh_audio_devices,
+            start_monitoring,
+            pause_monitoring,
+            resume_monitoring,
+            stop_monitoring,
+            get_audio_runtime_status
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

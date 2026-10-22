@@ -32,3 +32,13 @@ kiến trúc trước khi yêu cầu Task 02 được xác định.
 - Lưu fingerprint metadata làm fallback, không dùng display name đơn lẻ làm ID.
 - Task 03 chỉ enumerate và lưu lựa chọn. Không build hoặc start audio stream trước hành động audio
   rõ ràng của người dùng ở task sau.
+
+## ADR-007 — SPSC ring buffer cho realtime monitoring
+
+- Dùng `rtrb` 0.4.0: bounded, single-producer/single-consumer, không allocate sau khởi tạo và thao tác
+  đọc/ghi lock-free, wait-free.
+- Ring buffer chứa mono `f32`; conversion format và channel nằm sát biên CPAL.
+- Stream callbacks chỉ giữ producer hoặc consumer riêng biệt và atomic metrics, không giữ mutex.
+- Không resample trong Task 04. Pipeline chọn sample rate nằm trong giao capability của input/output,
+  ưu tiên 48 kHz; nếu không có rate chung thì trả lỗi rõ ràng.
+- Không tự start khi ứng dụng mở. Chỉ command do thao tác người dùng mới gọi `Stream::play`.

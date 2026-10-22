@@ -43,6 +43,33 @@ export interface DefaultDevices {
   outputId: string | null;
 }
 
+export type MonitoringState = "stopped" | "running" | "paused";
+
+export interface AudioMetrics {
+  sampleRate: number;
+  inputBufferFrames: number;
+  outputBufferFrames: number;
+  underrunCount: number;
+  overflowCount: number;
+  streamErrorCount: number;
+  averageProcessingMicros: number;
+  estimatedLatencyMs: number;
+  ringDepthFrames: number;
+  inputLevel: number;
+  outputLevel: number;
+  streamFaulted: boolean;
+}
+
+export interface AudioRuntimeStatus {
+  state: MonitoringState;
+  inputDeviceId: string | null;
+  outputDeviceId: string | null;
+  sampleRate: number | null;
+  inputChannels: number | null;
+  outputChannels: number | null;
+  metrics: AudioMetrics | null;
+}
+
 export interface AudioUiState {
   inputDeviceId: string;
   outputDeviceId: string;
