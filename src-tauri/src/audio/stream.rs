@@ -2,10 +2,12 @@ use super::{
     errors::AudioDeviceError,
     meter::SignalMeter,
     metrics::{AudioMetrics, SharedAudioMetrics},
+    noise::{NoiseSettings, SharedNoiseSettings},
     pipeline::AudioPipeline,
 };
 use crate::effects::{
     gain::{SharedGainControls, SmoothedGain, VolumeSettings},
+    limiter::OutputLimiter,
     parameters::{EffectParameters, SharedEffectParameters},
 };
 use cpal::{
@@ -64,6 +66,8 @@ pub struct AudioStreamManager {
     effect_controls: SharedEffectParameters,
     effect_parameters: EffectParameters,
     active_preset_id: Option<String>,
+    noise_controls: SharedNoiseSettings,
+    noise_settings: NoiseSettings,
 }
 
 impl Default for AudioStreamManager {
@@ -76,12 +80,14 @@ impl Default for AudioStreamManager {
             effect_controls: SharedEffectParameters::new(EffectParameters::default()),
             effect_parameters: EffectParameters::default(),
             active_preset_id: Some("natural".into()),
+            noise_controls: SharedNoiseSettings::new(NoiseSettings::default()),
+            noise_settings: NoiseSettings::default(),
         }
     }
 }
 
 impl AudioStreamManager {
-    pub fn with_volume_settings(settings: VolumeSettings) -> Self {
+    pub fn with_settings(settings: VolumeSettings, noise_settings: NoiseSettings) -> Self {
         let settings = settings.validated();
         Self {
             streams: None,
@@ -91,7 +97,18 @@ impl AudioStreamManager {
             effect_controls: SharedEffectParameters::new(EffectParameters::default()),
             effect_parameters: EffectParameters::default(),
             active_preset_id: Some("natural".into()),
+            noise_controls: SharedNoiseSettings::new(noise_settings),
+            noise_settings,
         }
+    }
+
+    pub fn noise_settings(&self) -> NoiseSettings {
+        self.noise_settings
+    }
+    pub fn set_noise_settings(&mut self, settings: NoiseSettings) -> NoiseSettings {
+        let settings = self.noise_controls.store(settings);
+        self.noise_settings = settings;
+        settings
     }
 
     pub fn volume_settings(&self) -> VolumeSettings {
@@ -161,6 +178,7 @@ impl AudioStreamManager {
             metrics.clone(),
             self.controls.clone(),
             self.effect_controls.clone(),
+            self.noise_controls.clone(),
         )?;
         let output_stream = build_output(
             &output,
@@ -169,6 +187,7 @@ impl AudioStreamManager {
             consumer,
             metrics.clone(),
             self.controls.clone(),
+            self.noise_controls.clone(),
         )?;
         let input_buffer_frames = input_stream
             .buffer_size()
@@ -392,6 +411,7 @@ impl RealtimeSample for u16 {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_input(
     device: &Device,
     config: StreamConfig,
@@ -400,17 +420,36 @@ fn build_input(
     metrics: SharedAudioMetrics,
     controls: SharedGainControls,
     effect_controls: SharedEffectParameters,
+    noise_controls: SharedNoiseSettings,
 ) -> Result<(Stream, usize), AudioDeviceError> {
     match format {
-        SampleFormat::F32 => {
-            build_input_typed::<f32>(device, config, producer, metrics, controls, effect_controls)
-        }
-        SampleFormat::I16 => {
-            build_input_typed::<i16>(device, config, producer, metrics, controls, effect_controls)
-        }
-        SampleFormat::U16 => {
-            build_input_typed::<u16>(device, config, producer, metrics, controls, effect_controls)
-        }
+        SampleFormat::F32 => build_input_typed::<f32>(
+            device,
+            config,
+            producer,
+            metrics,
+            controls,
+            effect_controls,
+            noise_controls,
+        ),
+        SampleFormat::I16 => build_input_typed::<i16>(
+            device,
+            config,
+            producer,
+            metrics,
+            controls,
+            effect_controls,
+            noise_controls,
+        ),
+        SampleFormat::U16 => build_input_typed::<u16>(
+            device,
+            config,
+            producer,
+            metrics,
+            controls,
+            effect_controls,
+            noise_controls,
+        ),
         _ => Err(AudioDeviceError::backend(format!(
             "Unsupported input sample format: {format}"
         ))),
@@ -424,10 +463,11 @@ fn build_input_typed<T: RealtimeSample>(
     metrics: SharedAudioMetrics,
     controls: SharedGainControls,
     effect_controls: SharedEffectParameters,
+    noise_controls: SharedNoiseSettings,
 ) -> Result<(Stream, usize), AudioDeviceError> {
     let channels = usize::from(config.channels);
     let error_metrics = metrics.clone();
-    let mut pipeline = AudioPipeline::new(config.sample_rate, effect_controls);
+    let mut pipeline = AudioPipeline::new(config.sample_rate, effect_controls, noise_controls);
     let dsp_latency_frames = pipeline.latency_frames();
     let mut gain = SmoothedGain::new(controls.input_target(), config.sample_rate);
     device
@@ -472,11 +512,18 @@ fn build_output(
     consumer: Consumer<f32>,
     metrics: SharedAudioMetrics,
     controls: SharedGainControls,
+    noise_controls: SharedNoiseSettings,
 ) -> Result<Stream, AudioDeviceError> {
     match format {
-        SampleFormat::F32 => build_output_typed::<f32>(device, config, consumer, metrics, controls),
-        SampleFormat::I16 => build_output_typed::<i16>(device, config, consumer, metrics, controls),
-        SampleFormat::U16 => build_output_typed::<u16>(device, config, consumer, metrics, controls),
+        SampleFormat::F32 => {
+            build_output_typed::<f32>(device, config, consumer, metrics, controls, noise_controls)
+        }
+        SampleFormat::I16 => {
+            build_output_typed::<i16>(device, config, consumer, metrics, controls, noise_controls)
+        }
+        SampleFormat::U16 => {
+            build_output_typed::<u16>(device, config, consumer, metrics, controls, noise_controls)
+        }
         _ => Err(AudioDeviceError::backend(format!(
             "Unsupported output sample format: {format}"
         ))),
@@ -489,10 +536,12 @@ fn build_output_typed<T: RealtimeSample>(
     mut consumer: Consumer<f32>,
     metrics: SharedAudioMetrics,
     controls: SharedGainControls,
+    noise_controls: SharedNoiseSettings,
 ) -> Result<Stream, AudioDeviceError> {
     let channels = usize::from(config.channels);
     let error_metrics = metrics.clone();
     let mut gain = SmoothedGain::new(controls.output_target(), config.sample_rate);
+    let mut limiter = OutputLimiter::new(config.sample_rate);
     device
         .build_output_stream(
             config,
@@ -508,6 +557,12 @@ fn build_output_typed<T: RealtimeSample>(
                         }
                     };
                     let sample = gain.process(source, controls.output_target());
+                    let noise = noise_controls.load();
+                    let (sample, protected) =
+                        limiter.process(sample, noise.limiter_enabled, noise.limiter_ceiling_dbfs);
+                    if protected {
+                        metrics.record_protected_clip();
+                    }
                     meter.push(sample);
                     frame.fill(T::from_f32(sample));
                 }

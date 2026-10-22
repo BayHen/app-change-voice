@@ -87,6 +87,16 @@ Task 06 thay passthrough bằng `ProcessorChain`: mono f32 được gom thành b
 delay đã căn latency, vì vậy bật/tắt effect không làm thay đổi timing của stream. DSP không import
 Windows API; backend có thể dùng lại với CPAL host cho macOS trong tương lai.
 
+## Task 08 - Noise suppression và bảo vệ output
+
+Pipeline realtime: Capture/downmix -> RNNoise -> Noise Gate -> Pitch/Formant -> Voice Effects -> Input
+Gain -> lock-free ring -> Output Gain -> Limiter -> Meter -> Device.
+
+`NoiseProcessor` dùng `nnnoiseless` (RNNoise thuần Rust), frame 480 mẫu tại 48 kHz. Adapter bounded giữ
+nguyên sample rate CPAL cho thiết bị khác 48 kHz. Strength là dry/wet mix trên output RNNoise; bypass dùng
+dry frame đã căn latency. Limiter cuối chuỗi đếm peak đã bảo vệ. Callback không mutex, I/O, log, network
+hoặc heap allocation theo frame. Model được nhúng trong binary; persistence nằm ngoài callback.
+
 ## Preset pipeline
 
 Task 07 đặt built-in preset JSON trong `src-tauri/presets/builtin.json`. Dữ liệu đi qua loader, model versioned, semantic

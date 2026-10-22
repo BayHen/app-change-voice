@@ -5,6 +5,7 @@ pub mod devices;
 pub mod errors;
 pub mod meter;
 pub mod metrics;
+pub mod noise;
 pub mod pipeline;
 pub mod processor;
 pub mod stream;

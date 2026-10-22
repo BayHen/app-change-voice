@@ -221,3 +221,23 @@ cài Windows x64 đã được xác nhận trong quality gate ngày 22/10/2026.
 - Masculine/Feminine chỉ là pitch/formant shaping; không thể đảm bảo tự nhiên như mô hình AI voice conversion.
 - Radio dùng filter bậc thấp và Robot dùng ring modulation nên chủ ý có màu lo-fi/metallic.
 - Favorite persistence, preset editor, user preset loader và import/export không thuộc Task 07.
+
+## Task 08 - Noise Suppression & Audio Protection
+
+### Đã triển khai
+
+- RNNoise thực qua `nnnoiseless` 0.5.2 (BSD-3-Clause), model nhúng, frame 480 mẫu/48 kHz.
+- Bật/tắt realtime, suppression dry/wet mix, latency-aligned bypass, noise gate và output limiter -1 dBFS.
+- Sanitization NaN/Infinity, smoothing gate/limiter; callback không blocking, I/O, network hoặc allocation.
+- Settings lưu tại `app_config_dir/noise-settings.json`; UI backend thật hiển thị protected peak count.
+- Adapter bounded giữ sample rate thiết bị khi khác 48 kHz; pipeline vẫn ưu tiên 48 kHz.
+
+### Xác minh
+
+- Unit test tự tạo: validation, silence, rate fallback, invalid samples, limiter clipping và bypass.
+- Benchmark release trên máy kiểm thử: DSP latency 58.00 ms; xử lý 10 giây audio trong 149.93 ms,
+  realtime CPU ratio 0.015. Đây là latency thuật toán, không phải round-trip latency đo qua loopback.
+- `npm.cmd run tauri:dev`: PASS; Vite và cửa sổ executable khởi động. Rust báo warning dọn incremental
+  cache bị Access denied trên Windows, không phải compiler warning trong source và không chặn app.
+- Fan/keyboard noise, whisper/loud speech, nghe A/B microphone thật: **NOT TESTED** vì cần thiết bị và
+  đánh giá trực tiếp; không dùng dữ liệu giả để tuyên bố chất lượng nghe.

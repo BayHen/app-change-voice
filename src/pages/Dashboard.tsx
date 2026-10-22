@@ -8,7 +8,7 @@ import {
   SlidersHorizontal,
   SpeakerHigh,
 } from "@phosphor-icons/react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { AppHeader } from "../components/AppHeader";
 import { ClippingIndicator } from "../components/ClippingIndicator";
 import { DeviceSelector } from "../components/DeviceSelector";
@@ -22,7 +22,8 @@ import { useAppStatus } from "../hooks/useAppStatus";
 import { useAudioDevices } from "../hooks/useAudioDevices";
 import { useAudioRuntime } from "../hooks/useAudioRuntime";
 import { useVolumeSettings } from "../hooks/useVolumeSettings";
-import type { AudioDevice, AudioUiState, DeviceOption } from "../types/audio";
+import { useNoiseSettings } from "../hooks/useNoiseSettings";
+import type { AudioDevice, DeviceOption } from "../types/audio";
 
 const unavailableInput: DeviceOption[] = [
   { id: "none-input", name: "No microphone detected", kind: "input", available: false },
@@ -31,15 +32,6 @@ const unavailableInput: DeviceOption[] = [
 const unavailableOutput: DeviceOption[] = [
   { id: "none-output", name: "No output connected", kind: "output", available: false },
 ];
-
-const initialAudioUiState: AudioUiState = {
-  inputDeviceId: "",
-  outputDeviceId: "",
-  microphoneVolume: 0,
-  outputVolume: 0,
-  noiseSuppression: false,
-  monitoring: false,
-};
 
 interface DashboardProps {
   onNotify?: (title: string, message: string) => void;
@@ -73,7 +65,7 @@ export function Dashboard({ onNotify }: DashboardProps) {
   const devices = useAudioDevices();
   const runtime = useAudioRuntime();
   const volume = useVolumeSettings();
-  const [audioUi, setAudioUi] = useState<AudioUiState>(initialAudioUiState);
+  const noise = useNoiseSettings();
   const inputDevices = useMemo(
     () => devices.snapshot?.inputDevices ?? [],
     [devices.snapshot?.inputDevices],
@@ -279,14 +271,82 @@ export function Dashboard({ onNotify }: DashboardProps) {
                 </div>
               </div>
 
-              <div className="mt-7 border-t border-white/[0.07] pt-6">
+              <div className="mt-7 space-y-5 border-t border-white/[0.07] pt-6">
                 <ToggleSwitch
                   label="Noise suppression"
-                  description="Requires the audio processing backend."
-                  checked={audioUi.noiseSuppression}
-                  disabled
-                  onChange={(noiseSuppression) => setAudioUi({ ...audioUi, noiseSuppression })}
+                  description="RNNoise speech denoising (48 kHz internally)."
+                  checked={noise.settings.enabled}
+                  disabled={noise.loading}
+                  onChange={(enabled) => void noise.commit({ ...noise.settings, enabled })}
                 />
+                <VolumeSlider
+                  id="suppression-strength"
+                  label="Suppression mix"
+                  value={Math.round(noise.settings.suppressionStrength * 100)}
+                  disabled={noise.loading || !noise.settings.enabled}
+                  onChange={(value) =>
+                    noise.preview({ ...noise.settings, suppressionStrength: value / 100 })
+                  }
+                  onCommit={(value) =>
+                    void noise.commit({ ...noise.settings, suppressionStrength: value / 100 })
+                  }
+                />
+                <ToggleSwitch
+                  label="Noise processor bypass"
+                  description="Latency-aligned dry comparison."
+                  checked={noise.settings.bypassed}
+                  disabled={noise.loading || !noise.settings.enabled}
+                  onChange={(bypassed) => void noise.commit({ ...noise.settings, bypassed })}
+                />
+                <ToggleSwitch
+                  label="Noise gate"
+                  description={`Closes below ${noise.settings.gateThresholdDbfs.toFixed(0)} dBFS.`}
+                  checked={noise.settings.gateEnabled}
+                  disabled={noise.loading}
+                  onChange={(gateEnabled) => void noise.commit({ ...noise.settings, gateEnabled })}
+                />
+                <label className="block text-xs text-zinc-400" htmlFor="gate-threshold">
+                  Gate threshold{" "}
+                  <span className="float-right font-mono text-cyan-200">
+                    {noise.settings.gateThresholdDbfs.toFixed(0)} dBFS
+                  </span>
+                  <input
+                    id="gate-threshold"
+                    className="mt-3 w-full accent-cyan-300"
+                    type="range"
+                    min="-80"
+                    max="-20"
+                    step="1"
+                    value={noise.settings.gateThresholdDbfs}
+                    disabled={noise.loading || !noise.settings.gateEnabled}
+                    onChange={(event) =>
+                      noise.preview({
+                        ...noise.settings,
+                        gateThresholdDbfs: Number(event.target.value),
+                      })
+                    }
+                    onPointerUp={(event) =>
+                      void noise.commit({
+                        ...noise.settings,
+                        gateThresholdDbfs: Number(event.currentTarget.value),
+                      })
+                    }
+                  />
+                </label>
+                <ToggleSwitch
+                  label="Output limiter"
+                  description={`Final clipping protection at ${noise.settings.limiterCeilingDbfs.toFixed(1)} dBFS.`}
+                  checked={noise.settings.limiterEnabled}
+                  disabled={noise.loading}
+                  onChange={(limiterEnabled) =>
+                    void noise.commit({ ...noise.settings, limiterEnabled })
+                  }
+                />
+                {noise.error ? (
+                  <p role="alert" className="text-xs text-rose-300">
+                    Noise settings error: {noise.error}
+                  </p>
+                ) : null}
               </div>
             </section>
 
@@ -354,6 +414,12 @@ export function Dashboard({ onNotify }: DashboardProps) {
                     <dt className="text-zinc-600">Ring depth</dt>
                     <dd className="mt-1 text-zinc-300">
                       {runtime.status.metrics.ringDepthFrames} frames
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-zinc-600">Limiter protection</dt>
+                    <dd className="mt-1 font-mono text-zinc-300">
+                      {runtime.status.metrics.protectedClipCount} peaks
                     </dd>
                   </div>
                 </dl>

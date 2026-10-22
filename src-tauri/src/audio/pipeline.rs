@@ -1,3 +1,4 @@
+use super::noise::{NoiseProcessor, SharedNoiseSettings};
 use crate::effects::{
     chain::AdditionalEffectChain, formant::FormantProcessor, parameters::SharedEffectParameters,
     pitch_shift::PitchShiftProcessor,
@@ -85,6 +86,7 @@ impl ProcessorChain {
 }
 
 pub struct AudioPipeline {
+    noise: NoiseProcessor,
     chain: ProcessorChain,
     pending: Box<[f32; DSP_BLOCK_FRAMES]>,
     output: Box<[f32; DSP_BLOCK_FRAMES]>,
@@ -92,8 +94,13 @@ pub struct AudioPipeline {
 }
 
 impl AudioPipeline {
-    pub fn new(sample_rate: u32, controls: SharedEffectParameters) -> Self {
+    pub fn new(
+        sample_rate: u32,
+        controls: SharedEffectParameters,
+        noise_controls: SharedNoiseSettings,
+    ) -> Self {
         Self {
+            noise: NoiseProcessor::new(sample_rate, noise_controls),
             chain: ProcessorChain::new(sample_rate, controls),
             pending: Box::new([0.0; DSP_BLOCK_FRAMES]),
             output: Box::new([0.0; DSP_BLOCK_FRAMES]),
@@ -102,20 +109,22 @@ impl AudioPipeline {
     }
 
     pub fn latency_frames(&self) -> usize {
-        self.chain.latency_frames() + DSP_BLOCK_FRAMES
+        self.noise.latency_frames() + self.chain.latency_frames() + DSP_BLOCK_FRAMES
     }
 
     #[inline]
     pub fn push(&mut self, sample: f32, mut emit: impl FnMut(f32)) {
-        self.pending[self.pending_len] = sample;
-        self.pending_len += 1;
-        if self.pending_len == DSP_BLOCK_FRAMES {
-            self.chain.process_block(&self.pending, &mut self.output);
-            for sample in self.output.iter().copied() {
-                emit(sample);
+        self.noise.push(sample, |sample| {
+            self.pending[self.pending_len] = sample;
+            self.pending_len += 1;
+            if self.pending_len == DSP_BLOCK_FRAMES {
+                self.chain.process_block(&self.pending, &mut self.output);
+                for sample in self.output.iter().copied() {
+                    emit(sample);
+                }
+                self.pending_len = 0;
             }
-            self.pending_len = 0;
-        }
+        });
     }
 }
 
@@ -123,10 +132,15 @@ impl AudioPipeline {
 mod tests {
     use super::*;
     use crate::effects::parameters::EffectParameters;
+    use nnnoiseless::DenoiseState;
 
     fn process_signal(parameters: EffectParameters, input: &[f32]) -> (Vec<f32>, usize) {
         let controls = SharedEffectParameters::new(parameters);
-        let mut pipeline = AudioPipeline::new(48_000, controls);
+        let mut pipeline = AudioPipeline::new(
+            48_000,
+            controls,
+            SharedNoiseSettings::new(Default::default()),
+        );
         let latency = pipeline.latency_frames();
         let mut output = Vec::with_capacity(input.len());
         for &sample in input {
@@ -154,14 +168,18 @@ mod tests {
         let mut input = vec![0.0; 48_128];
         input[0] = 0.5;
         let (output, latency) = process_signal(parameters, &input);
-        assert_eq!(output.len(), input.len());
-        assert!((output[latency - DSP_BLOCK_FRAMES] - 0.5).abs() < 1e-6);
+        assert!(input.len() - output.len() < DenoiseState::FRAME_SIZE);
+        assert!((output[latency - DenoiseState::FRAME_SIZE - DSP_BLOCK_FRAMES] - 0.5).abs() < 1e-6);
     }
 
     #[test]
     fn rapid_parameter_updates_never_produce_non_finite_samples() {
         let controls = SharedEffectParameters::new(EffectParameters::default());
-        let mut pipeline = AudioPipeline::new(48_000, controls.clone());
+        let mut pipeline = AudioPipeline::new(
+            48_000,
+            controls.clone(),
+            SharedNoiseSettings::new(Default::default()),
+        );
         let mut finite = true;
         for index in 0..48_128 {
             if index % 257 == 0 {
@@ -204,7 +222,7 @@ mod tests {
             let mut input = sine(220.0, 3);
             input.resize(input.len().next_multiple_of(DSP_BLOCK_FRAMES), 0.0);
             let (output, latency) = process_signal(parameters, &input);
-            assert_eq!(output.len(), input.len());
+            assert!(input.len() - output.len() < DenoiseState::FRAME_SIZE);
             let start = latency + 48_000;
             let measured = estimate_frequency(&output[start..start + 48_000]);
             let expected = 220.0 * 2.0_f32.powf(semitones / 12.0);
@@ -271,7 +289,11 @@ mod tests {
     fn switches_all_builtin_presets_without_restart_or_invalid_output() {
         let registry = crate::presets::PresetRegistry::built_in().unwrap();
         let controls = SharedEffectParameters::new(EffectParameters::default());
-        let mut pipeline = AudioPipeline::new(48_000, controls.clone());
+        let mut pipeline = AudioPipeline::new(
+            48_000,
+            controls.clone(),
+            SharedNoiseSettings::new(Default::default()),
+        );
         let mut output = Vec::new();
         for preset in registry.all() {
             controls.store(preset.effect_parameters());
@@ -280,7 +302,7 @@ mod tests {
                 pipeline.push(input, |sample| output.push(sample));
             }
         }
-        assert_eq!(output.len(), 24_064 * registry.all().len());
+        assert!(24_064 * registry.all().len() - output.len() < DenoiseState::FRAME_SIZE);
         assert!(
             output
                 .iter()

@@ -10,6 +10,7 @@ use audio::{
         AudioDeviceInfo, AudioDeviceProvider, AudioDeviceSnapshot, DeviceKind, resolve_selection,
     },
     errors::AudioDeviceError,
+    noise::{self, NoiseSettings},
     stream::{AudioRuntimeStatus, AudioStreamManager},
 };
 use effects::{
@@ -128,6 +129,7 @@ impl AudioDeviceService {
 type AudioDeviceState = Mutex<AudioDeviceService>;
 type AudioRuntimeState = Mutex<AudioStreamManager>;
 struct VolumeConfigPath(PathBuf);
+struct NoiseConfigPath(PathBuf);
 
 fn with_audio_service<T>(
     state: State<'_, AudioDeviceState>,
@@ -290,6 +292,32 @@ fn preview_volume_settings(
 }
 
 #[tauri::command]
+fn get_noise_settings(
+    state: State<'_, AudioRuntimeState>,
+) -> Result<NoiseSettings, AudioDeviceError> {
+    with_audio_runtime(state, |runtime| Ok(runtime.noise_settings()))
+}
+
+#[tauri::command]
+fn preview_noise_settings(
+    settings: NoiseSettings,
+    state: State<'_, AudioRuntimeState>,
+) -> Result<NoiseSettings, AudioDeviceError> {
+    with_audio_runtime(state, |runtime| Ok(runtime.set_noise_settings(settings)))
+}
+
+#[tauri::command]
+fn set_noise_settings(
+    settings: NoiseSettings,
+    state: State<'_, AudioRuntimeState>,
+    path: State<'_, NoiseConfigPath>,
+) -> Result<NoiseSettings, AudioDeviceError> {
+    let settings = settings.validated();
+    noise::save(&path.0, settings)?;
+    with_audio_runtime(state, |runtime| Ok(runtime.set_noise_settings(settings)))
+}
+
+#[tauri::command]
 fn get_effect_parameters(
     state: State<'_, AudioRuntimeState>,
 ) -> Result<EffectParameters, AudioDeviceError> {
@@ -376,14 +404,18 @@ pub fn run() {
             let preferences_path = app.path().app_config_dir()?.join("audio-devices.json");
             let volume_path = app.path().app_config_dir()?.join("volume-settings.json");
             let volume_settings = gain::load(&volume_path).unwrap_or_default();
+            let noise_path = app.path().app_config_dir()?.join("noise-settings.json");
+            let noise_settings = noise::load(&noise_path).unwrap_or_default();
             app.manage(Mutex::new(AudioDeviceService::new(
                 platform::WindowsAudioDeviceProvider,
                 preferences_path,
             )?));
-            app.manage(Mutex::new(AudioStreamManager::with_volume_settings(
+            app.manage(Mutex::new(AudioStreamManager::with_settings(
                 volume_settings,
+                noise_settings,
             )));
             app.manage(VolumeConfigPath(volume_path));
+            app.manage(NoiseConfigPath(noise_path));
             app.manage(PresetRegistry::built_in().map_err(std::io::Error::other)?);
             Ok(())
         })
@@ -403,6 +435,9 @@ pub fn run() {
             get_volume_settings,
             set_volume_settings,
             preview_volume_settings,
+            get_noise_settings,
+            preview_noise_settings,
+            set_noise_settings,
             get_effect_parameters,
             set_effect_parameters,
             reset_effect_parameters,

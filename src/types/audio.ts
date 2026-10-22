@@ -65,6 +65,7 @@ export interface AudioMetrics {
   inputClipping: boolean;
   outputClipping: boolean;
   streamFaulted: boolean;
+  protectedClipCount: number;
 }
 
 export interface VolumeSettings {
@@ -72,6 +73,16 @@ export interface VolumeSettings {
   outputPercent: number;
   inputMuted: boolean;
   outputMuted: boolean;
+}
+
+export interface NoiseSettings {
+  enabled: boolean;
+  bypassed: boolean;
+  suppressionStrength: number;
+  gateEnabled: boolean;
+  gateThresholdDbfs: number;
+  limiterEnabled: boolean;
+  limiterCeilingDbfs: number;
 }
 
 export interface EffectParameters {

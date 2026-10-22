@@ -23,6 +23,7 @@ const volumeMocks = vi.hoisted(() => ({
   preview: vi.fn(),
   set: vi.fn(),
 }));
+const noiseMocks = vi.hoisted(() => ({ get: vi.fn(), preview: vi.fn(), set: vi.fn() }));
 const effectMocks = vi.hoisted(() => ({
   get: vi.fn(),
   set: vi.fn(),
@@ -119,6 +120,9 @@ vi.mock("../src/services/tauri", () => ({
   getVolumeSettings: volumeMocks.get,
   previewVolumeSettings: volumeMocks.preview,
   setVolumeSettings: volumeMocks.set,
+  getNoiseSettings: noiseMocks.get,
+  previewNoiseSettings: noiseMocks.preview,
+  setNoiseSettings: noiseMocks.set,
   getEffectParameters: effectMocks.get,
   setEffectParameters: effectMocks.set,
   resetEffectParameters: effectMocks.reset,
@@ -175,6 +179,7 @@ describe("desktop navigation", () => {
         inputClipping: false,
         outputClipping: false,
         streamFaulted: false,
+        protectedClipCount: 0,
       },
     };
     runtimeMocks.start.mockReset().mockImplementation(async () => {
@@ -190,6 +195,18 @@ describe("desktop navigation", () => {
     volumeMocks.get.mockReset().mockResolvedValue(volumeSettings);
     volumeMocks.preview.mockReset().mockImplementation(async (settings) => settings);
     volumeMocks.set.mockReset().mockImplementation(async (settings) => settings);
+    const noiseSettings = {
+      enabled: false,
+      bypassed: false,
+      suppressionStrength: 0.8,
+      gateEnabled: true,
+      gateThresholdDbfs: -52,
+      limiterEnabled: true,
+      limiterCeilingDbfs: -1,
+    };
+    noiseMocks.get.mockReset().mockResolvedValue(noiseSettings);
+    noiseMocks.preview.mockReset().mockImplementation(async (settings) => settings);
+    noiseMocks.set.mockReset().mockImplementation(async (settings) => settings);
     const effectParameters = {
       pitchSemitones: 0,
       formantSemitones: 0,

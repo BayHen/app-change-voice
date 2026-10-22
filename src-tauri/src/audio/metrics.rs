@@ -23,6 +23,7 @@ struct AudioMetricAtoms {
     input_clipping: AtomicBool,
     output_clipping: AtomicBool,
     stream_faulted: AtomicBool,
+    protected_clips: AtomicU64,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -47,6 +48,7 @@ pub struct AudioMetrics {
     pub input_clipping: bool,
     pub output_clipping: bool,
     pub stream_faulted: bool,
+    pub protected_clip_count: u64,
 }
 
 impl SharedAudioMetrics {
@@ -96,6 +98,10 @@ impl SharedAudioMetrics {
             .output_clipping
             .store(reading.clipping, Ordering::Relaxed);
     }
+    #[inline]
+    pub fn record_protected_clip(&self) {
+        self.0.protected_clips.fetch_add(1, Ordering::Relaxed);
+    }
 
     pub fn snapshot(
         &self,
@@ -144,6 +150,7 @@ impl SharedAudioMetrics {
             input_clipping: self.0.input_clipping.load(Ordering::Relaxed),
             output_clipping: self.0.output_clipping.load(Ordering::Relaxed),
             stream_faulted: self.0.stream_faulted.load(Ordering::Acquire),
+            protected_clip_count: self.0.protected_clips.load(Ordering::Relaxed),
         }
     }
 }

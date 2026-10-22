@@ -8,6 +8,7 @@ import type {
   DefaultDevices,
   EffectParameters,
   VolumeSettings,
+  NoiseSettings,
 } from "../types/audio";
 
 export function getAppStatus(): Promise<AppStatus> {
@@ -24,6 +25,15 @@ export function previewVolumeSettings(settings: VolumeSettings): Promise<VolumeS
 
 export function setVolumeSettings(settings: VolumeSettings): Promise<VolumeSettings> {
   return invoke<VolumeSettings>("set_volume_settings", { settings });
+}
+export function getNoiseSettings(): Promise<NoiseSettings> {
+  return invoke("get_noise_settings");
+}
+export function previewNoiseSettings(settings: NoiseSettings): Promise<NoiseSettings> {
+  return invoke("preview_noise_settings", { settings });
+}
+export function setNoiseSettings(settings: NoiseSettings): Promise<NoiseSettings> {
+  return invoke("set_noise_settings", { settings });
 }
 
 export function getInputDevices(): Promise<AudioDevice[]> {

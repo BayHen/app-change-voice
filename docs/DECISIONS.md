@@ -74,3 +74,11 @@ kiến trúc trước khi yêu cầu Task 02 được xác định.
 - Robot dùng ring modulation; Radio dùng one-pole high-pass/low-pass và soft saturation; Cartoon dùng
   pitch/formant cùng tremolo nhẹ. Đây là DSP truyền thống, không được mô tả là AI voice conversion.
 - Preset gain là makeup gain trong effect chain, không ghi đè input/output volume cá nhân của Task 05.
+
+## ADR-011 — RNNoise thuần Rust và limiter cuối chuỗi
+
+- Chọn `nnnoiseless` 0.5.2 (BSD-3-Clause), tránh C FFI/autotools trên Windows MSVC trong khi vẫn dùng
+  kiến trúc và model RNNoise. Model được nhúng, không tải khi microphone chạy.
+- RNNoise dùng frame 480 mẫu/48 kHz; adapter bounded giữ clock/sample rate CPAL cho rate fallback.
+- RNNoise không có strength native, nên control được định nghĩa rõ là dry/wet suppression mix.
+- Limiter đặt sau output monitoring gain để bảo vệ tín hiệu cuối trước sample-format conversion.

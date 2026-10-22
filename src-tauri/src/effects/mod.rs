@@ -3,6 +3,7 @@
 pub mod chain;
 pub mod formant;
 pub mod gain;
+pub mod limiter;
 pub mod parameters;
 pub mod pitch_shift;
 
