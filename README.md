@@ -6,6 +6,7 @@ thiết bị WASAPI qua CPAL; Task 04 bổ sung pipeline monitoring realtime flo
 Task 05 bổ sung gain, mute và peak/RMS meter dBFS. Task 06 tích hợp pitch shifting và formant
 processing realtime bằng Signalsmith Stretch. Task 07 bổ sung registry JSON versioned với tám preset
 built-in và DSP Robot/Radio/Cartoon; preset editor và import/export chưa được triển khai.
+Task 08 bổ sung RNNoise/noise gate/limiter; Task 09 bổ sung recording, A/B playback và WAV export local.
 
 ## Công nghệ
 

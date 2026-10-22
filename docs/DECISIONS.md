@@ -82,3 +82,11 @@ kiến trúc trước khi yêu cầu Task 02 được xác định.
 - RNNoise dùng frame 480 mẫu/48 kHz; adapter bounded giữ clock/sample rate CPAL cho rate fallback.
 - RNNoise không có strength native, nên control được định nghĩa rõ là dry/wet suppression mix.
 - Limiter đặt sau output monitoring gain để bảo vệ tín hiệu cuối trước sample-format conversion.
+
+## ADR-012 — Dual-track WAV qua SPSC queue
+
+- Ghi original/processed dạng PCM16 mono, cùng clock và sample count để A/B có căn chỉnh xác định.
+- Callback chỉ `try_push`; worker nền chịu trách nhiệm memory/file I/O. Queue đầy không block mà tăng
+  dropped-frame counter và UI đánh dấu recording không hoàn chỉnh.
+- Playback tái sử dụng output stream CPAL đang tồn tại; ưu tiên playback hơn Hear Myself để tránh double audio.
+- File tạm nằm trong app cache, không upload; export dùng plugin Dialog chính thức của Tauri 2.

@@ -4,7 +4,6 @@ import {
   Headphones,
   MicrophoneSlash,
   Pause,
-  Record,
   SlidersHorizontal,
   SpeakerHigh,
 } from "@phosphor-icons/react";
@@ -18,11 +17,13 @@ import { OutputLevelMeter } from "../components/OutputLevelMeter";
 import { MuteButton } from "../components/MuteButton";
 import { ToggleSwitch } from "../components/ToggleSwitch";
 import { VolumeSlider } from "../components/VolumeSlider";
+import { RecordingPanel } from "../components/RecordingPanel";
 import { useAppStatus } from "../hooks/useAppStatus";
 import { useAudioDevices } from "../hooks/useAudioDevices";
 import { useAudioRuntime } from "../hooks/useAudioRuntime";
 import { useVolumeSettings } from "../hooks/useVolumeSettings";
 import { useNoiseSettings } from "../hooks/useNoiseSettings";
+import { useRecording } from "../hooks/useRecording";
 import type { AudioDevice, DeviceOption } from "../types/audio";
 
 const unavailableInput: DeviceOption[] = [
@@ -66,6 +67,7 @@ export function Dashboard({ onNotify }: DashboardProps) {
   const runtime = useAudioRuntime();
   const volume = useVolumeSettings();
   const noise = useNoiseSettings();
+  const recording = useRecording();
   const inputDevices = useMemo(
     () => devices.snapshot?.inputDevices ?? [],
     [devices.snapshot?.inputDevices],
@@ -427,6 +429,20 @@ export function Dashboard({ onNotify }: DashboardProps) {
             </section>
           </div>
 
+          <RecordingPanel
+            status={recording.status}
+            busy={recording.busy}
+            error={recording.error}
+            sessionActive={runtime.status.state === "running"}
+            onStart={() => void recording.start()}
+            onStop={() => void recording.stop()}
+            onPlay={(source) => void recording.play(source)}
+            onStopPlayback={() => void recording.stopPlayback()}
+            onHear={(enabled) => void recording.setHear(enabled)}
+            onExport={(source) => void recording.exportWav(source)}
+            onDelete={() => void recording.remove()}
+          />
+
           <section className="mt-5 grid gap-5 rounded-2xl border border-white/[0.08] bg-[#0f1216] p-5 sm:p-6 lg:grid-cols-[1fr_auto] lg:items-center">
             <div className="flex items-center gap-4">
               <div className="grid size-11 shrink-0 place-items-center rounded-xl border border-cyan-300/15 bg-cyan-300/[0.06] text-cyan-300">
@@ -471,15 +487,6 @@ export function Dashboard({ onNotify }: DashboardProps) {
               >
                 {runtime.status.state === "stopped" ? "Start monitoring" : "Stop monitoring"}
                 <ArrowRight size={15} aria-hidden="true" />
-              </button>
-              <button
-                type="button"
-                disabled
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-cyan-300/20 px-4 text-sm font-medium text-cyan-200/50 disabled:cursor-not-allowed"
-              >
-                <Record size={16} weight="fill" aria-hidden="true" />
-                Record &amp; Test
-                <span className="text-[10px] uppercase tracking-wide">Soon</span>
               </button>
             </div>
           </section>

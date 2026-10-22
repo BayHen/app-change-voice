@@ -85,6 +85,20 @@ export interface NoiseSettings {
   limiterCeilingDbfs: number;
 }
 
+export type RecordingSource = "original" | "processed";
+export interface RecordingStatus {
+  recording: boolean;
+  playing: boolean;
+  hearMyself: boolean;
+  source: RecordingSource;
+  durationSeconds: number;
+  playbackSeconds: number;
+  droppedFrames: number;
+  hasRecording: boolean;
+  incomplete: boolean;
+  error: string | null;
+}
+
 export interface EffectParameters {
   pitchSemitones: number;
   formantSemitones: number;

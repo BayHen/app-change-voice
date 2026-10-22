@@ -4,6 +4,9 @@ use super::{
     metrics::{AudioMetrics, SharedAudioMetrics},
     noise::{NoiseSettings, SharedNoiseSettings},
     pipeline::AudioPipeline,
+    recording::{
+        RecordingEndpoints, RecordingFrame, RecordingRuntime, RecordingSource, RecordingStatus,
+    },
 };
 use crate::effects::{
     gain::{SharedGainControls, SmoothedGain, VolumeSettings},
@@ -17,7 +20,7 @@ use cpal::{
 };
 use rtrb::{Consumer, Producer, RingBuffer};
 use serde::Serialize;
-use std::{str::FromStr, time::Instant};
+use std::{path::PathBuf, str::FromStr, time::Instant};
 
 const PREFERRED_SAMPLE_RATE: u32 = 48_000;
 const REQUESTED_BUFFER_FRAMES: u32 = 256;
@@ -68,6 +71,8 @@ pub struct AudioStreamManager {
     active_preset_id: Option<String>,
     noise_controls: SharedNoiseSettings,
     noise_settings: NoiseSettings,
+    recording: Option<RecordingRuntime>,
+    recordings_dir: PathBuf,
 }
 
 impl Default for AudioStreamManager {
@@ -82,12 +87,18 @@ impl Default for AudioStreamManager {
             active_preset_id: Some("natural".into()),
             noise_controls: SharedNoiseSettings::new(NoiseSettings::default()),
             noise_settings: NoiseSettings::default(),
+            recording: None,
+            recordings_dir: std::env::temp_dir().join("voicemorph-studio"),
         }
     }
 }
 
 impl AudioStreamManager {
-    pub fn with_settings(settings: VolumeSettings, noise_settings: NoiseSettings) -> Self {
+    pub fn with_settings(
+        settings: VolumeSettings,
+        noise_settings: NoiseSettings,
+        recordings_dir: PathBuf,
+    ) -> Self {
         let settings = settings.validated();
         Self {
             streams: None,
@@ -99,7 +110,90 @@ impl AudioStreamManager {
             active_preset_id: Some("natural".into()),
             noise_controls: SharedNoiseSettings::new(noise_settings),
             noise_settings,
+            recording: None,
+            recordings_dir,
         }
+    }
+
+    pub fn recording_status(&self) -> RecordingStatus {
+        self.recording
+            .as_ref()
+            .map(RecordingRuntime::status)
+            .unwrap_or(RecordingStatus {
+                recording: false,
+                playing: false,
+                hear_myself: false,
+                source: RecordingSource::Processed,
+                duration_seconds: 0.0,
+                playback_seconds: 0.0,
+                dropped_frames: 0,
+                has_recording: false,
+                incomplete: false,
+                error: None,
+            })
+    }
+    pub fn start_recording(&self) -> Result<RecordingStatus, AudioDeviceError> {
+        let r = self
+            .recording
+            .as_ref()
+            .ok_or_else(|| AudioDeviceError::backend("Start the audio session before recording"))?;
+        r.start()?;
+        Ok(r.status())
+    }
+    pub fn stop_recording(&self) -> Result<RecordingStatus, AudioDeviceError> {
+        let r = self
+            .recording
+            .as_ref()
+            .ok_or_else(|| AudioDeviceError::backend("No audio session"))?;
+        r.stop()?;
+        Ok(r.status())
+    }
+    pub fn play_recording(
+        &self,
+        source: RecordingSource,
+    ) -> Result<RecordingStatus, AudioDeviceError> {
+        let r = self
+            .recording
+            .as_ref()
+            .ok_or_else(|| AudioDeviceError::backend("Start the audio session before playback"))?;
+        r.play(source)?;
+        Ok(r.status())
+    }
+    pub fn stop_playback(&self) -> Result<RecordingStatus, AudioDeviceError> {
+        let r = self
+            .recording
+            .as_ref()
+            .ok_or_else(|| AudioDeviceError::backend("No audio session"))?;
+        r.stop_playback()?;
+        Ok(r.status())
+    }
+    pub fn set_hear_myself(&self, value: bool) -> Result<RecordingStatus, AudioDeviceError> {
+        let r = self
+            .recording
+            .as_ref()
+            .ok_or_else(|| AudioDeviceError::backend("Start the audio session first"))?;
+        r.set_hear_myself(value);
+        Ok(r.status())
+    }
+    pub fn export_recording(
+        &self,
+        source: RecordingSource,
+        path: PathBuf,
+    ) -> Result<RecordingStatus, AudioDeviceError> {
+        let r = self
+            .recording
+            .as_ref()
+            .ok_or_else(|| AudioDeviceError::backend("No recording available"))?;
+        r.export(source, path)?;
+        Ok(r.status())
+    }
+    pub fn delete_recording(&self) -> Result<RecordingStatus, AudioDeviceError> {
+        let r = self
+            .recording
+            .as_ref()
+            .ok_or_else(|| AudioDeviceError::backend("No audio session"))?;
+        r.delete()?;
+        Ok(r.status())
     }
 
     pub fn noise_settings(&self) -> NoiseSettings {
@@ -170,6 +264,14 @@ impl AudioStreamManager {
             let _ = producer.push(0.0);
         }
         let metrics = SharedAudioMetrics::default();
+        self.recording.take();
+        let (recording, recording_endpoints) =
+            RecordingRuntime::new(sample_rate, self.recordings_dir.clone())?;
+        let RecordingEndpoints {
+            record_producer,
+            playback_consumer,
+            shared: recording_shared,
+        } = recording_endpoints;
         let (input_stream, dsp_latency_frames) = build_input(
             &input,
             input_config,
@@ -179,6 +281,8 @@ impl AudioStreamManager {
             self.controls.clone(),
             self.effect_controls.clone(),
             self.noise_controls.clone(),
+            record_producer,
+            recording_shared.clone(),
         )?;
         let output_stream = build_output(
             &output,
@@ -188,6 +292,8 @@ impl AudioStreamManager {
             metrics.clone(),
             self.controls.clone(),
             self.noise_controls.clone(),
+            playback_consumer,
+            recording_shared,
         )?;
         let input_buffer_frames = input_stream
             .buffer_size()
@@ -215,6 +321,7 @@ impl AudioStreamManager {
             dsp_latency_frames,
             metrics,
         });
+        self.recording = Some(recording);
         self.state = MonitoringState::Running;
         Ok(self.status())
     }
@@ -248,6 +355,10 @@ impl AudioStreamManager {
     }
 
     pub fn stop(&mut self) -> AudioRuntimeStatus {
+        if let Some(recording) = &self.recording {
+            let _ = recording.stop();
+            recording.set_hear_myself(false);
+        }
         self.streams.take();
         self.state = MonitoringState::Stopped;
         self.status()
@@ -421,6 +532,8 @@ fn build_input(
     controls: SharedGainControls,
     effect_controls: SharedEffectParameters,
     noise_controls: SharedNoiseSettings,
+    record_producer: Producer<RecordingFrame>,
+    recording_shared: std::sync::Arc<crate::audio::recording::Shared>,
 ) -> Result<(Stream, usize), AudioDeviceError> {
     match format {
         SampleFormat::F32 => build_input_typed::<f32>(
@@ -431,6 +544,8 @@ fn build_input(
             controls,
             effect_controls,
             noise_controls,
+            record_producer,
+            recording_shared,
         ),
         SampleFormat::I16 => build_input_typed::<i16>(
             device,
@@ -440,6 +555,8 @@ fn build_input(
             controls,
             effect_controls,
             noise_controls,
+            record_producer,
+            recording_shared,
         ),
         SampleFormat::U16 => build_input_typed::<u16>(
             device,
@@ -449,6 +566,8 @@ fn build_input(
             controls,
             effect_controls,
             noise_controls,
+            record_producer,
+            recording_shared,
         ),
         _ => Err(AudioDeviceError::backend(format!(
             "Unsupported input sample format: {format}"
@@ -456,6 +575,7 @@ fn build_input(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_input_typed<T: RealtimeSample>(
     device: &Device,
     config: StreamConfig,
@@ -464,11 +584,18 @@ fn build_input_typed<T: RealtimeSample>(
     controls: SharedGainControls,
     effect_controls: SharedEffectParameters,
     noise_controls: SharedNoiseSettings,
+    mut record_producer: Producer<RecordingFrame>,
+    recording_shared: std::sync::Arc<crate::audio::recording::Shared>,
 ) -> Result<(Stream, usize), AudioDeviceError> {
     let channels = usize::from(config.channels);
     let error_metrics = metrics.clone();
     let mut pipeline = AudioPipeline::new(config.sample_rate, effect_controls, noise_controls);
     let dsp_latency_frames = pipeline.latency_frames();
+    let (mut original_producer, mut original_consumer) =
+        RingBuffer::new((dsp_latency_frames + 4096).next_power_of_two());
+    for _ in 0..dsp_latency_frames {
+        let _ = original_producer.push(0.0);
+    }
     let mut gain = SmoothedGain::new(controls.input_target(), config.sample_rate);
     device
         .build_input_stream(
@@ -481,8 +608,17 @@ fn build_input_typed<T: RealtimeSample>(
                 for frame in data.chunks_exact(channels) {
                     let mono =
                         frame.iter().map(|sample| sample.to_f32()).sum::<f32>() / channels as f32;
+                    let _ = original_producer.push(mono);
                     pipeline.push(mono, |processed| {
                         let processed = gain.process(processed, controls.input_target());
+                        let original = original_consumer.pop().unwrap_or(0.0);
+                        recording_shared.push_recording(
+                            &mut record_producer,
+                            RecordingFrame {
+                                original,
+                                processed,
+                            },
+                        );
                         meter.push(processed);
                         overflowed |= producer.push(processed).is_err();
                     });
@@ -505,6 +641,7 @@ fn build_input_typed<T: RealtimeSample>(
         .map_err(audio_error)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_output(
     device: &Device,
     config: StreamConfig,
@@ -513,23 +650,47 @@ fn build_output(
     metrics: SharedAudioMetrics,
     controls: SharedGainControls,
     noise_controls: SharedNoiseSettings,
+    playback_consumer: Consumer<f32>,
+    recording_shared: std::sync::Arc<crate::audio::recording::Shared>,
 ) -> Result<Stream, AudioDeviceError> {
     match format {
-        SampleFormat::F32 => {
-            build_output_typed::<f32>(device, config, consumer, metrics, controls, noise_controls)
-        }
-        SampleFormat::I16 => {
-            build_output_typed::<i16>(device, config, consumer, metrics, controls, noise_controls)
-        }
-        SampleFormat::U16 => {
-            build_output_typed::<u16>(device, config, consumer, metrics, controls, noise_controls)
-        }
+        SampleFormat::F32 => build_output_typed::<f32>(
+            device,
+            config,
+            consumer,
+            metrics,
+            controls,
+            noise_controls,
+            playback_consumer,
+            recording_shared,
+        ),
+        SampleFormat::I16 => build_output_typed::<i16>(
+            device,
+            config,
+            consumer,
+            metrics,
+            controls,
+            noise_controls,
+            playback_consumer,
+            recording_shared,
+        ),
+        SampleFormat::U16 => build_output_typed::<u16>(
+            device,
+            config,
+            consumer,
+            metrics,
+            controls,
+            noise_controls,
+            playback_consumer,
+            recording_shared,
+        ),
         _ => Err(AudioDeviceError::backend(format!(
             "Unsupported output sample format: {format}"
         ))),
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_output_typed<T: RealtimeSample>(
     device: &Device,
     config: StreamConfig,
@@ -537,6 +698,8 @@ fn build_output_typed<T: RealtimeSample>(
     metrics: SharedAudioMetrics,
     controls: SharedGainControls,
     noise_controls: SharedNoiseSettings,
+    mut playback_consumer: Consumer<f32>,
+    recording_shared: std::sync::Arc<crate::audio::recording::Shared>,
 ) -> Result<Stream, AudioDeviceError> {
     let channels = usize::from(config.channels);
     let error_metrics = metrics.clone();
@@ -556,6 +719,8 @@ fn build_output_typed<T: RealtimeSample>(
                             0.0
                         }
                     };
+                    let source =
+                        recording_shared.playback_or_monitor(&mut playback_consumer, source);
                     let sample = gain.process(source, controls.output_target());
                     let noise = noise_controls.load();
                     let (sample, protected) =

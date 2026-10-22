@@ -24,6 +24,16 @@ const volumeMocks = vi.hoisted(() => ({
   set: vi.fn(),
 }));
 const noiseMocks = vi.hoisted(() => ({ get: vi.fn(), preview: vi.fn(), set: vi.fn() }));
+const recordingMocks = vi.hoisted(() => ({
+  status: vi.fn(),
+  start: vi.fn(),
+  stop: vi.fn(),
+  play: vi.fn(),
+  stopPlayback: vi.fn(),
+  hear: vi.fn(),
+  export: vi.fn(),
+  remove: vi.fn(),
+}));
 const effectMocks = vi.hoisted(() => ({
   get: vi.fn(),
   set: vi.fn(),
@@ -123,6 +133,14 @@ vi.mock("../src/services/tauri", () => ({
   getNoiseSettings: noiseMocks.get,
   previewNoiseSettings: noiseMocks.preview,
   setNoiseSettings: noiseMocks.set,
+  getRecordingStatus: recordingMocks.status,
+  startRecording: recordingMocks.start,
+  stopRecording: recordingMocks.stop,
+  playRecording: recordingMocks.play,
+  stopPlayback: recordingMocks.stopPlayback,
+  setHearMyself: recordingMocks.hear,
+  exportRecording: recordingMocks.export,
+  deleteRecording: recordingMocks.remove,
   getEffectParameters: effectMocks.get,
   setEffectParameters: effectMocks.set,
   resetEffectParameters: effectMocks.reset,
@@ -207,6 +225,20 @@ describe("desktop navigation", () => {
     noiseMocks.get.mockReset().mockResolvedValue(noiseSettings);
     noiseMocks.preview.mockReset().mockImplementation(async (settings) => settings);
     noiseMocks.set.mockReset().mockImplementation(async (settings) => settings);
+    const recordingStatus = {
+      recording: false,
+      playing: false,
+      hearMyself: false,
+      source: "processed",
+      durationSeconds: 0,
+      playbackSeconds: 0,
+      droppedFrames: 0,
+      hasRecording: false,
+      incomplete: false,
+      error: null,
+    };
+    for (const mock of Object.values(recordingMocks))
+      mock.mockReset().mockResolvedValue(recordingStatus);
     const effectParameters = {
       pitchSemitones: 0,
       formantSemitones: 0,
@@ -255,7 +287,7 @@ describe("desktop navigation", () => {
       "aria-valuenow",
       "-60",
     );
-    expect(screen.getByRole("button", { name: /Record & Test/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Start recording" })).toBeDisabled();
   });
 
   it("filters and applies a validated backend preset", async () => {

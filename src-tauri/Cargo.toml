@@ -25,6 +25,8 @@ cpal = "0.18.2"
 rtrb = "0.4.0"
 signalsmith-stretch = "0.1.3"
 nnnoiseless = "0.5.2"
+hound = "3.5.1"
+tauri-plugin-dialog = "2"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

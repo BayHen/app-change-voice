@@ -11,6 +11,7 @@ use audio::{
     },
     errors::AudioDeviceError,
     noise::{self, NoiseSettings},
+    recording::{RecordingSource, RecordingStatus},
     stream::{AudioRuntimeStatus, AudioStreamManager},
 };
 use effects::{
@@ -259,6 +260,57 @@ fn stop_monitoring(
 }
 
 #[tauri::command]
+fn get_recording_status(
+    state: State<'_, AudioRuntimeState>,
+) -> Result<RecordingStatus, AudioDeviceError> {
+    with_audio_runtime(state, |runtime| Ok(runtime.recording_status()))
+}
+#[tauri::command]
+fn start_recording(
+    state: State<'_, AudioRuntimeState>,
+) -> Result<RecordingStatus, AudioDeviceError> {
+    with_audio_runtime(state, |runtime| runtime.start_recording())
+}
+#[tauri::command]
+fn stop_recording(
+    state: State<'_, AudioRuntimeState>,
+) -> Result<RecordingStatus, AudioDeviceError> {
+    with_audio_runtime(state, |runtime| runtime.stop_recording())
+}
+#[tauri::command]
+fn play_recording(
+    source: RecordingSource,
+    state: State<'_, AudioRuntimeState>,
+) -> Result<RecordingStatus, AudioDeviceError> {
+    with_audio_runtime(state, |runtime| runtime.play_recording(source))
+}
+#[tauri::command]
+fn stop_playback(state: State<'_, AudioRuntimeState>) -> Result<RecordingStatus, AudioDeviceError> {
+    with_audio_runtime(state, |runtime| runtime.stop_playback())
+}
+#[tauri::command]
+fn set_hear_myself(
+    enabled: bool,
+    state: State<'_, AudioRuntimeState>,
+) -> Result<RecordingStatus, AudioDeviceError> {
+    with_audio_runtime(state, |runtime| runtime.set_hear_myself(enabled))
+}
+#[tauri::command]
+fn export_recording(
+    source: RecordingSource,
+    path: PathBuf,
+    state: State<'_, AudioRuntimeState>,
+) -> Result<RecordingStatus, AudioDeviceError> {
+    with_audio_runtime(state, |runtime| runtime.export_recording(source, path))
+}
+#[tauri::command]
+fn delete_recording(
+    state: State<'_, AudioRuntimeState>,
+) -> Result<RecordingStatus, AudioDeviceError> {
+    with_audio_runtime(state, |runtime| runtime.delete_recording())
+}
+
+#[tauri::command]
 fn get_audio_runtime_status(
     state: State<'_, AudioRuntimeState>,
 ) -> Result<AudioRuntimeStatus, AudioDeviceError> {
@@ -400,12 +452,14 @@ fn reset_to_natural_preset(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let preferences_path = app.path().app_config_dir()?.join("audio-devices.json");
             let volume_path = app.path().app_config_dir()?.join("volume-settings.json");
             let volume_settings = gain::load(&volume_path).unwrap_or_default();
             let noise_path = app.path().app_config_dir()?.join("noise-settings.json");
             let noise_settings = noise::load(&noise_path).unwrap_or_default();
+            let recordings_dir = app.path().app_cache_dir()?.join("recordings");
             app.manage(Mutex::new(AudioDeviceService::new(
                 platform::WindowsAudioDeviceProvider,
                 preferences_path,
@@ -413,6 +467,7 @@ pub fn run() {
             app.manage(Mutex::new(AudioStreamManager::with_settings(
                 volume_settings,
                 noise_settings,
+                recordings_dir,
             )));
             app.manage(VolumeConfigPath(volume_path));
             app.manage(NoiseConfigPath(noise_path));
@@ -431,6 +486,14 @@ pub fn run() {
             pause_monitoring,
             resume_monitoring,
             stop_monitoring,
+            get_recording_status,
+            start_recording,
+            stop_recording,
+            play_recording,
+            stop_playback,
+            set_hear_myself,
+            export_recording,
+            delete_recording,
             get_audio_runtime_status,
             get_volume_settings,
             set_volume_settings,

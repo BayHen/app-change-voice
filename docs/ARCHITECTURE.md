@@ -97,6 +97,17 @@ nguyên sample rate CPAL cho thiết bị khác 48 kHz. Strength là dry/wet mix
 dry frame đã căn latency. Limiter cuối chuỗi đếm peak đã bảo vệ. Callback không mutex, I/O, log, network
 hoặc heap allocation theo frame. Model được nhúng trong binary; persistence nằm ngoài callback.
 
+## Task 09 - Recording và playback
+
+Input callback ghép `original` đã delay theo DSP latency với `processed` sau toàn bộ input pipeline rồi
+`try_push` vào bounded SPSC queue hai giây. Callback không ghi file và tăng `dropped_frames` nếu queue
+đầy. Worker `voice-recording-writer` tiêu thụ queue, tạo hai WAV PCM16 mono cùng sample rate và cùng số
+frame trong thư mục cache. Export chỉ xảy ra khi người dùng chọn đường dẫn qua Tauri dialog.
+
+Playback worker đọc WAV ngoài callback và nạp bounded queue. Output callback chọn đúng một nguồn:
+playback, processed monitoring khi Hear Myself bật, hoặc silence. Vì vậy không tạo output stream thứ hai.
+Temporary recording bị xóa qua lệnh rõ ràng và không có network/upload.
+
 ## Preset pipeline
 
 Task 07 đặt built-in preset JSON trong `src-tauri/presets/builtin.json`. Dữ liệu đi qua loader, model versioned, semantic

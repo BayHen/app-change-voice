@@ -241,3 +241,26 @@ cài Windows x64 đã được xác nhận trong quality gate ngày 22/10/2026.
   cache bị Access denied trên Windows, không phải compiler warning trong source và không chặn app.
 - Fan/keyboard noise, whisper/loud speech, nghe A/B microphone thật: **NOT TESTED** vì cần thiết bị và
   đánh giá trực tiếp; không dùng dữ liệu giả để tuyên bố chất lượng nghe.
+
+## Task 09 - Voice Testing, Recording & Playback
+
+### Đã triển khai
+
+- Start/stop recording, timer, Hear Myself độc lập, original/processed selector, playback/stop,
+  timeline, WAV export và xóa file tạm.
+- Hai track PCM16 mono dùng cùng sample rate/frame clock; original được delay theo DSP latency.
+- Bounded SPSC record/playback queues; overflow tăng counter và cảnh báo recording không hoàn chỉnh.
+- File I/O và WAV decoding/encoding chạy trên worker nền; realtime callback không I/O/lock/allocation.
+- Playback và monitoring dùng chung output stream, không tạo double audio; mặc định Hear Myself tắt.
+- Tất cả xử lý local; không có upload hoặc network path.
+
+### Phạm vi kiểm thử
+
+- Unit: PCM16 WAV round-trip/delete, bounded queue overflow; regression audio/preset/noise tests.
+- UI: controls render/disabled đúng khi không có session; navigation và controls cũ không regression.
+- Record/playback 5 giây, 30 giây, đổi pitch/noise suppression, unplug device và nghe A/B bằng microphone
+  thật: **NOT TESTED** tự động, cần thao tác phần cứng và đánh giá trực tiếp.
+- Quality gate: frontend 8/8 PASS; Rust 44 PASS, 4 manual/ignored; TypeScript build, ESLint, Prettier,
+  rustfmt, Cargo check và Clippy `-D warnings` PASS; `tauri:dev` PASS.
+- Windows release executable và NSIS x64 được tạo. MSI **BLOCKED** tại WiX `light.exe` LGHT0217 vì
+  Windows Installer Service không truy cập được trên máy kiểm thử; đây là lỗi môi trường, không phải compile.

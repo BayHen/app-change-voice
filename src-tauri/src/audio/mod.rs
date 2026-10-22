@@ -8,6 +8,7 @@ pub mod metrics;
 pub mod noise;
 pub mod pipeline;
 pub mod processor;
+pub mod recording;
 pub mod stream;
 
 /// Hợp đồng tối thiểu của audio engine. Implementation thật sẽ được thêm sau Task 01.

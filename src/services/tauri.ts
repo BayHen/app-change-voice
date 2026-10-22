@@ -9,6 +9,8 @@ import type {
   EffectParameters,
   VolumeSettings,
   NoiseSettings,
+  RecordingSource,
+  RecordingStatus,
 } from "../types/audio";
 
 export function getAppStatus(): Promise<AppStatus> {
@@ -115,3 +117,15 @@ export function applyBuiltinPreset(id: string): Promise<AppliedPreset> {
 export function resetToNaturalPreset(): Promise<AppliedPreset> {
   return invoke<AppliedPreset>("reset_to_natural_preset");
 }
+
+export const getRecordingStatus = () => invoke<RecordingStatus>("get_recording_status");
+export const startRecording = () => invoke<RecordingStatus>("start_recording");
+export const stopRecording = () => invoke<RecordingStatus>("stop_recording");
+export const playRecording = (source: RecordingSource) =>
+  invoke<RecordingStatus>("play_recording", { source });
+export const stopPlayback = () => invoke<RecordingStatus>("stop_playback");
+export const setHearMyself = (enabled: boolean) =>
+  invoke<RecordingStatus>("set_hear_myself", { enabled });
+export const exportRecording = (source: RecordingSource, path: string) =>
+  invoke<RecordingStatus>("export_recording", { source, path });
+export const deleteRecording = () => invoke<RecordingStatus>("delete_recording");
