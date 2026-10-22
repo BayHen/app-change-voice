@@ -1,0 +1,26 @@
+# Quyết định kỹ thuật
+
+## ADR-001 — Tauri 2 và scaffold chính thức
+
+Chọn `create-tauri-app` Tauri 2 với template React + TypeScript để bám cấu trúc và capability model
+được Tauri duy trì. Identifier là `com.voicemorph.studio`.
+
+## ADR-002 — Tailwind CSS 4 qua Vite plugin
+
+Dùng `@tailwindcss/vite` và `@import "tailwindcss"`. Đây là tích hợp được tài liệu Tailwind hiện tại
+khuyến nghị cho Vite; không cần PostCSS hoặc `tailwind.config.js` ở giai đoạn này.
+
+## ADR-003 — Tách platform adapter
+
+Domain `audio`, `effects`, `presets` là Rust thuần. API riêng Windows phải đi qua `platform`. Cấu trúc
+này cho phép thêm adapter macOS sau này nhưng Task 01 không triển khai hoặc cam kết hỗ trợ macOS.
+
+## ADR-004 — Chưa thêm thư viện audio/DSP
+
+Task 01 chỉ cần nền móng và command mẫu. Không thêm CPAL, audio driver hoặc DSP crate để tránh khóa
+kiến trúc trước khi yêu cầu Task 02 được xác định.
+
+## ADR-005 — Bộ cài NSIS và MSI
+
+`tauri.conf.json` khai báo cả NSIS và MSI. Script build truyền rõ target
+`x86_64-pc-windows-msvc`; việc ký code-signing chưa nằm trong phạm vi Task 01.
