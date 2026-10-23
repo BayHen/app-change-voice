@@ -1,5 +1,17 @@
 # Kiến trúc VoiceMorph Studio
 
+## Task 13 - Plugin architecture và Soundboard
+
+`plugins/manifest.rs` định nghĩa manifest schema v1, descriptor và parameter schema. `EffectRegistry` chỉ nhận
+manifest trusted, đúng API/platform/capability và effect có factory đã liên kết trong binary. `EffectFactory`
+tạo `Box<dyn AudioProcessor>` ngoài realtime callback. Phiên bản này không quét thư mục plugin, không nạp DLL
+và không coi Rust dynamic-library ABI là ABI ổn định.
+
+Soundboard lưu metadata tại `app_data_dir/soundboard/library.json`; WAV vẫn ở vị trí người dùng chọn và được
+decode thành mono Float32 trước khi CPAL stream chạy. Callback chỉ đọc clip immutable, nhận lệnh `Copy` qua
+SPSC ring buffer và dùng tối đa 16 playback voices đã cấp phát. Headphone có queue riêng; virtual microphone
+được mix với processed voice trước limiter. File bị di chuyển/xóa được đánh dấu `missing`.
+
 ## Mục tiêu
 
 Task 01 thiết lập ranh giới rõ giữa giao diện, domain audio và tích hợp hệ điều hành. Chưa có xử lý

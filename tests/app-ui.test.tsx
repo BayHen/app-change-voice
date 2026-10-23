@@ -55,6 +55,7 @@ const routingMocks = vi.hoisted(() => ({
   openSettings: vi.fn(),
 }));
 const hotkeyMocks = vi.hoisted(() => ({ get: vi.fn(), set: vi.fn(), reset: vi.fn() }));
+const soundboardMocks = vi.hoisted(() => ({ list: vi.fn(), plugins: vi.fn(), effects: vi.fn() }));
 
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn().mockResolvedValue(vi.fn()) }));
 
@@ -173,10 +174,22 @@ vi.mock("../src/services/tauri", () => ({
   getHotkeyConfiguration: hotkeyMocks.get,
   setHotkeyConfiguration: hotkeyMocks.set,
   resetHotkeyConfiguration: hotkeyMocks.reset,
+  getSoundboardSounds: soundboardMocks.list,
+  getPlugins: soundboardMocks.plugins,
+  getRegisteredEffects: soundboardMocks.effects,
+  addSound: vi.fn(),
+  updateSound: vi.fn(),
+  removeSound: vi.fn(),
+  playSound: vi.fn(),
+  stopSound: vi.fn(),
+  setPluginEnabled: vi.fn(),
 }));
 
 describe("desktop navigation", () => {
   beforeEach(() => {
+    soundboardMocks.list.mockReset().mockResolvedValue([]);
+    soundboardMocks.plugins.mockReset().mockResolvedValue([]);
+    soundboardMocks.effects.mockReset().mockResolvedValue([]);
     audioMocks.refresh.mockReset().mockResolvedValue({
       inputDevices: [],
       outputDevices: [],
@@ -346,6 +359,10 @@ describe("desktop navigation", () => {
 
     await user.click(screen.getAllByRole("button", { name: "Voice Studio" })[0]);
     expect(screen.getByRole("heading", { name: "Voice Studio" })).toBeInTheDocument();
+
+    await user.click(screen.getAllByRole("button", { name: "Soundboard" })[0]);
+    expect(screen.getByRole("heading", { name: "Soundboard" })).toBeInTheDocument();
+    expect(await screen.findByText("No sounds in this view.")).toBeInTheDocument();
 
     await user.click(screen.getAllByRole("button", { name: "Virtual Microphone" })[0]);
     expect(screen.getByRole("heading", { name: "Virtual Microphone" })).toBeInTheDocument();

@@ -3,8 +3,10 @@ pub mod audio;
 pub mod effects;
 pub mod hotkeys;
 pub mod platform;
+pub mod plugins;
 pub mod presets;
 pub mod routing;
+pub mod soundboard;
 pub mod tray;
 
 use audio::{AudioEngine, NullAudioEngine};
@@ -27,6 +29,7 @@ use hotkeys::{
     manager::{HotkeyManager, HotkeyState},
 };
 use platform::PlatformInfo;
+use plugins::{EffectDescriptor, EffectRegistry, PluginStatus};
 use presets::{
     PresetRegistry, VoicePreset, repository::JsonPresetRepository, service::UserPresetService,
     validation::validate_preset,
@@ -36,8 +39,10 @@ use routing::{
     likely_virtual_device,
 };
 use serde::Serialize;
+use soundboard::hotkeys::{SoundboardHotkeyState, SoundboardHotkeys};
+use soundboard::{SoundEntry, repository::SoundboardRepository};
 use std::{path::PathBuf, sync::Mutex};
-use tauri::{Manager, State};
+use tauri::{AppHandle, Manager, State};
 use tauri_plugin_global_shortcut::ShortcutState;
 
 #[derive(Debug, Serialize)]
@@ -146,10 +151,135 @@ impl AudioDeviceService {
 type AudioDeviceState = Mutex<AudioDeviceService>;
 type AudioRuntimeState = Mutex<AudioStreamManager>;
 type UserPresetState = Mutex<UserPresetService>;
+type PluginState = Mutex<EffectRegistry>;
+type SoundboardState = Mutex<SoundboardRepository>;
 struct VolumeConfigPath(PathBuf);
 struct NoiseConfigPath(PathBuf);
 struct RoutingConfigPath(PathBuf);
 struct HotkeyConfigPath(PathBuf);
+
+#[tauri::command]
+fn get_plugins(state: State<'_, PluginState>) -> Result<Vec<PluginStatus>, String> {
+    Ok(state
+        .lock()
+        .map_err(|_| "Plugin registry lock was poisoned")?
+        .list_plugins())
+}
+#[tauri::command]
+fn get_registered_effects(state: State<'_, PluginState>) -> Result<Vec<EffectDescriptor>, String> {
+    Ok(state
+        .lock()
+        .map_err(|_| "Plugin registry lock was poisoned")?
+        .list_effects())
+}
+#[tauri::command]
+fn set_plugin_enabled(
+    id: String,
+    enabled: bool,
+    state: State<'_, PluginState>,
+) -> Result<PluginStatus, String> {
+    state
+        .lock()
+        .map_err(|_| "Plugin registry lock was poisoned")?
+        .set_enabled(&id, enabled)
+}
+#[tauri::command]
+fn get_soundboard_sounds(state: State<'_, SoundboardState>) -> Result<Vec<SoundEntry>, String> {
+    Ok(state
+        .lock()
+        .map_err(|_| "Soundboard lock was poisoned")?
+        .list())
+}
+#[tauri::command]
+fn add_sound(
+    file_path: String,
+    name: String,
+    state: State<'_, SoundboardState>,
+    runtime: State<'_, AudioRuntimeState>,
+) -> Result<SoundEntry, String> {
+    let mut repo = state.lock().map_err(|_| "Soundboard lock was poisoned")?;
+    let entry = repo.add(file_path, name)?;
+    runtime
+        .lock()
+        .map_err(|_| "Audio runtime lock was poisoned")?
+        .set_soundboard_entries(repo.list());
+    Ok(entry)
+}
+#[tauri::command]
+fn update_sound(
+    entry: SoundEntry,
+    app: AppHandle,
+    state: State<'_, SoundboardState>,
+    runtime: State<'_, AudioRuntimeState>,
+    hotkeys: State<'_, SoundboardHotkeyState>,
+) -> Result<SoundEntry, String> {
+    let mut repo = state.lock().map_err(|_| "Soundboard lock was poisoned")?;
+    let old = repo.list();
+    let mut proposed = old.clone();
+    let target = proposed
+        .iter_mut()
+        .find(|s| s.id == entry.id)
+        .ok_or("Sound not found")?;
+    *target = entry.clone();
+    hotkeys
+        .lock()
+        .map_err(|_| "Soundboard hotkey lock was poisoned")?
+        .apply(&app, &proposed)?;
+    match repo.update(entry) {
+        Ok(result) => {
+            runtime
+                .lock()
+                .map_err(|_| "Audio runtime lock was poisoned")?
+                .set_soundboard_entries(repo.list());
+            Ok(result)
+        }
+        Err(error) => {
+            let _ = hotkeys
+                .lock()
+                .map_err(|_| "Soundboard hotkey lock was poisoned")?
+                .apply(&app, &old);
+            Err(error)
+        }
+    }
+}
+#[tauri::command]
+fn remove_sound(
+    id: String,
+    app: AppHandle,
+    state: State<'_, SoundboardState>,
+    runtime: State<'_, AudioRuntimeState>,
+    hotkeys: State<'_, SoundboardHotkeyState>,
+) -> Result<(), String> {
+    let mut repo = state.lock().map_err(|_| "Soundboard lock was poisoned")?;
+    repo.remove(&id)?;
+    let entries = repo.list();
+    hotkeys
+        .lock()
+        .map_err(|_| "Soundboard hotkey lock was poisoned")?
+        .apply(&app, &entries)?;
+    runtime
+        .lock()
+        .map_err(|_| "Audio runtime lock was poisoned")?
+        .set_soundboard_entries(entries);
+    Ok(())
+}
+#[tauri::command]
+fn play_sound(id: String, runtime: State<'_, AudioRuntimeState>) -> Result<(), AudioDeviceError> {
+    runtime
+        .lock()
+        .map_err(|_| AudioDeviceError::backend("Audio runtime lock was poisoned"))?
+        .play_sound(&id)
+}
+#[tauri::command]
+fn stop_sound(
+    id: Option<String>,
+    runtime: State<'_, AudioRuntimeState>,
+) -> Result<(), AudioDeviceError> {
+    runtime
+        .lock()
+        .map_err(|_| AudioDeviceError::backend("Audio runtime lock was poisoned"))?
+        .stop_sound(id.as_deref())
+}
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -806,6 +936,12 @@ pub fn run() {
                         && let Some(action) = hotkeys::manager::action_from_event(app, shortcut)
                     {
                         application::dispatch(app, action);
+                    } else if event.state() == ShortcutState::Pressed
+                        && let Some(id) = soundboard::hotkeys::sound_from_event(app, shortcut)
+                        && let Some(runtime) = app.try_state::<AudioRuntimeState>()
+                        && let Ok(mut runtime) = runtime.lock()
+                    {
+                        let _ = runtime.play_sound(&id);
                     }
                 })
                 .build(),
@@ -819,6 +955,11 @@ pub fn run() {
             let recordings_dir = app.path().app_cache_dir()?.join("recordings");
             let user_presets_dir = app.path().app_data_dir()?.join("presets");
             let hotkey_path = app.path().app_config_dir()?.join("hotkeys.json");
+            let soundboard_path = app
+                .path()
+                .app_data_dir()?
+                .join("soundboard")
+                .join("library.json");
             let hotkey_configuration = hotkeys::config::load(&hotkey_path).unwrap_or_default();
             let routing_path = app.path().app_config_dir()?.join("audio-routing.json");
             let mut routing_configuration =
@@ -854,8 +995,15 @@ pub fn run() {
             app.manage(Mutex::new(device_service));
             let mut runtime =
                 AudioStreamManager::with_settings(volume_settings, noise_settings, recordings_dir);
+            let soundboard_repository =
+                SoundboardRepository::load(soundboard_path).map_err(std::io::Error::other)?;
+            runtime.set_soundboard_entries(soundboard_repository.list());
             runtime.set_routing_configuration(routing_configuration);
             app.manage(Mutex::new(runtime));
+            app.manage(Mutex::new(soundboard_repository));
+            app.manage(Mutex::new(
+                EffectRegistry::built_in().map_err(std::io::Error::other)?,
+            ));
             app.manage(VolumeConfigPath(volume_path));
             app.manage(NoiseConfigPath(noise_path));
             app.manage(RoutingConfigPath(routing_path));
@@ -870,6 +1018,14 @@ pub fn run() {
                 eprintln!("Global shortcuts unavailable: {error}");
             }
             app.manage(Mutex::new(hotkey_manager));
+            let mut soundboard_hotkeys = SoundboardHotkeys::new();
+            if let Some(repository) = app.try_state::<SoundboardState>()
+                && let Ok(repository) = repository.lock()
+                && let Err(error) = soundboard_hotkeys.apply(app.handle(), &repository.list())
+            {
+                eprintln!("Soundboard shortcuts unavailable: {error}");
+            }
+            app.manage(Mutex::new(soundboard_hotkeys));
             tray::manager::install(app)?;
             Ok(())
         })
@@ -952,7 +1108,16 @@ pub fn run() {
             preview_preset,
             get_active_preset_id,
             apply_builtin_preset,
-            reset_to_natural_preset
+            reset_to_natural_preset,
+            get_plugins,
+            get_registered_effects,
+            set_plugin_enabled,
+            get_soundboard_sounds,
+            add_sound,
+            update_sound,
+            remove_sound,
+            play_sound,
+            stop_sound
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

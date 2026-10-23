@@ -1,5 +1,15 @@
 # Tiến độ Task 01
 
+## Task 13 - Plugin Architecture & Soundboard
+
+- Hoàn thành registry/manifest/factory schema v1 và validation trusted/platform/API/realtime/parameter.
+- Built-in Trim factory triển khai `AudioProcessor`; không load DLL hoặc native code không tin cậy.
+- Soundboard có add/remove/rename, favorite, volume, category, route, search, Play/Stop và global hotkey.
+- Metadata ghi atomic tại `app_data_dir/soundboard/library.json`; mixer bounded 16 voices và SPSC commands.
+- Frontend build/Vitest: PASS 9/9. Rust: PASS 63 test tự động; 4 manual/ignored.
+- Hardware playback, hotkey ngoài focus và virtual cable/Discord: NOT TESTED, cần kiểm thử manual thực tế.
+- Hiện chỉ hỗ trợ WAV; bank realtime nạp lại khi Start Monitoring. Third-party binary plugin chưa được thực thi.
+
 ## Đã hoàn thành
 
 - Scaffold Tauri 2 + React + TypeScript tại root repository hiện tại.

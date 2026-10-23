@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { AppStatus } from "../types/app";
 import type { VoicePresetSummary } from "../types/preset";
 import type { HotkeyConfiguration } from "../types/hotkeys";
+import type { EffectDescriptor, PluginStatus, SoundEntry } from "../types/soundboard";
 import type {
   AudioDevice,
   AudioDeviceSnapshot,
@@ -167,3 +168,14 @@ export const setHotkeyConfiguration = (configuration: HotkeyConfiguration) =>
   invoke<HotkeyConfiguration>("set_hotkey_configuration", { configuration });
 export const resetHotkeyConfiguration = () =>
   invoke<HotkeyConfiguration>("reset_hotkey_configuration");
+export const getPlugins = () => invoke<PluginStatus[]>("get_plugins");
+export const getRegisteredEffects = () => invoke<EffectDescriptor[]>("get_registered_effects");
+export const setPluginEnabled = (id: string, enabled: boolean) =>
+  invoke<PluginStatus>("set_plugin_enabled", { id, enabled });
+export const getSoundboardSounds = () => invoke<SoundEntry[]>("get_soundboard_sounds");
+export const addSound = (filePath: string, name: string) =>
+  invoke<SoundEntry>("add_sound", { filePath, name });
+export const updateSound = (entry: SoundEntry) => invoke<SoundEntry>("update_sound", { entry });
+export const removeSound = (id: string) => invoke<void>("remove_sound", { id });
+export const playSound = (id: string) => invoke<void>("play_sound", { id });
+export const stopSound = (id?: string) => invoke<void>("stop_sound", { id: id ?? null });

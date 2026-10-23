@@ -4,6 +4,7 @@ import {
   GearSix,
   MicrophoneStage,
   Waveform,
+  MusicNotes,
   type Icon,
 } from "@phosphor-icons/react";
 import type { NavigationItem } from "../types/navigation";
@@ -24,6 +25,7 @@ const navigation: NavigationEntry[] = [
   { id: "dashboard", label: "Dashboard", icon: CirclesFour },
   { id: "effects", label: "Voice Effects", icon: Waveform },
   { id: "studio", label: "Voice Studio", icon: FadersHorizontal },
+  { id: "soundboard", label: "Soundboard", icon: MusicNotes },
   { id: "virtual-microphone", label: "Virtual Microphone", icon: MicrophoneStage },
   { id: "settings", label: "Settings", icon: GearSix },
 ];
@@ -79,7 +81,7 @@ export function AppSidebar({ activePage, onNavigate }: AppSidebarProps) {
       </aside>
 
       <nav
-        className="fixed inset-x-3 bottom-3 z-30 grid grid-cols-5 rounded-2xl border border-white/10 bg-[#101318]/95 p-1.5 shadow-[0_14px_40px_rgba(2,8,12,0.55)] backdrop-blur md:hidden"
+        className="fixed inset-x-3 bottom-3 z-30 grid grid-cols-6 rounded-2xl border border-white/10 bg-[#101318]/95 p-1.5 shadow-[0_14px_40px_rgba(2,8,12,0.55)] backdrop-blur md:hidden"
         aria-label="Mobile navigation"
       >
         {navigation.map(({ id, label, icon: NavIcon }) => {

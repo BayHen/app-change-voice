@@ -18,6 +18,10 @@ use crate::routing::{
     VirtualOutputSink, amplitude_to_dbfs, errors::RoutingError, routing_queue,
     windows::WindowsVirtualOutputSink,
 };
+use crate::soundboard::{
+    SoundEntry,
+    mixer::{MixerCommand, SoundboardMixer},
+};
 use cpal::{
     BufferSize, Device, DeviceId, SampleFormat, Stream, StreamConfig, SupportedBufferSize,
     SupportedStreamConfig, SupportedStreamConfigRange,
@@ -80,6 +84,9 @@ pub struct AudioStreamManager {
     recording: Option<RecordingRuntime>,
     recordings_dir: PathBuf,
     routing_configuration: RoutingConfiguration,
+    soundboard_entries: Vec<SoundEntry>,
+    soundboard_commands: Option<Producer<MixerCommand>>,
+    soundboard_ids: Vec<String>,
 }
 
 impl Default for AudioStreamManager {
@@ -97,6 +104,9 @@ impl Default for AudioStreamManager {
             recording: None,
             recordings_dir: std::env::temp_dir().join("voicemorph-studio"),
             routing_configuration: RoutingConfiguration::default(),
+            soundboard_entries: Vec::new(),
+            soundboard_commands: None,
+            soundboard_ids: Vec::new(),
         }
     }
 }
@@ -121,6 +131,9 @@ impl AudioStreamManager {
             recording: None,
             recordings_dir,
             routing_configuration: RoutingConfiguration::default(),
+            soundboard_entries: Vec::new(),
+            soundboard_commands: None,
+            soundboard_ids: Vec::new(),
         }
     }
 
@@ -130,6 +143,36 @@ impl AudioStreamManager {
 
     pub fn routing_configuration(&self) -> &RoutingConfiguration {
         &self.routing_configuration
+    }
+
+    pub fn set_soundboard_entries(&mut self, entries: Vec<SoundEntry>) {
+        self.soundboard_entries = entries;
+    }
+    pub fn play_sound(&mut self, id: &str) -> Result<(), AudioDeviceError> {
+        let index = self.soundboard_ids.iter().position(|value| value == id).ok_or_else(|| AudioDeviceError::backend("Sound is unavailable in the active audio session; restart monitoring after library changes"))?;
+        self.soundboard_commands
+            .as_mut()
+            .ok_or_else(|| {
+                AudioDeviceError::backend("Start audio processing before playing a sound")
+            })?
+            .push(MixerCommand::Play(index))
+            .map_err(|_| AudioDeviceError::backend("Soundboard command queue is full"))
+    }
+    pub fn stop_sound(&mut self, id: Option<&str>) -> Result<(), AudioDeviceError> {
+        let command = match id {
+            Some(id) => MixerCommand::Stop(
+                self.soundboard_ids
+                    .iter()
+                    .position(|value| value == id)
+                    .ok_or_else(|| AudioDeviceError::backend("Sound not found"))?,
+            ),
+            None => MixerCommand::StopAll,
+        };
+        self.soundboard_commands
+            .as_mut()
+            .ok_or_else(|| AudioDeviceError::backend("Audio processing is stopped"))?
+            .push(command)
+            .map_err(|_| AudioDeviceError::backend("Soundboard command queue is full"))
     }
 
     pub fn recording_status(&self) -> RecordingStatus {
@@ -286,6 +329,18 @@ impl AudioStreamManager {
             .max(REQUESTED_BUFFER_FRAMES as usize * 2)
             .next_power_of_two();
         let (mut producer, consumer) = RingBuffer::<f32>::new(ring_capacity);
+        let (sound_producer, sound_consumer) = RingBuffer::<f32>::new(ring_capacity);
+        let mixer = SoundboardMixer::load(&self.soundboard_entries, sample_rate)
+            .map_err(AudioDeviceError::backend)?;
+        self.soundboard_ids = self
+            .soundboard_entries
+            .iter()
+            .filter(|entry| !entry.missing)
+            .map(|entry| entry.id.clone())
+            .collect();
+        let (soundboard_command_producer, soundboard_command_consumer) =
+            RingBuffer::<MixerCommand>::new(64);
+        self.soundboard_commands = Some(soundboard_command_producer);
         for _ in 0..REQUESTED_BUFFER_FRAMES.min(ring_capacity as u32) {
             let _ = producer.push(0.0);
         }
@@ -325,6 +380,9 @@ impl AudioStreamManager {
             record_producer,
             recording_shared.clone(),
             routing_producer,
+            mixer,
+            soundboard_command_consumer,
+            sound_producer,
         )?;
         let output_stream = build_output(
             &output,
@@ -336,6 +394,7 @@ impl AudioStreamManager {
             self.noise_controls.clone(),
             playback_consumer,
             recording_shared,
+            sound_consumer,
         )?;
         let input_buffer_frames = input_stream
             .buffer_size()
@@ -403,6 +462,8 @@ impl AudioStreamManager {
             recording.set_hear_myself(false);
         }
         self.streams.take();
+        self.soundboard_commands = None;
+        self.soundboard_ids.clear();
         self.state = MonitoringState::Stopped;
         self.status()
     }
@@ -683,6 +744,9 @@ fn build_input(
     record_producer: Producer<RecordingFrame>,
     recording_shared: std::sync::Arc<crate::audio::recording::Shared>,
     routing_producer: Option<RoutingProducer>,
+    mixer: SoundboardMixer,
+    soundboard_commands: Consumer<MixerCommand>,
+    sound_producer: Producer<f32>,
 ) -> Result<(Stream, usize), AudioDeviceError> {
     match format {
         SampleFormat::F32 => build_input_typed::<f32>(
@@ -696,6 +760,9 @@ fn build_input(
             record_producer,
             recording_shared,
             routing_producer,
+            mixer,
+            soundboard_commands,
+            sound_producer,
         ),
         SampleFormat::I16 => build_input_typed::<i16>(
             device,
@@ -708,6 +775,9 @@ fn build_input(
             record_producer,
             recording_shared,
             routing_producer,
+            mixer,
+            soundboard_commands,
+            sound_producer,
         ),
         SampleFormat::U16 => build_input_typed::<u16>(
             device,
@@ -720,6 +790,9 @@ fn build_input(
             record_producer,
             recording_shared,
             routing_producer,
+            mixer,
+            soundboard_commands,
+            sound_producer,
         ),
         _ => Err(AudioDeviceError::backend(format!(
             "Unsupported input sample format: {format}"
@@ -739,6 +812,9 @@ fn build_input_typed<T: RealtimeSample>(
     mut record_producer: Producer<RecordingFrame>,
     recording_shared: std::sync::Arc<crate::audio::recording::Shared>,
     mut routing_producer: Option<RoutingProducer>,
+    mut mixer: SoundboardMixer,
+    mut soundboard_commands: Consumer<MixerCommand>,
+    mut sound_producer: Producer<f32>,
 ) -> Result<(Stream, usize), AudioDeviceError> {
     let channels = usize::from(config.channels);
     let error_metrics = metrics.clone();
@@ -763,6 +839,10 @@ fn build_input_typed<T: RealtimeSample>(
                         frame.iter().map(|sample| sample.to_f32()).sum::<f32>() / channels as f32;
                     let _ = original_producer.push(mono);
                     pipeline.push(mono, |processed| {
+                        while let Ok(command) = soundboard_commands.pop() {
+                            mixer.command(command);
+                        }
+                        let (headphone_sound, virtual_sound) = mixer.next_sample();
                         let processed = gain.process(processed, controls.input_target());
                         let original = original_consumer.pop().unwrap_or(0.0);
                         recording_shared.push_recording(
@@ -774,8 +854,9 @@ fn build_input_typed<T: RealtimeSample>(
                         );
                         meter.push(processed);
                         if let Some(routing) = routing_producer.as_mut() {
-                            routing.push(processed);
+                            routing.push(processed + virtual_sound);
                         }
+                        let _ = sound_producer.push(headphone_sound);
                         overflowed |= producer.push(processed).is_err();
                     });
                     frames += 1;
@@ -808,6 +889,7 @@ fn build_output(
     noise_controls: SharedNoiseSettings,
     playback_consumer: Consumer<f32>,
     recording_shared: std::sync::Arc<crate::audio::recording::Shared>,
+    sound_consumer: Consumer<f32>,
 ) -> Result<Stream, AudioDeviceError> {
     match format {
         SampleFormat::F32 => build_output_typed::<f32>(
@@ -819,6 +901,7 @@ fn build_output(
             noise_controls,
             playback_consumer,
             recording_shared,
+            sound_consumer,
         ),
         SampleFormat::I16 => build_output_typed::<i16>(
             device,
@@ -829,6 +912,7 @@ fn build_output(
             noise_controls,
             playback_consumer,
             recording_shared,
+            sound_consumer,
         ),
         SampleFormat::U16 => build_output_typed::<u16>(
             device,
@@ -839,6 +923,7 @@ fn build_output(
             noise_controls,
             playback_consumer,
             recording_shared,
+            sound_consumer,
         ),
         _ => Err(AudioDeviceError::backend(format!(
             "Unsupported output sample format: {format}"
@@ -856,6 +941,7 @@ fn build_output_typed<T: RealtimeSample>(
     noise_controls: SharedNoiseSettings,
     mut playback_consumer: Consumer<f32>,
     recording_shared: std::sync::Arc<crate::audio::recording::Shared>,
+    mut sound_consumer: Consumer<f32>,
 ) -> Result<Stream, AudioDeviceError> {
     let channels = usize::from(config.channels);
     let error_metrics = metrics.clone();
@@ -875,8 +961,9 @@ fn build_output_typed<T: RealtimeSample>(
                             0.0
                         }
                     };
-                    let source =
-                        recording_shared.playback_or_monitor(&mut playback_consumer, source);
+                    let source = recording_shared
+                        .playback_or_monitor(&mut playback_consumer, source)
+                        + sound_consumer.pop().unwrap_or(0.0);
                     let sample = gain.process(source, controls.output_target());
                     let noise = noise_controls.load();
                     let (sample, protected) =
