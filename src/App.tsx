@@ -8,6 +8,7 @@ import { VoiceEffects } from "./pages/VoiceEffects";
 import { VoiceStudio } from "./pages/VoiceStudio";
 import { VirtualMicrophone } from "./pages/VirtualMicrophone";
 import { SoundboardPage } from "./pages/SoundboardPage";
+import { GameAppIntegration } from "./pages/GameAppIntegration";
 import type { NavigationItem } from "./types/navigation";
 import type { VoicePresetSummary } from "./types/preset";
 import type { ToastMessage } from "./types/ui";
@@ -76,6 +77,8 @@ export default function App() {
         return <VirtualMicrophone />;
       case "soundboard":
         return <SoundboardPage />;
+      case "integrations":
+        return <GameAppIntegration />;
       default:
         return <Dashboard onNotify={notify} />;
     }

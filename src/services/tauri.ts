@@ -3,6 +3,7 @@ import type { AppStatus } from "../types/app";
 import type { VoicePresetSummary } from "../types/preset";
 import type { HotkeyConfiguration } from "../types/hotkeys";
 import type { EffectDescriptor, PluginStatus, SoundEntry } from "../types/soundboard";
+import type { ApplicationProfile } from "../types/profiles";
 import type {
   AudioDevice,
   AudioDeviceSnapshot,
@@ -179,3 +180,11 @@ export const updateSound = (entry: SoundEntry) => invoke<SoundEntry>("update_sou
 export const removeSound = (id: string) => invoke<void>("remove_sound", { id });
 export const playSound = (id: string) => invoke<void>("play_sound", { id });
 export const stopSound = (id?: string) => invoke<void>("stop_sound", { id: id ?? null });
+export const getApplicationProfiles = () =>
+  invoke<ApplicationProfile[]>("get_application_profiles");
+export const saveApplicationProfile = (profile: ApplicationProfile) =>
+  invoke<ApplicationProfile>("save_application_profile", { profile });
+export const deleteApplicationProfile = (id: string) =>
+  invoke<void>("delete_application_profile", { id });
+export const applyApplicationProfile = (profileId: string) =>
+  invoke<ApplicationProfile>("apply_application_profile", { profileId });

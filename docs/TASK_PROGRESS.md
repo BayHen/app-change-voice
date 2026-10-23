@@ -111,6 +111,41 @@ cài Windows x64 đã được xác nhận trong quality gate ngày 22/10/2026.
 - NOT TESTED — routing qua VB-CABLE, Discord microphone test, OBS capture, disconnect, preset/recording khi
   route, sample-rate mismatch thực tế và latency end-to-end; máy test chưa xác minh có virtual cable endpoint.
 
+### Xác minh lại Task 11 sau khi cài driver (23/10/2026)
+
+- PASS — Windows PnP báo `CABLE Input` playback và `CABLE Output` capture của VB-Audio Virtual Cable 3.3.1.7
+  (signed, INF `oem0.inf`) ở trạng thái OK. Một instance VB-Audio thứ hai/16-channel báo Error và không được
+  dùng cho kiểm thử.
+- PASS — CPAL enumerate thiết bị, mở/dừng input/output mặc định hai lần và giải phóng stream.
+- PASS — mở/dừng VB-CABLE playback endpoint thật; virtual sink không fault.
+- PASS — nguồn 44.1 kHz được virtual sink chấp nhận/chuyển đổi theo cấu hình endpoint.
+- PASS — một microphone pipeline duy nhất fan-out processed signal sang virtual routing, trạng thái Active,
+  dừng sạch và không fault trong smoke test 500 ms.
+- FAIL — release executable x64 build thành công nhưng cả NSIS và MSI hiện dừng sớm tại bước patch bundle
+  metadata với `Access is denied (os error 5)`. WiX chưa được gọi nên lỗi hiện tại không còn là kết quả
+  `LGHT0217`; cần kiểm tra antivirus/Controlled Folder Access hoặc policy chặn sửa PE executable.
+- NOT TESTED — Discord Mic Test, OBS capture, device disconnect khi đang route và đo latency loopback.
+
+## Task 11.1 - Discord Virtual Microphone Integration
+
+- Settings có Discord Integration dùng trực tiếp Task 11 routing service: endpoint selector, refresh,
+  Start/Stop, trạng thái, processed meter, signal detection và hướng dẫn Mic Test.
+- Không có Discord API/bot, không tự sửa Discord settings và không tạo audio/DSP pipeline thứ hai.
+- Endpoint được lưu bằng ID + fingerprint fallback; UI không tuyên bố Discord Connected chỉ từ Routing Active.
+- Tài liệu cấu hình và checklist manual nằm trong `docs/DISCORD_INTEGRATION.md`.
+- Backend hardware PASS: VB-CABLE 3.3.1.7, stream open/stop, 44.1 kHz adaptation và live processed fan-out.
+- Discord Mic Test/preset/mute/hotkey/reconnect thực tế: NOT TESTED cho tới khi người dùng xác minh trong Discord.
+
+## Task 11.2 - System-Wide Voice Changer
+
+- Trang Games & Apps dùng cùng device service, `AudioStreamManager`, processed meter và virtual routing Task 11.
+- Profile schema v1 có CRUD/persistence và default VALORANT, Discord, OBS; người dùng apply thủ công.
+- Apply profile cập nhật preset, noise suppression và limiter; không restart engine, không dò/hook process.
+- Hướng dẫn riêng cho system-wide routing, VALORANT, Discord, OBS và troubleshooting đã được tạo.
+- Soundboard preference/volume được lưu trong profile để UI mô tả cấu hình; master soundboard enable/gain realtime
+  chưa có control chung nên chưa được apply vào mixer trong phiên bản này.
+- VALORANT/Discord/OBS đồng thời, disconnect, sleep/resume và long-running session: cần manual acceptance.
+
 ## Task 12 - Global Hotkeys & System Tray
 
 ### Đã triển khai

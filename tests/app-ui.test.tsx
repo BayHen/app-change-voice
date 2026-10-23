@@ -56,6 +56,12 @@ const routingMocks = vi.hoisted(() => ({
 }));
 const hotkeyMocks = vi.hoisted(() => ({ get: vi.fn(), set: vi.fn(), reset: vi.fn() }));
 const soundboardMocks = vi.hoisted(() => ({ list: vi.fn(), plugins: vi.fn(), effects: vi.fn() }));
+const profileMocks = vi.hoisted(() => ({
+  list: vi.fn(),
+  save: vi.fn(),
+  remove: vi.fn(),
+  apply: vi.fn(),
+}));
 
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn().mockResolvedValue(vi.fn()) }));
 
@@ -183,6 +189,10 @@ vi.mock("../src/services/tauri", () => ({
   playSound: vi.fn(),
   stopSound: vi.fn(),
   setPluginEnabled: vi.fn(),
+  getApplicationProfiles: profileMocks.list,
+  saveApplicationProfile: profileMocks.save,
+  deleteApplicationProfile: profileMocks.remove,
+  applyApplicationProfile: profileMocks.apply,
 }));
 
 describe("desktop navigation", () => {
@@ -190,6 +200,24 @@ describe("desktop navigation", () => {
     soundboardMocks.list.mockReset().mockResolvedValue([]);
     soundboardMocks.plugins.mockReset().mockResolvedValue([]);
     soundboardMocks.effects.mockReset().mockResolvedValue([]);
+    const profiles = [
+      {
+        schemaVersion: 1,
+        id: "valorant",
+        name: "VALORANT Voice Chat",
+        application: "valorant",
+        presetId: "natural",
+        noiseSuppression: true,
+        limiterEnabled: true,
+        soundboardEnabled: false,
+        soundboardVolumePercent: 25,
+        clarityPriority: true,
+      },
+    ];
+    profileMocks.list.mockReset().mockResolvedValue(profiles);
+    profileMocks.save.mockReset().mockImplementation(async (value) => value);
+    profileMocks.remove.mockReset().mockResolvedValue(undefined);
+    profileMocks.apply.mockReset().mockImplementation(async () => profiles[0]);
     audioMocks.refresh.mockReset().mockResolvedValue({
       inputDevices: [],
       outputDevices: [],
@@ -363,6 +391,9 @@ describe("desktop navigation", () => {
     await user.click(screen.getAllByRole("button", { name: "Soundboard" })[0]);
     expect(screen.getByRole("heading", { name: "Soundboard" })).toBeInTheDocument();
     expect(await screen.findByText("No sounds in this view.")).toBeInTheDocument();
+
+    await user.click(screen.getAllByRole("button", { name: "Games & Apps" })[0]);
+    expect(screen.getByRole("heading", { name: "Game & App Integration" })).toBeInTheDocument();
 
     await user.click(screen.getAllByRole("button", { name: "Virtual Microphone" })[0]);
     expect(screen.getByRole("heading", { name: "Virtual Microphone" })).toBeInTheDocument();

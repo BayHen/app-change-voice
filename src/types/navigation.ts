@@ -1,2 +1,8 @@
 export type NavigationItem =
-  "dashboard" | "effects" | "studio" | "soundboard" | "virtual-microphone" | "settings";
+  | "dashboard"
+  | "effects"
+  | "studio"
+  | "soundboard"
+  | "integrations"
+  | "virtual-microphone"
+  | "settings";

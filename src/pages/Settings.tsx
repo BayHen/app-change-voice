@@ -2,6 +2,7 @@ import { AppHeader } from "../components/AppHeader";
 import { DeviceSelector } from "../components/DeviceSelector";
 import { ToggleSwitch } from "../components/ToggleSwitch";
 import { HotkeySettings } from "../components/HotkeySettings";
+import { DiscordIntegration } from "../components/DiscordIntegration";
 import type { DeviceOption } from "../types/audio";
 
 const noAudioDevices: DeviceOption[] = [
@@ -32,6 +33,13 @@ export function Settings() {
           description="System-wide controls and window behavior"
         >
           <HotkeySettings />
+        </SettingsSection>
+
+        <SettingsSection
+          title="Discord Integration"
+          description="Route processed voice through VB-CABLE"
+        >
+          <DiscordIntegration />
         </SettingsSection>
 
         <SettingsSection title="Audio" description="Default device and processing behavior">

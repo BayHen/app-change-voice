@@ -5,6 +5,7 @@ pub mod hotkeys;
 pub mod platform;
 pub mod plugins;
 pub mod presets;
+pub mod profiles;
 pub mod routing;
 pub mod soundboard;
 pub mod tray;
@@ -34,6 +35,7 @@ use presets::{
     PresetRegistry, VoicePreset, repository::JsonPresetRepository, service::UserPresetService,
     validation::validate_preset,
 };
+use profiles::{ApplicationProfile, ProfileRepository};
 use routing::{
     AudioRoutingService, RoutingConfiguration, RoutingStatus, errors::RoutingError,
     likely_virtual_device,
@@ -152,11 +154,77 @@ type AudioDeviceState = Mutex<AudioDeviceService>;
 type AudioRuntimeState = Mutex<AudioStreamManager>;
 type UserPresetState = Mutex<UserPresetService>;
 type PluginState = Mutex<EffectRegistry>;
+type ProfileState = Mutex<ProfileRepository>;
 type SoundboardState = Mutex<SoundboardRepository>;
 struct VolumeConfigPath(PathBuf);
 struct NoiseConfigPath(PathBuf);
 struct RoutingConfigPath(PathBuf);
 struct HotkeyConfigPath(PathBuf);
+
+#[tauri::command]
+fn get_application_profiles(
+    state: State<'_, ProfileState>,
+) -> Result<Vec<ApplicationProfile>, String> {
+    Ok(state
+        .lock()
+        .map_err(|_| "Profile repository lock was poisoned")?
+        .all())
+}
+#[tauri::command]
+fn save_application_profile(
+    profile: ApplicationProfile,
+    state: State<'_, ProfileState>,
+) -> Result<ApplicationProfile, String> {
+    state
+        .lock()
+        .map_err(|_| "Profile repository lock was poisoned")?
+        .save(profile)
+}
+#[tauri::command]
+fn delete_application_profile(id: String, state: State<'_, ProfileState>) -> Result<(), String> {
+    state
+        .lock()
+        .map_err(|_| "Profile repository lock was poisoned")?
+        .delete(&id)
+}
+#[tauri::command]
+fn apply_application_profile(
+    profile_id: String,
+    profiles: State<'_, ProfileState>,
+    registry: State<'_, PresetRegistry>,
+    users: State<'_, UserPresetState>,
+    runtime: State<'_, AudioRuntimeState>,
+) -> Result<ApplicationProfile, AudioDeviceError> {
+    let profile = profiles
+        .lock()
+        .map_err(|_| AudioDeviceError::backend("Profile repository lock was poisoned"))?
+        .all()
+        .into_iter()
+        .find(|p| p.id == profile_id)
+        .ok_or_else(|| AudioDeviceError::backend("Application profile not found"))?;
+    let preset = registry
+        .get(&profile.preset_id)
+        .ok()
+        .cloned()
+        .or_else(|| users.lock().ok()?.get(&profile.preset_id).ok().cloned())
+        .ok_or_else(|| {
+            AudioDeviceError::backend(format!("Preset not found: {}", profile.preset_id))
+        })?;
+    validate_preset(&preset).map_err(AudioDeviceError::backend)?;
+    let mut runtime = runtime
+        .lock()
+        .map_err(|_| AudioDeviceError::backend("Audio runtime lock was poisoned"))?;
+    let mut volume = runtime.volume_settings();
+    volume.input_percent = preset.parameters.input_gain_percent.round() as u8;
+    volume.output_percent = preset.parameters.output_gain_percent.round() as u8;
+    runtime.set_volume_settings(volume);
+    let mut noise = runtime.noise_settings();
+    noise.enabled = profile.noise_suppression;
+    noise.limiter_enabled = profile.limiter_enabled;
+    runtime.set_noise_settings(noise);
+    runtime.apply_preset(&preset.id, preset.effect_parameters());
+    Ok(profile)
+}
 
 #[tauri::command]
 fn get_plugins(state: State<'_, PluginState>) -> Result<Vec<PluginStatus>, String> {
@@ -960,6 +1028,10 @@ pub fn run() {
                 .app_data_dir()?
                 .join("soundboard")
                 .join("library.json");
+            let profiles_path = app
+                .path()
+                .app_config_dir()?
+                .join("application-profiles.json");
             let hotkey_configuration = hotkeys::config::load(&hotkey_path).unwrap_or_default();
             let routing_path = app.path().app_config_dir()?.join("audio-routing.json");
             let mut routing_configuration =
@@ -1003,6 +1075,9 @@ pub fn run() {
             app.manage(Mutex::new(soundboard_repository));
             app.manage(Mutex::new(
                 EffectRegistry::built_in().map_err(std::io::Error::other)?,
+            ));
+            app.manage(Mutex::new(
+                ProfileRepository::load(profiles_path).map_err(std::io::Error::other)?,
             ));
             app.manage(VolumeConfigPath(volume_path));
             app.manage(NoiseConfigPath(noise_path));
@@ -1117,7 +1192,11 @@ pub fn run() {
             update_sound,
             remove_sound,
             play_sound,
-            stop_sound
+            stop_sound,
+            get_application_profiles,
+            save_application_profile,
+            delete_application_profile,
+            apply_application_profile
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

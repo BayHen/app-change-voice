@@ -1057,4 +1057,49 @@ mod manual_hardware_tests {
             assert_eq!(manager.stop().state, MonitoringState::Stopped);
         }
     }
+
+    #[test]
+    #[ignore = "manual hardware test: requires microphone, output and virtual cable endpoints"]
+    fn routes_live_pipeline_to_virtual_cable() {
+        let host = cpal::default_host();
+        let input_id = host
+            .default_input_device()
+            .and_then(|d| d.id().ok())
+            .expect("No default input")
+            .to_string();
+        let output_id = host
+            .default_output_device()
+            .and_then(|d| d.id().ok())
+            .expect("No default output")
+            .to_string();
+        let virtual_device = host
+            .output_devices()
+            .expect("WASAPI output enumeration failed")
+            .find(|device| {
+                device.description().ok().is_some_and(|description| {
+                    crate::routing::likely_virtual_device(description.name())
+                })
+            })
+            .expect("No virtual cable playback endpoint");
+        let virtual_id = virtual_device
+            .id()
+            .expect("Virtual endpoint has no stable ID")
+            .to_string();
+        let mut manager = AudioStreamManager::default();
+        manager.set_routing_configuration(RoutingConfiguration {
+            output_device_id: Some(virtual_id),
+            output_device_fingerprint: None,
+        });
+        manager
+            .start(&input_id, &output_id)
+            .expect("Could not start shared microphone pipeline");
+        let active = manager
+            .start_routing()
+            .expect("Could not start virtual routing");
+        assert_eq!(active.state, RoutingState::Active);
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        assert_ne!(manager.routing_status().state, RoutingState::Faulted);
+        manager.stop();
+        assert_eq!(manager.routing_status().state, RoutingState::Ready);
+    }
 }

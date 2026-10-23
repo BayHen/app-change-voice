@@ -95,3 +95,9 @@ nhận ứng dụng đích nhận đúng tín hiệu processed.
 
 Các mục Discord/OBS, nghe chất lượng, disconnect driver và latency end-to-end cần máy có virtual cable thật.
 Không được đánh dấu PASS chỉ từ unit test hoặc từ việc stream playback mở thành công.
+
+### Trạng thái máy kiểm thử 23/10/2026
+
+Windows đã nhận `CABLE Input` (playback) và `CABLE Output` (capture). Kiểm thử tự động đã mở virtual output,
+kiểm tra nguồn 44.1 kHz và chạy pipeline microphone → DSP → virtual output thành công. Discord/OBS vẫn cần
+người dùng chọn `CABLE Output (VB-Audio Virtual Cable)` và xác nhận meter/recording bằng thao tác thủ công.

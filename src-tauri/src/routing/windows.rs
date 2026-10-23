@@ -242,3 +242,69 @@ fn format_rank(format: SampleFormat) -> u8 {
 fn route_error(error: cpal::Error) -> RoutingError {
     RoutingError::new("backend", error.to_string())
 }
+
+#[cfg(test)]
+mod manual_hardware_tests {
+    use super::*;
+    use crate::{audio::noise::NoiseSettings, routing::routing_queue};
+    use std::{thread, time::Duration};
+
+    fn virtual_output() -> (String, String) {
+        let host = cpal::default_host();
+        host.output_devices()
+            .expect("WASAPI output enumeration failed")
+            .filter_map(|device| {
+                let id = device.id().ok()?.to_string();
+                let name = device.description().ok()?.name().to_owned();
+                WindowsVirtualDeviceManager::is_likely_virtual_output(&name).then_some((id, name))
+            })
+            .next()
+            .expect("No virtual cable playback endpoint was found")
+    }
+
+    #[test]
+    #[ignore = "manual hardware test: requires an installed virtual audio cable"]
+    fn opens_and_stops_virtual_cable_output() {
+        let (id, name) = virtual_output();
+        let (mut producer, consumer, shared) = routing_queue(48_000);
+        let sink = WindowsVirtualOutputSink::build(
+            &id,
+            48_000,
+            consumer,
+            shared.clone(),
+            SharedNoiseSettings::new(NoiseSettings::default()),
+        )
+        .expect("Could not build virtual output stream");
+        sink.play().expect("Could not start virtual output stream");
+        shared.active.store(true, Ordering::Release);
+        for frame in 0..4_800 {
+            producer.push((frame as f32 * 440.0 * std::f32::consts::TAU / 48_000.0).sin() * 0.05);
+        }
+        thread::sleep(Duration::from_millis(150));
+        sink.pause().expect("Could not stop virtual output stream");
+        assert!(
+            name.to_ascii_lowercase().contains("cable")
+                || name.to_ascii_lowercase().contains("virtual")
+        );
+        assert!(
+            !shared.faulted.load(Ordering::Acquire),
+            "Virtual output stream faulted"
+        );
+    }
+
+    #[test]
+    #[ignore = "manual hardware test: requires an installed virtual audio cable"]
+    fn virtual_cable_accepts_sample_rate_mismatch() {
+        let (id, _) = virtual_output();
+        let (_, consumer, shared) = routing_queue(44_100);
+        let sink = WindowsVirtualOutputSink::build(
+            &id,
+            44_100,
+            consumer,
+            shared,
+            SharedNoiseSettings::new(NoiseSettings::default()),
+        )
+        .expect("Virtual output did not accept/adapt a 44.1 kHz source");
+        assert!(sink.sample_rate > 0);
+    }
+}
