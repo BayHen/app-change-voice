@@ -1,5 +1,17 @@
 # Tiến độ Task 01
 
+## Task 16 - Windows Installer, Release & Auto Update
+
+- Giữ identifier `com.voicemorph.studio`, version `0.1.0`; bổ sung publisher/category/descriptions và NSIS current-user configuration.
+- Thêm version synchronization check, changelog, Windows CI và tag-triggered draft release workflow.
+- Tích hợp Tauri 2 updater/process, HTTPS GitHub endpoint, required signed version, no downgrade và Settings UI.
+- Signed updater fail closed khi thiếu public key; private key chỉ được nhận qua CI secrets.
+- Không bundle/cài/gỡ VB-CABLE; hướng dẫn dependency bên thứ ba riêng.
+- Auto-update end-to-end và Windows Authenticode: NOT TESTED/BLOCKED cho đến khi có signing credentials và signed test release.
+- PASS NSIS current-user install, launch và silent uninstall; app data vẫn tồn tại sau uninstall.
+- MSI BLOCKED: WiX `LGHT0217/LGHT0216` vì Windows Installer Service không truy cập được.
+- RustSec phát hiện `zip 4.6.1` qua updater compatibility feature; đã tắt feature ZIP v1 không dùng và audit lại 0 vulnerability.
+
 ## Task 15 - Automated Testing & Performance Optimization
 
 - Thêm Audio Diagnostics panel và export report privacy-safe qua temporary file.

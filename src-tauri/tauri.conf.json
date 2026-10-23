@@ -27,12 +27,39 @@
   "bundle": {
     "active": true,
     "targets": ["nsis", "msi"],
+    "publisher": "VoiceMorph Studio Contributors",
+    "homepage": "https://github.com/BayHen/app-change-voice",
+    "copyright": "Copyright © 2026 VoiceMorph Studio Contributors",
+    "category": "Music",
+    "shortDescription": "Local real-time voice processing studio",
+    "longDescription": "VoiceMorph Studio processes microphone audio locally and can route processed voice to compatible virtual audio devices.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      },
+      "wix": {
+        "language": "en-US"
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/BayHen/app-change-voice/releases/latest/download/latest.json"
+      ],
+      "pubkey": "",
+      "requireSignedVersion": true,
+      "allowDowngrades": false,
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

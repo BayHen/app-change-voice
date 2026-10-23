@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../src/App";
 import { VoiceStudio } from "../src/pages/VoiceStudio";
+import { UpdateSettings } from "../src/components/UpdateSettings";
 import type { AudioRuntimeStatus } from "../src/types/audio";
 
 const audioMocks = vi.hoisted(() => ({
@@ -64,8 +65,15 @@ const profileMocks = vi.hoisted(() => ({
 }));
 const backupMocks = vi.hoisted(() => ({ status: vi.fn() }));
 const diagnosticsMocks = vi.hoisted(() => ({ get: vi.fn(), export: vi.fn() }));
+const updaterMocks = vi.hoisted(() => ({
+  configuration: vi.fn(),
+  check: vi.fn(),
+  relaunch: vi.fn(),
+}));
 
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn().mockResolvedValue(vi.fn()) }));
+vi.mock("@tauri-apps/plugin-updater", () => ({ check: updaterMocks.check }));
+vi.mock("@tauri-apps/plugin-process", () => ({ relaunch: updaterMocks.relaunch }));
 
 const preset = (id: string, name: string, category = "Character") => ({
   schemaVersion: 1,
@@ -136,6 +144,7 @@ const connectedSnapshot = {
 vi.mock("../src/services/tauri", () => ({
   getAudioDiagnostics: diagnosticsMocks.get,
   exportAudioDiagnostics: diagnosticsMocks.export,
+  getUpdateConfiguration: updaterMocks.configuration,
   getAppStatus: vi.fn().mockResolvedValue({
     appName: "VoiceMorph Studio",
     version: "0.1.0",
@@ -207,6 +216,14 @@ vi.mock("../src/services/tauri", () => ({
 
 describe("desktop navigation", () => {
   beforeEach(() => {
+    updaterMocks.configuration.mockReset().mockResolvedValue({
+      configured: false,
+      endpoint: "https://github.com/BayHen/app-change-voice/releases/latest/download/latest.json",
+      signatureVerificationRequired: true,
+      allowDowngrades: false,
+    });
+    updaterMocks.check.mockReset().mockResolvedValue(null);
+    updaterMocks.relaunch.mockReset().mockResolvedValue(undefined);
     diagnosticsMocks.get.mockReset().mockResolvedValue({
       reportSchemaVersion: 1,
       generatedAtUnixSeconds: 0,
@@ -447,6 +464,9 @@ describe("desktop navigation", () => {
     expect(screen.getByRole("button", { name: /Backup Now/ })).toBeInTheDocument();
     expect(screen.getByText("Audio Diagnostics")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Export Diagnostics Report/ })).toBeEnabled();
+    expect(screen.getByText("Application Updates")).toBeInTheDocument();
+    expect(screen.getByText(/Signed updates: Not configured/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Check for updates/ })).toBeDisabled();
     expect(await screen.findByText(/Cloud sync is deferred/)).toBeInTheDocument();
   });
 
@@ -538,6 +558,22 @@ describe("desktop navigation", () => {
     await user.click(screen.getByRole("button", { name: "Mute microphone" }));
     expect(volumeMocks.set).toHaveBeenCalledWith(expect.objectContaining({ inputMuted: true }));
     expect(screen.getByLabelText("Output monitoring volume")).toHaveValue("100");
+  });
+});
+
+describe("signed updater UI", () => {
+  it("reports a network check failure without crashing the application", async () => {
+    updaterMocks.configuration.mockResolvedValue({
+      configured: true,
+      endpoint: "https://github.com/BayHen/app-change-voice/releases/latest/download/latest.json",
+      signatureVerificationRequired: true,
+      allowDowngrades: false,
+    });
+    updaterMocks.check.mockRejectedValue(new Error("network unavailable"));
+    render(<UpdateSettings />);
+    const checkButton = await screen.findByRole("button", { name: /Check for updates/ });
+    await userEvent.click(checkButton);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/network unavailable/);
   });
 });
 

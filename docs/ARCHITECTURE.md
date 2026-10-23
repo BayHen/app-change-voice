@@ -1,5 +1,11 @@
 # Kiến trúc VoiceMorph Studio
 
+## Task 16 - Release và signed updater
+
+Updater dùng Tauri 2 updater/process plugins. GitHub HTTPS endpoint là cố định, nhưng public key được inject tại Rust compile-time từ `VOICEMORPH_UPDATER_PUBLIC_KEY`; thiếu key thì UI fail closed và không gọi network. `requireSignedVersion=true`, downgrade bị tắt. Private key chỉ đi qua CI secret. Release config riêng bật updater artifacts để build dev không cần signing key.
+
+Installer không chứa virtual audio driver. User data ở Tauri app data/config/cache, tách khỏi binary/install directory và được bảo toàn qua update.
+
 ## Task 15 - Diagnostics và release observability
 
 `diagnostics.rs` tạo snapshot chỉ đọc từ Device Service, `AudioStreamManager` và Routing Service. Frontend gọi qua application boundary; diagnostics không chạy trong callback realtime. Export dùng JSON schema versioned và temporary-file replace, chỉ chứa metadata/counters, không chứa audio hoặc recording.

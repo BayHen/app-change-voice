@@ -4,3 +4,10 @@ export interface AppStatus {
   platform: string;
   audioEngineReady: boolean;
 }
+
+export interface UpdateConfiguration {
+  configured: boolean;
+  endpoint: string;
+  signatureVerificationRequired: boolean;
+  allowDowngrades: boolean;
+}

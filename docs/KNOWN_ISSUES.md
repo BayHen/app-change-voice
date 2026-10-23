@@ -1,5 +1,9 @@
 # Known Issues
 
+## RR-007 — Signed updater chưa được nghiệm thu (High)
+
+Updater code và CI đã cấu hình fail-closed, nhưng repository chưa có signing credentials hoặc signed test release. Chưa thể chạy upgrade N→N+1 hay invalid-signature rejection thực tế. Không được public release trước khi hoàn tất các test trong `UPDATE_GUIDE.md`.
+
 ## RR-001 — DSP latency vượt mục tiêu (High)
 
 Benchmark release đo algorithmic latency 58.00 ms, chưa gồm driver/endpoint. Tái hiện bằng benchmark trong `TEST_PLAN.md`. Cần profile từng stage và giảm window/lookahead hoặc đánh giá processor khác.

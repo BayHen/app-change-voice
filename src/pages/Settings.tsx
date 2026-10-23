@@ -5,18 +5,21 @@ import { HotkeySettings } from "../components/HotkeySettings";
 import { DiscordIntegration } from "../components/DiscordIntegration";
 import { BackupSettings } from "../components/BackupSettings";
 import { AudioDiagnostics } from "../components/AudioDiagnostics";
+import { UpdateSettings } from "../components/UpdateSettings";
 import type { DeviceOption } from "../types/audio";
+import { useAppStatus } from "../hooks/useAppStatus";
 
 const noAudioDevices: DeviceOption[] = [
   { id: "unavailable", name: "Audio engine not connected", kind: "input", available: false },
 ];
 
 export function Settings() {
+  const appStatus = useAppStatus();
   return (
     <div className="mx-auto max-w-[960px]">
       <AppHeader
         title="Settings"
-        description="Review application preferences and system information. Persistence is planned for a future task."
+        description="Review persistent preferences, release updates and system information."
       />
 
       <div className="mt-6 space-y-5">
@@ -90,10 +93,17 @@ export function Settings() {
         <SettingsSection title="Application information" description="Build and runtime details">
           <dl className="grid gap-4 text-sm sm:grid-cols-2">
             <InfoRow label="Product" value="VoiceMorph Studio" />
-            <InfoRow label="Version" value="0.1.0" mono />
+            <InfoRow label="Version" value={appStatus.status?.version ?? "Loading…"} mono />
             <InfoRow label="Runtime" value="Tauri 2" />
             <InfoRow label="Target" value="Windows x64" mono />
           </dl>
+        </SettingsSection>
+
+        <SettingsSection
+          title="Application Updates"
+          description="Signed releases from the official HTTPS endpoint"
+        >
+          <UpdateSettings />
         </SettingsSection>
       </div>
     </div>

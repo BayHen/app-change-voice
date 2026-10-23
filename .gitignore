@@ -26,6 +26,12 @@ target
 *.msix
 *-setup.exe
 
+# Release signing secrets (public keys may be committed explicitly when approved)
+*.key
+*.pfx
+*.p12
+.tauri/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

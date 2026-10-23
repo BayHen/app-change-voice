@@ -1,0 +1,57 @@
+name: Draft signed release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      version_tag:
+        description: Existing version tag to build, for example v0.1.0
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  signed-windows-release:
+    runs-on: windows-latest
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.version_tag || github.ref_name }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      VOICEMORPH_UPDATER_PUBLIC_KEY: ${{ secrets.VOICEMORPH_UPDATER_PUBLIC_KEY }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.version_tag || github.ref }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+      - run: npm ci
+      - name: Validate tag and synchronized versions
+        run: npm run version:check
+      - name: Require signing secrets
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY)) { throw "TAURI_SIGNING_PRIVATE_KEY is required" }
+          if ([string]::IsNullOrWhiteSpace($env:VOICEMORPH_UPDATER_PUBLIC_KEY)) { throw "VOICEMORPH_UPDATER_PUBLIC_KEY is required" }
+      - run: npm run test
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__
+          releaseName: VoiceMorph Studio v__VERSION__
+          releaseBody: See CHANGELOG.md and the signed assets attached to this draft.
+          releaseDraft: true
+          prerelease: false
+          args: --target x86_64-pc-windows-msvc --bundles nsis --config src-tauri/tauri.release.conf.json

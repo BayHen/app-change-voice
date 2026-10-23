@@ -63,6 +63,29 @@ struct AppStatus {
     audio_engine_ready: bool,
 }
 
+const UPDATE_ENDPOINT: &str =
+    "https://github.com/BayHen/app-change-voice/releases/latest/download/latest.json";
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateConfiguration {
+    configured: bool,
+    endpoint: &'static str,
+    signature_verification_required: bool,
+    allow_downgrades: bool,
+}
+
+#[tauri::command]
+fn get_update_configuration() -> UpdateConfiguration {
+    UpdateConfiguration {
+        configured: option_env!("VOICEMORPH_UPDATER_PUBLIC_KEY")
+            .is_some_and(|value| !value.trim().is_empty()),
+        endpoint: UPDATE_ENDPOINT,
+        signature_verification_required: true,
+        allow_downgrades: false,
+    }
+}
+
 #[tauri::command]
 fn get_app_status() -> AppStatus {
     let platform = platform::current_platform();
@@ -1286,8 +1309,17 @@ fn reset_to_natural_preset(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let updater = if let Some(public_key) =
+        option_env!("VOICEMORPH_UPDATER_PUBLIC_KEY").filter(|value| !value.trim().is_empty())
+    {
+        tauri_plugin_updater::Builder::new().pubkey(public_key)
+    } else {
+        tauri_plugin_updater::Builder::new()
+    };
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_process::init())
+        .plugin(updater.build())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, shortcut, event| {
@@ -1428,6 +1460,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_app_status,
+            get_update_configuration,
             get_audio_diagnostics,
             export_audio_diagnostics,
             get_input_devices,
@@ -1517,5 +1550,16 @@ mod tests {
         assert_eq!(status.app_name, "VoiceMorph Studio");
         assert_eq!(status.version, "0.1.0");
         assert!(!status.audio_engine_ready);
+    }
+
+    #[test]
+    fn updater_configuration_fails_closed_without_release_key() {
+        let configuration = get_update_configuration();
+        assert!(configuration.signature_verification_required);
+        assert!(!configuration.allow_downgrades);
+        assert!(configuration.endpoint.starts_with("https://"));
+        if option_env!("VOICEMORPH_UPDATER_PUBLIC_KEY").is_none() {
+            assert!(!configuration.configured);
+        }
     }
 }

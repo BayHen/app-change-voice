@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppStatus } from "../types/app";
+import type { AppStatus, UpdateConfiguration } from "../types/app";
 import type { VoicePresetSummary } from "../types/preset";
 import type { HotkeyConfiguration } from "../types/hotkeys";
 import type { EffectDescriptor, PluginStatus, SoundEntry } from "../types/soundboard";
@@ -24,6 +24,8 @@ import type {
 export function getAppStatus(): Promise<AppStatus> {
   return invoke<AppStatus>("get_app_status");
 }
+
+export const getUpdateConfiguration = () => invoke<UpdateConfiguration>("get_update_configuration");
 
 export const getAudioDiagnostics = () => invoke<AudioDiagnosticsReport>("get_audio_diagnostics");
 export const exportAudioDiagnostics = (path: string) =>

@@ -1,5 +1,16 @@
 # Release Readiness
 
+## Task 16 update
+
+- **PASS:** production frontend/Rust build, NSIS current-user installer, cài đặt, launch và uninstall thực tế. App-data directory được giữ sau uninstall.
+- **PASS:** updater fail-closed khi thiếu public key; HTTPS endpoint, signed-version requirement và no-downgrade được cấu hình.
+- **PASS:** npm audit 0 vulnerability; RustSec 0 vulnerability sau khi bỏ updater ZIP-v1 feature không dùng.
+- **BLOCKED:** MSI local bởi WiX `LGHT0217/LGHT0216` và Windows Installer Service.
+- **BLOCKED:** signed updater end-to-end, invalid-signature test và upgrade N→N+1 cần signing credentials cùng signed test release.
+- **NOT TESTED:** GitHub workflows chưa được chạy trên GitHub; workflow chỉ tạo draft release, không tự public.
+
+Khuyến nghị vẫn là **NO-GO public production release** cho đến khi signed update test, code signing policy và các blocker Task 15 được đóng.
+
 ## Kết luận
 
 **NO-GO cho production.** Build/test tự động ổn định, nhưng chưa đủ bằng chứng cho end-to-end latency, session dài, ứng dụng đích và installer. Có thể dùng như development/internal QA build.
