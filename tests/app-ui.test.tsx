@@ -70,6 +70,13 @@ const updaterMocks = vi.hoisted(() => ({
   check: vi.fn(),
   relaunch: vi.fn(),
 }));
+const aiMocks = vi.hoisted(() => ({
+  models: vi.fn(),
+  status: vi.fn(),
+  add: vi.fn(),
+  remove: vi.fn(),
+  enable: vi.fn(),
+}));
 
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn().mockResolvedValue(vi.fn()) }));
 vi.mock("@tauri-apps/plugin-updater", () => ({ check: updaterMocks.check }));
@@ -212,6 +219,11 @@ vi.mock("../src/services/tauri", () => ({
   restoreBackup: vi.fn(),
   exportAllPresets: vi.fn(),
   importAllPresets: vi.fn(),
+  getAIModels: aiMocks.models,
+  getAIProviderStatus: aiMocks.status,
+  addAIModel: aiMocks.add,
+  removeAIModel: aiMocks.remove,
+  setAIModelEnabled: aiMocks.enable,
 }));
 
 describe("desktop navigation", () => {
@@ -224,6 +236,15 @@ describe("desktop navigation", () => {
     });
     updaterMocks.check.mockReset().mockResolvedValue(null);
     updaterMocks.relaunch.mockReset().mockResolvedValue(undefined);
+    aiMocks.models.mockReset().mockResolvedValue([]);
+    aiMocks.status.mockReset().mockResolvedValue({
+      offlineOnly: true,
+      inferenceBackend: "Python/OpenVoice prototype; native runtime deferred",
+      gpuVerified: false,
+      activeModelId: null,
+      fallbackActive: true,
+      message: "DSP fallback is active",
+    });
     diagnosticsMocks.get.mockReset().mockResolvedValue({
       reportSchemaVersion: 1,
       generatedAtUnixSeconds: 0,
@@ -452,6 +473,11 @@ describe("desktop navigation", () => {
 
     await user.click(screen.getAllByRole("button", { name: "Games & Apps" })[0]);
     expect(screen.getByRole("heading", { name: "Game & App Integration" })).toBeInTheDocument();
+
+    await user.click(screen.getAllByRole("button", { name: "AI Voice" })[0]);
+    expect(screen.getByRole("heading", { name: "AI Voice Studio" })).toBeInTheDocument();
+    expect(await screen.findByText("No trusted ONNX model installed")).toBeInTheDocument();
+    expect(screen.getByText("Not verified")).toBeInTheDocument();
 
     await user.click(screen.getAllByRole("button", { name: "Virtual Microphone" })[0]);
     expect(screen.getByRole("heading", { name: "Virtual Microphone" })).toBeInTheDocument();

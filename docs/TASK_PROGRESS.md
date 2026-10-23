@@ -436,3 +436,27 @@ cài Windows x64 đã được xác nhận trong quality gate ngày 22/10/2026.
   duplicate ID, invalid effect/parameter và Bass/Treble DSP đều có test PASS.
 - Frontend Vitest 8/8, TypeScript/Vite build, ESLint, Prettier, rustfmt, Cargo check và Clippy `-D warnings`: PASS.
 - `npm.cmd run tauri:dev`: PASS; ứng dụng Tauri khởi động với catalog/editor và native import/export dialog.
+
+## Task 17 - AI Voice Conversion Engine
+
+### Đã triển khai
+
+- Nghiên cứu OpenVoice V2, RVC, Seed-VC, ONNX Runtime/WinML; chọn OpenVoice V2 MIT cho prototype offline.
+- Tạo `ai-models`, `ai-prototype`, `ai-benchmarks`; prototype có load, pre/postprocess, WAV, metrics và consent gate.
+- Rust có model manager/validator, bounded inference worker, processing adapter và DSP fallback.
+- Import chỉ nhận ONNX versioned manifest, path-safe ID, allow-list license, tối đa 2 GiB và SHA-256 đúng.
+- AI Voice Studio hiển thị integrity/runtime/GPU/fallback thật; control chưa có runtime được disabled.
+
+### Trạng thái nghiệm thu
+
+- PASS: TypeScript/Vite build; Vitest 10/10; Rust 80 PASS, 7 manual/ignored; validation,
+  bounded worker/fallback; Python PCM16 unit tests 2/2.
+- NOT TESTED: OpenVoice inference thật, quality, CPU/GPU, model switching, long-session, recording/routing AI.
+  Máy hiện có Python 3.14 nhưng thiếu Python 3.11, PyTorch/OpenVoice/checkpoint và audio có quyền sử dụng.
+- NOT TESTED: inference/end-to-end latency; không công bố số liệu suy đoán.
+- DEFERRED: native ONNX backend và realtime. DSP realtime hiện tại vẫn là fallback.
+- Acceptance “ít nhất một model inference thật/nghe/ghi AI”: chưa đạt cho tới khi chạy model hợp lệ và benchmark.
+- Dependency audit: npm 0 vulnerability; RustSec không có vulnerability bị chặn nhưng còn 4 cảnh báo
+  transitive hiện hữu (`atty`, `proc-macro-error`, `glib`).
+- `npm.cmd run tauri:dev`: PASS smoke launch; shortcut `Ctrl+Alt+M` bị ứng dụng khác chiếm nhưng lỗi được
+  báo và app vẫn chạy, không tự mở microphone.

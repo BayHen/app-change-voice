@@ -216,3 +216,13 @@ Kết quả được emit về React để thông báo, sau đó `tray/manager.r
 Tray được tạo bằng Tauri Rust API với Show/Hide, preset hiện tại, mute, effects, virtual routing, Settings và
 Exit. Close/minimize-to-tray chỉ ẩn cửa sổ. Exit chủ động stop audio/recording/routing, unregister hotkeys rồi
 thoát. App restart chỉ restore cấu hình/registration; không tự mở microphone hoặc audio stream.
+
+## Task 17 - AI Voice Conversion
+
+AI tách khỏi callback realtime. `ai/inference.rs` dùng bounded queue và worker; callback tương lai chỉ
+`try_send/try_recv`, không chờ inference. Queue đầy, runtime/model thiếu hoặc inference lỗi thì pipeline DSP
+Task 04–08 tiếp tục làm fallback.
+
+`ai/manager.rs` quản lý model tại `app_data_dir/ai-models`. Chỉ manifest versioned + ONNX được chấp nhận;
+path traversal, license ngoài allow-list, file quá 2 GiB và SHA-256 sai bị từ chối. Prototype OpenVoice V2
+MIT chạy offline ngoài app trước khi cân nhắc ONNX Runtime/WinML. Xem `docs/AI_VOICE_CONVERSION.md`.

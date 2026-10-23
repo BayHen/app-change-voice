@@ -45,3 +45,16 @@ target
 
 # Local headless browser profiles used for UI screenshots
 .edge-*/
+
+# Local AI environments, downloaded model weights and benchmark output
+.venv-ai/
+ai-models/models/
+ai-models/*.onnx
+ai-models/*.pth
+ai-models/*.pt
+ai-models/*.safetensors
+ai-benchmarks/results/*.json
+ai-benchmarks/results/*.wav
+ai-prototype/output/
+__pycache__/
+*.pyc

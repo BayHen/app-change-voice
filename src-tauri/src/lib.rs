@@ -1,3 +1,4 @@
+pub mod ai;
 mod application;
 pub mod audio;
 pub mod backup;
@@ -12,6 +13,7 @@ pub mod routing;
 pub mod soundboard;
 pub mod tray;
 
+use ai::{AIModelManager, AIModelStatus, AIProviderStatus};
 use audio::{AudioEngine, NullAudioEngine};
 use audio::{
     config::{self, AudioDevicePreferences, StoredDeviceSelection},
@@ -219,11 +221,60 @@ type UserPresetState = Mutex<UserPresetService>;
 type PluginState = Mutex<EffectRegistry>;
 type ProfileState = Mutex<ProfileRepository>;
 type SoundboardState = Mutex<SoundboardRepository>;
+type AIModelState = Mutex<AIModelManager>;
 struct VolumeConfigPath(PathBuf);
 struct NoiseConfigPath(PathBuf);
 struct RoutingConfigPath(PathBuf);
 struct HotkeyConfigPath(PathBuf);
 struct BackupSafetyPath(PathBuf);
+
+#[tauri::command]
+fn get_ai_models(state: State<'_, AIModelState>) -> Result<Vec<AIModelStatus>, String> {
+    Ok(state
+        .lock()
+        .map_err(|_| "AI model lock was poisoned")?
+        .list())
+}
+
+#[tauri::command]
+fn get_ai_provider_status(state: State<'_, AIModelState>) -> Result<AIProviderStatus, String> {
+    Ok(state
+        .lock()
+        .map_err(|_| "AI model lock was poisoned")?
+        .provider_status())
+}
+
+#[tauri::command]
+fn add_ai_model(
+    manifest_path: PathBuf,
+    model_path: PathBuf,
+    state: State<'_, AIModelState>,
+) -> Result<AIModelStatus, String> {
+    state
+        .lock()
+        .map_err(|_| "AI model lock was poisoned")?
+        .add(&manifest_path, &model_path)
+}
+
+#[tauri::command]
+fn remove_ai_model(id: String, state: State<'_, AIModelState>) -> Result<(), String> {
+    state
+        .lock()
+        .map_err(|_| "AI model lock was poisoned")?
+        .remove(&id)
+}
+
+#[tauri::command]
+fn set_ai_model_enabled(
+    id: String,
+    enabled: bool,
+    state: State<'_, AIModelState>,
+) -> Result<AIProviderStatus, String> {
+    state
+        .lock()
+        .map_err(|_| "AI model lock was poisoned")?
+        .set_enabled(&id, enabled)
+}
 
 fn backup_timestamp() -> String {
     std::time::SystemTime::now()
@@ -1360,6 +1411,7 @@ pub fn run() {
                 .app_config_dir()?
                 .join("backup-safety")
                 .join("latest.json");
+            let ai_models_dir = app.path().app_data_dir()?.join("ai-models");
             let hotkey_configuration = hotkeys::config::load(&hotkey_path).unwrap_or_default();
             let routing_path = app.path().app_config_dir()?.join("audio-routing.json");
             let mut routing_configuration =
@@ -1401,6 +1453,9 @@ pub fn run() {
             runtime.set_routing_configuration(routing_configuration);
             app.manage(Mutex::new(runtime));
             app.manage(Mutex::new(soundboard_repository));
+            app.manage(Mutex::new(
+                AIModelManager::new(ai_models_dir).map_err(std::io::Error::other)?,
+            ));
             app.manage(Mutex::new(
                 EffectRegistry::built_in().map_err(std::io::Error::other)?,
             ));
@@ -1534,7 +1589,12 @@ pub fn run() {
             import_all_presets,
             preview_backup,
             restore_backup,
-            get_sync_status
+            get_sync_status,
+            get_ai_models,
+            get_ai_provider_status,
+            add_ai_model,
+            remove_ai_model,
+            set_ai_model_enabled
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

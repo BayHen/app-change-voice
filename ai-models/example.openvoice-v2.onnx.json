@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "openvoice-v2-onnx",
+  "name": "OpenVoice V2 ONNX",
+  "description": "Ví dụ manifest cho tone-colour conversion offline, không kèm weights.",
+  "architecture": "tone-color-converter",
+  "backend": "onnx-runtime",
+  "license": "MIT",
+  "sourceUrl": "https://github.com/myshell-ai/OpenVoice",
+  "modelFile": "openvoice-v2.onnx",
+  "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "inputSampleRate": 48000,
+  "frameSamples": 2048,
+  "supportedProfiles": [
+    "deep",
+    "bright",
+    "soft",
+    "masculine-style",
+    "feminine-style",
+    "synthetic-character"
+  ]
+}

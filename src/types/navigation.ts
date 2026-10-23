@@ -4,5 +4,6 @@ export type NavigationItem =
   | "studio"
   | "soundboard"
   | "integrations"
+  | "ai-studio"
   | "virtual-microphone"
   | "settings";

@@ -4701,6 +4701,7 @@ dependencies = [
  "rtrb",
  "serde",
  "serde_json",
+ "sha2",
  "signalsmith-stretch",
  "tauri",
  "tauri-build",

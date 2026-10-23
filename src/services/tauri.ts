@@ -5,6 +5,7 @@ import type { HotkeyConfiguration } from "../types/hotkeys";
 import type { EffectDescriptor, PluginStatus, SoundEntry } from "../types/soundboard";
 import type { ApplicationProfile } from "../types/profiles";
 import type { BackupPreview, RestoreMode, SyncStatus } from "../types/backup";
+import type { AIModelStatus, AIProviderStatus } from "../types/ai";
 import type {
   AudioDevice,
   AudioDiagnosticsReport,
@@ -204,3 +205,10 @@ export const exportAllPresets = (path: string) => invoke<void>("export_all_prese
 export const importAllPresets = (path: string, mode: RestoreMode) =>
   invoke<number>("import_all_presets", { path, mode });
 export const getSyncStatus = () => invoke<SyncStatus>("get_sync_status");
+export const getAIModels = () => invoke<AIModelStatus[]>("get_ai_models");
+export const getAIProviderStatus = () => invoke<AIProviderStatus>("get_ai_provider_status");
+export const addAIModel = (manifestPath: string, modelPath: string) =>
+  invoke<AIModelStatus>("add_ai_model", { manifestPath, modelPath });
+export const removeAIModel = (id: string) => invoke<void>("remove_ai_model", { id });
+export const setAIModelEnabled = (id: string, enabled: boolean) =>
+  invoke<AIProviderStatus>("set_ai_model_enabled", { id, enabled });
