@@ -1,5 +1,5 @@
 use super::meter::{MeterReading, amplitude_to_dbfs};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
@@ -26,7 +26,7 @@ struct AudioMetricAtoms {
     protected_clips: AtomicU64,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct AudioMetrics {
     pub sample_rate: u32,

@@ -62,6 +62,8 @@ const profileMocks = vi.hoisted(() => ({
   remove: vi.fn(),
   apply: vi.fn(),
 }));
+const backupMocks = vi.hoisted(() => ({ status: vi.fn() }));
+const diagnosticsMocks = vi.hoisted(() => ({ get: vi.fn(), export: vi.fn() }));
 
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn().mockResolvedValue(vi.fn()) }));
 
@@ -132,6 +134,8 @@ const connectedSnapshot = {
 };
 
 vi.mock("../src/services/tauri", () => ({
+  getAudioDiagnostics: diagnosticsMocks.get,
+  exportAudioDiagnostics: diagnosticsMocks.export,
   getAppStatus: vi.fn().mockResolvedValue({
     appName: "VoiceMorph Studio",
     version: "0.1.0",
@@ -193,10 +197,40 @@ vi.mock("../src/services/tauri", () => ({
   saveApplicationProfile: profileMocks.save,
   deleteApplicationProfile: profileMocks.remove,
   applyApplicationProfile: profileMocks.apply,
+  getSyncStatus: backupMocks.status,
+  exportAllSettings: vi.fn(),
+  previewBackup: vi.fn(),
+  restoreBackup: vi.fn(),
+  exportAllPresets: vi.fn(),
+  importAllPresets: vi.fn(),
 }));
 
 describe("desktop navigation", () => {
   beforeEach(() => {
+    diagnosticsMocks.get.mockReset().mockResolvedValue({
+      reportSchemaVersion: 1,
+      generatedAtUnixSeconds: 0,
+      applicationVersion: "0.1.0",
+      platform: "windows-x86_64",
+      activeInputDevice: null,
+      activeOutputDevice: null,
+      runtime: stoppedRuntime,
+      routing: {
+        state: "notConfigured",
+        outputDeviceId: null,
+        outputDeviceName: null,
+        sampleRate: null,
+        channels: null,
+        underrunCount: 0,
+        overflowCount: 0,
+        outputPeakDbfs: -96,
+        endpointVerified: false,
+        message: null,
+      },
+      processingCpuEstimatePercent: null,
+      privacyNotice: "Metadata only",
+    });
+    diagnosticsMocks.export.mockReset().mockResolvedValue(undefined);
     soundboardMocks.list.mockReset().mockResolvedValue([]);
     soundboardMocks.plugins.mockReset().mockResolvedValue([]);
     soundboardMocks.effects.mockReset().mockResolvedValue([]);
@@ -218,6 +252,13 @@ describe("desktop navigation", () => {
     profileMocks.save.mockReset().mockImplementation(async (value) => value);
     profileMocks.remove.mockReset().mockResolvedValue(undefined);
     profileMocks.apply.mockReset().mockImplementation(async () => profiles[0]);
+    backupMocks.status.mockReset().mockResolvedValue({
+      provider: "local",
+      enabled: false,
+      state: "deferred",
+      lastSyncedAt: null,
+      message: "Cloud sync is deferred.",
+    });
     audioMocks.refresh.mockReset().mockResolvedValue({
       inputDevices: [],
       outputDevices: [],
@@ -403,6 +444,10 @@ describe("desktop navigation", () => {
 
     await user.click(screen.getAllByRole("button", { name: "Settings" })[0]);
     expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Backup Now/ })).toBeInTheDocument();
+    expect(screen.getByText("Audio Diagnostics")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Export Diagnostics Report/ })).toBeEnabled();
+    expect(await screen.findByText(/Cloud sync is deferred/)).toBeInTheDocument();
   });
 
   it("renders disconnected microphone state without fake live data", async () => {

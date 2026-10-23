@@ -1,5 +1,7 @@
 mod application;
 pub mod audio;
+pub mod backup;
+pub mod diagnostics;
 pub mod effects;
 pub mod hotkeys;
 pub mod platform;
@@ -21,6 +23,11 @@ use audio::{
     recording::{RecordingSource, RecordingStatus},
     stream::{AudioRuntimeStatus, AudioStreamManager},
 };
+use backup::{
+    BackupManifest, BackupPreview, LocalOnlySyncProvider, PortableSoundboardEntry, RestoreMode,
+    SyncProvider, SyncStatus,
+};
+use diagnostics::AudioDiagnosticsReport;
 use effects::{
     gain::{self, VolumeSettings},
     parameters::EffectParameters,
@@ -67,6 +74,39 @@ fn get_app_status() -> AppStatus {
         platform: format!("{}-{}", platform.os_name(), platform.architecture()),
         audio_engine_ready: engine.is_ready(),
     }
+}
+
+fn diagnostics_report(
+    devices: &mut AudioDeviceService,
+    runtime: &AudioStreamManager,
+) -> Result<AudioDiagnosticsReport, String> {
+    let snapshot = devices.refresh().map_err(|error| error.to_string())?;
+    Ok(AudioDiagnosticsReport::new(
+        &snapshot,
+        runtime.status(),
+        runtime.routing_status(),
+    ))
+}
+
+#[tauri::command]
+fn get_audio_diagnostics(
+    devices: State<'_, AudioDeviceState>,
+    runtime: State<'_, AudioRuntimeState>,
+) -> Result<AudioDiagnosticsReport, String> {
+    let mut devices = devices.lock().map_err(|_| "Device lock was poisoned")?;
+    let runtime = runtime.lock().map_err(|_| "Runtime lock was poisoned")?;
+    diagnostics_report(&mut devices, &runtime)
+}
+
+#[tauri::command]
+fn export_audio_diagnostics(
+    path: PathBuf,
+    devices: State<'_, AudioDeviceState>,
+    runtime: State<'_, AudioRuntimeState>,
+) -> Result<(), String> {
+    let mut devices = devices.lock().map_err(|_| "Device lock was poisoned")?;
+    let runtime = runtime.lock().map_err(|_| "Runtime lock was poisoned")?;
+    diagnostics::write_atomic(&path, &diagnostics_report(&mut devices, &runtime)?)
 }
 
 struct AudioDeviceService {
@@ -160,6 +200,257 @@ struct VolumeConfigPath(PathBuf);
 struct NoiseConfigPath(PathBuf);
 struct RoutingConfigPath(PathBuf);
 struct HotkeyConfigPath(PathBuf);
+struct BackupSafetyPath(PathBuf);
+
+fn backup_timestamp() -> String {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|v| v.as_secs().to_string())
+        .unwrap_or_else(|_| "0".into())
+}
+fn make_backup(
+    users: &UserPresetService,
+    hotkeys: &HotkeyManager,
+    runtime: &AudioStreamManager,
+    profiles: &ProfileRepository,
+    sounds: &SoundboardRepository,
+) -> BackupManifest {
+    BackupManifest {
+        backup_schema_version: backup::BACKUP_SCHEMA_VERSION,
+        application_version: env!("CARGO_PKG_VERSION").into(),
+        created_at: backup_timestamp(),
+        presets: users.all().to_vec(),
+        hotkeys: hotkeys.configuration().clone(),
+        volume_settings: runtime.volume_settings(),
+        noise_settings: runtime.noise_settings(),
+        application_profiles: profiles.all(),
+        soundboard_metadata: sounds
+            .list()
+            .into_iter()
+            .map(|s| PortableSoundboardEntry {
+                id: s.id,
+                name: s.name,
+                category: s.category,
+                favorite: s.favorite,
+                volume_percent: s.volume_percent,
+                route: s.route,
+                hotkey: s.hotkey,
+            })
+            .collect(),
+    }
+}
+
+#[tauri::command]
+fn export_all_settings(
+    path: PathBuf,
+    users: State<'_, UserPresetState>,
+    hotkeys: State<'_, HotkeyState>,
+    runtime: State<'_, AudioRuntimeState>,
+    profiles: State<'_, ProfileState>,
+    sounds: State<'_, SoundboardState>,
+) -> Result<(), String> {
+    let users = users.lock().map_err(|_| "Preset lock was poisoned")?;
+    let hotkeys = hotkeys.lock().map_err(|_| "Hotkey lock was poisoned")?;
+    let runtime = runtime.lock().map_err(|_| "Runtime lock was poisoned")?;
+    let profiles = profiles.lock().map_err(|_| "Profile lock was poisoned")?;
+    let sounds = sounds.lock().map_err(|_| "Soundboard lock was poisoned")?;
+    backup::write(
+        &path,
+        &make_backup(&users, &hotkeys, &runtime, &profiles, &sounds),
+    )
+}
+#[tauri::command]
+fn export_all_presets(path: PathBuf, users: State<'_, UserPresetState>) -> Result<(), String> {
+    backup::write_presets(
+        &path,
+        users.lock().map_err(|_| "Preset lock was poisoned")?.all(),
+    )
+}
+#[tauri::command]
+fn import_all_presets(
+    path: PathBuf,
+    mode: RestoreMode,
+    users: State<'_, UserPresetState>,
+) -> Result<usize, String> {
+    let incoming = backup::read_presets(&path)?;
+    let mut users = users.lock().map_err(|_| "Preset lock was poisoned")?;
+    let mut next = if matches!(mode, RestoreMode::Merge) {
+        users.all().to_vec()
+    } else {
+        vec![]
+    };
+    for preset in incoming {
+        if let Some(index) = next.iter().position(|p| p.id == preset.id) {
+            next[index] = preset
+        } else {
+            next.push(preset)
+        }
+    }
+    let count = next.len();
+    users.replace_all(next)?;
+    Ok(count)
+}
+#[tauri::command]
+fn preview_backup(
+    path: PathBuf,
+    users: State<'_, UserPresetState>,
+    profiles: State<'_, ProfileState>,
+) -> Result<BackupPreview, String> {
+    let value = backup::read(&path)?;
+    let preset_ids: std::collections::HashSet<String> = users
+        .lock()
+        .map_err(|_| "Preset lock was poisoned")?
+        .all()
+        .iter()
+        .map(|p| p.id.clone())
+        .collect();
+    let profile_ids: std::collections::HashSet<_> = profiles
+        .lock()
+        .map_err(|_| "Profile lock was poisoned")?
+        .all()
+        .into_iter()
+        .map(|p| p.id)
+        .collect();
+    Ok(BackupPreview {
+        application_version: value.application_version,
+        created_at: value.created_at,
+        preset_count: value.presets.len(),
+        profile_count: value.application_profiles.len(),
+        sound_count: value.soundboard_metadata.len(),
+        preset_conflicts: value
+            .presets
+            .iter()
+            .filter(|p| preset_ids.contains(&p.id))
+            .map(|p| p.id.clone())
+            .collect(),
+        profile_conflicts: value
+            .application_profiles
+            .iter()
+            .filter(|p| profile_ids.contains(&p.id))
+            .map(|p| p.id.clone())
+            .collect(),
+        portable: true,
+        warnings: vec!["Soundboard audio files and recordings are not included.".into()],
+    })
+}
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+fn restore_backup(
+    path: PathBuf,
+    mode: RestoreMode,
+    app: AppHandle,
+    users: State<'_, UserPresetState>,
+    hotkeys: State<'_, HotkeyState>,
+    runtime: State<'_, AudioRuntimeState>,
+    profiles: State<'_, ProfileState>,
+    sounds: State<'_, SoundboardState>,
+    sound_hotkeys: State<'_, SoundboardHotkeyState>,
+    volume_path: State<'_, VolumeConfigPath>,
+    noise_path: State<'_, NoiseConfigPath>,
+    hotkey_path: State<'_, HotkeyConfigPath>,
+    safety: State<'_, BackupSafetyPath>,
+) -> Result<BackupPreview, String> {
+    let incoming = backup::read(&path)?;
+    let mut users = users.lock().map_err(|_| "Preset lock was poisoned")?;
+    let mut hotkeys = hotkeys.lock().map_err(|_| "Hotkey lock was poisoned")?;
+    let mut runtime = runtime.lock().map_err(|_| "Runtime lock was poisoned")?;
+    let mut profiles = profiles.lock().map_err(|_| "Profile lock was poisoned")?;
+    let mut sounds = sounds.lock().map_err(|_| "Soundboard lock was poisoned")?;
+    let mut sound_hotkeys = sound_hotkeys
+        .lock()
+        .map_err(|_| "Soundboard hotkey lock was poisoned")?;
+    let current = make_backup(&users, &hotkeys, &runtime, &profiles, &sounds);
+    backup::write(&safety.0, &current)?;
+    let merge = matches!(mode, RestoreMode::Merge);
+    let mut next_presets = if merge {
+        current.presets.clone()
+    } else {
+        vec![]
+    };
+    for p in incoming.presets.clone() {
+        if let Some(i) = next_presets.iter().position(|x| x.id == p.id) {
+            next_presets[i] = p
+        } else {
+            next_presets.push(p)
+        }
+    }
+    let mut next_profiles = if merge {
+        current.application_profiles.clone()
+    } else {
+        vec![]
+    };
+    for p in incoming.application_profiles.clone() {
+        if let Some(i) = next_profiles.iter().position(|x| x.id == p.id) {
+            next_profiles[i] = p
+        } else {
+            next_profiles.push(p)
+        }
+    }
+    let old_sounds = sounds.list();
+    let mut next_sounds = if merge { old_sounds.clone() } else { vec![] };
+    for meta in incoming.soundboard_metadata.clone() {
+        let existing = old_sounds.iter().find(|s| s.id == meta.id);
+        let entry = SoundEntry {
+            id: meta.id,
+            name: meta.name,
+            file_path: existing.map(|s| s.file_path.clone()).unwrap_or_default(),
+            category: meta.category,
+            favorite: meta.favorite,
+            volume_percent: meta.volume_percent,
+            route: meta.route,
+            hotkey: meta.hotkey,
+            duration_seconds: existing.map(|s| s.duration_seconds).unwrap_or(0.0),
+            missing: existing.map(|s| s.missing).unwrap_or(true),
+        };
+        if let Some(i) = next_sounds.iter().position(|s| s.id == entry.id) {
+            next_sounds[i] = entry
+        } else {
+            next_sounds.push(entry)
+        }
+    }
+    let result = (|| {
+        users.replace_all(next_presets)?;
+        profiles.replace_all(next_profiles)?;
+        sounds.replace_all(next_sounds)?;
+        hotkeys.apply(&app, incoming.hotkeys.clone())?;
+        sound_hotkeys.apply(&app, &sounds.list())?;
+        hotkeys::config::save(&hotkey_path.0, hotkeys.configuration())?;
+        gain::save(&volume_path.0, incoming.volume_settings).map_err(|e| e.to_string())?;
+        noise::save(&noise_path.0, incoming.noise_settings).map_err(|e| e.to_string())?;
+        runtime.set_volume_settings(incoming.volume_settings);
+        runtime.set_noise_settings(incoming.noise_settings);
+        runtime.set_soundboard_entries(sounds.list());
+        Ok::<(), String>(())
+    })();
+    if let Err(error) = result {
+        let _ = users.replace_all(current.presets.clone());
+        let _ = profiles.replace_all(current.application_profiles.clone());
+        let _ = sounds.replace_all(old_sounds.clone());
+        let _ = hotkeys.apply(&app, current.hotkeys.clone());
+        let _ = sound_hotkeys.apply(&app, &old_sounds);
+        let _ = hotkeys::config::save(&hotkey_path.0, &current.hotkeys);
+        let _ = gain::save(&volume_path.0, current.volume_settings);
+        let _ = noise::save(&noise_path.0, current.noise_settings);
+        runtime.set_volume_settings(current.volume_settings);
+        runtime.set_noise_settings(current.noise_settings);
+        return Err(format!("Restore rolled back: {error}"));
+    }
+    Ok(BackupPreview {
+        application_version: incoming.application_version,
+        created_at: incoming.created_at,
+        preset_count: incoming.presets.len(),
+        profile_count: incoming.application_profiles.len(),
+        sound_count: incoming.soundboard_metadata.len(),
+        preset_conflicts: vec![],
+        profile_conflicts: vec![],
+        portable: true,
+        warnings: vec![],
+    })
+}
+#[tauri::command]
+fn get_sync_status() -> SyncStatus {
+    LocalOnlySyncProvider.status()
+}
 
 #[tauri::command]
 fn get_application_profiles(
@@ -1032,6 +1323,11 @@ pub fn run() {
                 .path()
                 .app_config_dir()?
                 .join("application-profiles.json");
+            let backup_safety_path = app
+                .path()
+                .app_config_dir()?
+                .join("backup-safety")
+                .join("latest.json");
             let hotkey_configuration = hotkeys::config::load(&hotkey_path).unwrap_or_default();
             let routing_path = app.path().app_config_dir()?.join("audio-routing.json");
             let mut routing_configuration =
@@ -1083,6 +1379,7 @@ pub fn run() {
             app.manage(NoiseConfigPath(noise_path));
             app.manage(RoutingConfigPath(routing_path));
             app.manage(HotkeyConfigPath(hotkey_path));
+            app.manage(BackupSafetyPath(backup_safety_path));
             app.manage(PresetRegistry::built_in().map_err(std::io::Error::other)?);
             app.manage(Mutex::new(
                 UserPresetService::new(JsonPresetRepository::new(user_presets_dir))
@@ -1131,6 +1428,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_app_status,
+            get_audio_diagnostics,
+            export_audio_diagnostics,
             get_input_devices,
             get_output_devices,
             get_default_devices,
@@ -1196,7 +1495,13 @@ pub fn run() {
             get_application_profiles,
             save_application_profile,
             delete_application_profile,
-            apply_application_profile
+            apply_application_profile,
+            export_all_settings,
+            export_all_presets,
+            import_all_presets,
+            preview_backup,
+            restore_backup,
+            get_sync_status
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

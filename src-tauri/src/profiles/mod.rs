@@ -78,24 +78,25 @@ impl ProfileRepository {
         }
         self.persist()
     }
-    fn persist(&self) -> Result<(), String> {
-        if let Some(parent) = self.path.parent() {
-            fs::create_dir_all(parent).map_err(|e| e.to_string())?
+    pub fn replace_all(&mut self, profiles: Vec<ApplicationProfile>) -> Result<(), String> {
+        validate_all(&profiles)?;
+        let previous = self.profiles.clone();
+        self.profiles = profiles;
+        if let Err(error) = self.persist() {
+            self.profiles = previous;
+            return Err(error);
         }
-        let temp = self.path.with_extension("tmp");
+        Ok(())
+    }
+    fn persist(&self) -> Result<(), String> {
         let data = ProfileFile {
             schema_version: PROFILE_SCHEMA_VERSION,
             profiles: self.profiles.clone(),
         };
-        fs::write(
-            &temp,
-            serde_json::to_vec_pretty(&data).map_err(|e| e.to_string())?,
+        crate::presets::repository::atomic_write(
+            &self.path,
+            &serde_json::to_vec_pretty(&data).map_err(|e| e.to_string())?,
         )
-        .map_err(|e| e.to_string())?;
-        if self.path.exists() {
-            fs::remove_file(&self.path).map_err(|e| e.to_string())?
-        }
-        fs::rename(temp, &self.path).map_err(|e| e.to_string())
     }
 }
 fn validate(p: &ApplicationProfile) -> Result<(), String> {
@@ -117,7 +118,7 @@ fn validate(p: &ApplicationProfile) -> Result<(), String> {
     }
     Ok(())
 }
-fn validate_all(items: &[ApplicationProfile]) -> Result<(), String> {
+pub fn validate_all(items: &[ApplicationProfile]) -> Result<(), String> {
     let mut ids = HashSet::new();
     for p in items {
         validate(p)?;

@@ -35,7 +35,7 @@ const PREFERRED_SAMPLE_RATE: u32 = 48_000;
 const REQUESTED_BUFFER_FRAMES: u32 = 256;
 const RING_BUFFER_MILLISECONDS: u32 = 40;
 
-#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, serde::Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum MonitoringState {
     Stopped,
@@ -43,7 +43,7 @@ pub enum MonitoringState {
     Paused,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, serde::Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct AudioRuntimeStatus {
     pub state: MonitoringState,

@@ -1,5 +1,25 @@
 # Tiến độ Task 01
 
+## Task 15 - Automated Testing & Performance Optimization
+
+- Thêm Audio Diagnostics panel và export report privacy-safe qua temporary file.
+- PASS 72 Rust automated + 9 Vitest; 7 ignored Rust test chạy riêng (1 benchmark, 6 Windows hardware).
+- Hardware PASS: microphone start/stop, DSP thực tới VB-CABLE, endpoint open/stop, stable IDs và sample-rate mismatch.
+- Benchmark release: 10 giây/143.34 ms (ratio 0.014); algorithmic latency 58.00 ms.
+- `npm audit`: 0 vulnerability. `cargo audit`: 0 vulnerability, 4 warning.
+- Release EXE và NSIS x64 tạo thành công; MSI BLOCKED bởi WiX `LGHT0217/LGHT0216`/Windows Installer service.
+- Chưa đo loopback, session/memory 30 phút–2 giờ, sleep/resume hoặc Discord/OBS/VALORANT.
+- Release: NO-GO production đến khi đóng `RELEASE_READINESS.md`; không triển khai Task 16.
+
+## Task 14 - Preset Sync, Backup & Restore
+
+- Local backup schema v1: custom presets, hotkeys, gain/noise, profiles và portable Soundboard metadata.
+- Export/Import All Presets, preview, conflict detection và Restore Merge/Replace.
+- Safety snapshot tại `backup-safety/latest.json`; rollback state khi restore lỗi.
+- Không backup recording/raw audio, secret/token, WASAPI ID, driver hoặc absolute Windows path.
+- File giới hạn 4 MiB; kiểm tra schema, range và duplicate IDs.
+- `SyncProvider` local-only. Cloud sync DEFERRED; chưa có server/login/token/upload.
+
 ## Task 13 - Plugin Architecture & Soundboard
 
 - Hoàn thành registry/manifest/factory schema v1 và validation trusted/platform/API/realtime/parameter.

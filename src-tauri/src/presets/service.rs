@@ -36,6 +36,33 @@ impl UserPresetService {
             .find(|p| p.id == id)
             .ok_or_else(|| format!("User preset not found: {id}"))
     }
+    pub fn replace_all(&mut self, presets: Vec<VoicePreset>) -> Result<(), String> {
+        validate_registry(&presets)?;
+        if presets.iter().any(|preset| preset.built_in) {
+            return Err("Built-in presets cannot be restored as user presets".into());
+        }
+        let previous = self.presets.clone();
+        for preset in &presets {
+            if let Err(error) = self.repository.save(preset) {
+                for old in &previous {
+                    let _ = self.repository.save(old);
+                }
+                return Err(error);
+            }
+        }
+        for old in &previous {
+            if !presets.iter().any(|preset| preset.id == old.id)
+                && let Err(error) = self.repository.delete(&old.id)
+            {
+                for value in &previous {
+                    let _ = self.repository.save(value);
+                }
+                return Err(error);
+            }
+        }
+        self.presets = presets;
+        Ok(())
+    }
     pub fn create(
         &mut self,
         mut preset: VoicePreset,

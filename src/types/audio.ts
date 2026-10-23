@@ -149,6 +149,19 @@ export interface RoutingStatus {
   message: string | null;
 }
 
+export interface AudioDiagnosticsReport {
+  reportSchemaVersion: number;
+  generatedAtUnixSeconds: number;
+  applicationVersion: string;
+  platform: string;
+  activeInputDevice: string | null;
+  activeOutputDevice: string | null;
+  runtime: AudioRuntimeStatus;
+  routing: RoutingStatus;
+  processingCpuEstimatePercent: number | null;
+  privacyNotice: string;
+}
+
 export interface AudioUiState {
   inputDeviceId: string;
   outputDeviceId: string;

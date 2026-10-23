@@ -21,7 +21,7 @@ pub struct RoutingConfiguration {
     pub output_device_fingerprint: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum RoutingState {
     NotConfigured,
@@ -30,7 +30,7 @@ pub enum RoutingState {
     Faulted,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct RoutingStatus {
     pub state: RoutingState,

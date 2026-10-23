@@ -1,5 +1,17 @@
 # Kiến trúc VoiceMorph Studio
 
+## Task 15 - Diagnostics và release observability
+
+`diagnostics.rs` tạo snapshot chỉ đọc từ Device Service, `AudioStreamManager` và Routing Service. Frontend gọi qua application boundary; diagnostics không chạy trong callback realtime. Export dùng JSON schema versioned và temporary-file replace, chỉ chứa metadata/counters, không chứa audio hoặc recording.
+
+`averageProcessingMicros` là thời gian DSP trung bình theo frame; CPU percent chỉ là ước tính một core. `estimatedLatencyMs` là tính toán buffer/ring/DSP, không phải loopback end-to-end.
+
+## Task 14 - Portable backup
+
+`backup` định nghĩa manifest schema v1 và `SyncProvider`. Portable payload không có drive letter, absolute sound
+path, WASAPI ID hoặc native binary. Restore validate/preview trước, ghi safety snapshot rồi mới merge/replace và
+rollback khi lỗi. Cloud provider hiện local-only/deferred, không có network hoặc credential giả.
+
 ## Task 13 - Plugin architecture và Soundboard
 
 `plugins/manifest.rs` định nghĩa manifest schema v1, descriptor và parameter schema. `EffectRegistry` chỉ nhận

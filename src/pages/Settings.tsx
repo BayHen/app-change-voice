@@ -3,6 +3,8 @@ import { DeviceSelector } from "../components/DeviceSelector";
 import { ToggleSwitch } from "../components/ToggleSwitch";
 import { HotkeySettings } from "../components/HotkeySettings";
 import { DiscordIntegration } from "../components/DiscordIntegration";
+import { BackupSettings } from "../components/BackupSettings";
+import { AudioDiagnostics } from "../components/AudioDiagnostics";
 import type { DeviceOption } from "../types/audio";
 
 const noAudioDevices: DeviceOption[] = [
@@ -42,6 +44,10 @@ export function Settings() {
           <DiscordIntegration />
         </SettingsSection>
 
+        <SettingsSection title="Backup & Sync" description="Portable local backup and restore">
+          <BackupSettings />
+        </SettingsSection>
+
         <SettingsSection title="Audio" description="Default device and processing behavior">
           <div className="grid gap-5 sm:grid-cols-2">
             <DeviceSelector
@@ -61,6 +67,13 @@ export function Settings() {
               onChange={() => undefined}
             />
           </div>
+        </SettingsSection>
+
+        <SettingsSection
+          title="Audio Diagnostics"
+          description="Runtime health, performance counters and privacy-safe report export"
+        >
+          <AudioDiagnostics />
         </SettingsSection>
 
         <SettingsSection title="Theme" description="Visual appearance">

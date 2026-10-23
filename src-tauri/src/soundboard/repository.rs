@@ -30,6 +30,18 @@ impl SoundboardRepository {
     pub fn get(&self, id: &str) -> Option<&SoundEntry> {
         self.library.sounds.iter().find(|s| s.id == id)
     }
+    pub fn replace_all(&mut self, entries: Vec<SoundEntry>) -> Result<(), String> {
+        for entry in &entries {
+            validate(entry)?;
+        }
+        let previous = self.library.sounds.clone();
+        self.library.sounds = entries;
+        if let Err(error) = self.save() {
+            self.library.sounds = previous;
+            return Err(error);
+        }
+        Ok(())
+    }
     pub fn add(&mut self, file_path: String, name: String) -> Result<SoundEntry, String> {
         let path = Path::new(&file_path);
         if !path.is_file() {
@@ -91,16 +103,10 @@ impl SoundboardRepository {
         self.save()
     }
     fn save(&self) -> Result<(), String> {
-        if let Some(parent) = self.path.parent() {
-            fs::create_dir_all(parent).map_err(|e| e.to_string())?
-        }
-        let tmp = self.path.with_extension("tmp");
-        fs::write(
-            &tmp,
-            serde_json::to_vec_pretty(&self.library).map_err(|e| e.to_string())?,
+        crate::presets::repository::atomic_write(
+            &self.path,
+            &serde_json::to_vec_pretty(&self.library).map_err(|e| e.to_string())?,
         )
-        .map_err(|e| e.to_string())?;
-        fs::rename(tmp, &self.path).map_err(|e| e.to_string())
     }
 }
 fn validate(s: &SoundEntry) -> Result<(), String> {

@@ -4,8 +4,10 @@ import type { VoicePresetSummary } from "../types/preset";
 import type { HotkeyConfiguration } from "../types/hotkeys";
 import type { EffectDescriptor, PluginStatus, SoundEntry } from "../types/soundboard";
 import type { ApplicationProfile } from "../types/profiles";
+import type { BackupPreview, RestoreMode, SyncStatus } from "../types/backup";
 import type {
   AudioDevice,
+  AudioDiagnosticsReport,
   AudioDeviceSnapshot,
   AudioRuntimeStatus,
   DefaultDevices,
@@ -22,6 +24,10 @@ import type {
 export function getAppStatus(): Promise<AppStatus> {
   return invoke<AppStatus>("get_app_status");
 }
+
+export const getAudioDiagnostics = () => invoke<AudioDiagnosticsReport>("get_audio_diagnostics");
+export const exportAudioDiagnostics = (path: string) =>
+  invoke<void>("export_audio_diagnostics", { path });
 
 export function getVolumeSettings(): Promise<VolumeSettings> {
   return invoke<VolumeSettings>("get_volume_settings");
@@ -188,3 +194,11 @@ export const deleteApplicationProfile = (id: string) =>
   invoke<void>("delete_application_profile", { id });
 export const applyApplicationProfile = (profileId: string) =>
   invoke<ApplicationProfile>("apply_application_profile", { profileId });
+export const exportAllSettings = (path: string) => invoke<void>("export_all_settings", { path });
+export const previewBackup = (path: string) => invoke<BackupPreview>("preview_backup", { path });
+export const restoreBackup = (path: string, mode: RestoreMode) =>
+  invoke<BackupPreview>("restore_backup", { path, mode });
+export const exportAllPresets = (path: string) => invoke<void>("export_all_presets", { path });
+export const importAllPresets = (path: string, mode: RestoreMode) =>
+  invoke<number>("import_all_presets", { path, mode });
+export const getSyncStatus = () => invoke<SyncStatus>("get_sync_status");
