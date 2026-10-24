@@ -55,6 +55,16 @@ const routingMocks = vi.hoisted(() => ({
   stop: vi.fn(),
   openSettings: vi.fn(),
 }));
+const virtualMicMocks = vi.hoisted(() => ({
+  status: vi.fn(),
+  metrics: vi.fn(),
+  version: vi.fn(),
+  check: vi.fn(),
+  connect: vi.fn(),
+  disconnect: vi.fn(),
+  start: vi.fn(),
+  stop: vi.fn(),
+}));
 const hotkeyMocks = vi.hoisted(() => ({ get: vi.fn(), set: vi.fn(), reset: vi.fn() }));
 const soundboardMocks = vi.hoisted(() => ({ list: vi.fn(), plugins: vi.fn(), effects: vi.fn() }));
 const profileMocks = vi.hoisted(() => ({
@@ -197,6 +207,14 @@ vi.mock("../src/services/tauri", () => ({
   startVirtualRouting: routingMocks.start,
   stopVirtualRouting: routingMocks.stop,
   openWindowsSoundSettings: routingMocks.openSettings,
+  getVirtualMicrophoneStatus: virtualMicMocks.status,
+  getVirtualMicrophoneMetrics: virtualMicMocks.metrics,
+  getVirtualMicrophoneVersion: virtualMicMocks.version,
+  checkVirtualMicrophoneDriver: virtualMicMocks.check,
+  connectVirtualMicrophone: virtualMicMocks.connect,
+  disconnectVirtualMicrophone: virtualMicMocks.disconnect,
+  startVirtualMicrophoneStream: virtualMicMocks.start,
+  stopVirtualMicrophoneStream: virtualMicMocks.stop,
   getHotkeyConfiguration: hotkeyMocks.get,
   setHotkeyConfiguration: hotkeyMocks.set,
   resetHotkeyConfiguration: hotkeyMocks.reset,
@@ -435,6 +453,46 @@ describe("desktop navigation", () => {
       .mockResolvedValue({ ...routingStatus, state: "active", endpointVerified: true });
     routingMocks.stop.mockReset().mockResolvedValue(routingStatus);
     routingMocks.openSettings.mockReset().mockResolvedValue(undefined);
+    const virtualStatus = {
+      state: "ready",
+      driverName: "VoiceMorph Virtual Microphone",
+      driverVersion: "0.1.0.0",
+      expectedDriverVersion: "0.1.0.0",
+      versionCompatible: true,
+      protocolVersion: 1,
+      captureEndpointAvailable: true,
+      captureEndpointName: "VoiceMorph Virtual Microphone",
+      bridgeConnected: false,
+      routingActive: false,
+      message: "Driver and virtual capture endpoint are available.",
+    };
+    virtualMicMocks.status.mockReset().mockResolvedValue(virtualStatus);
+    virtualMicMocks.metrics.mockReset().mockResolvedValue({
+      connected: false,
+      streaming: false,
+      sampleRate: 48000,
+      channels: 1,
+      packetFrames: 480,
+      queuedFrames: 0,
+      capacityFrames: 4096,
+      writtenFrames: 0,
+      droppedFrames: 0,
+      underrunFrames: 0,
+      transportErrors: 0,
+      bridgeBufferEstimateMs: 0,
+    });
+    virtualMicMocks.version.mockReset().mockResolvedValue({
+      driverName: virtualStatus.driverName,
+      installedVersion: "0.1.0.0",
+      expectedVersion: "0.1.0.0",
+      protocolVersion: 1,
+      compatible: true,
+    });
+    virtualMicMocks.check.mockReset().mockResolvedValue(undefined);
+    virtualMicMocks.connect.mockReset().mockResolvedValue(undefined);
+    virtualMicMocks.disconnect.mockReset().mockResolvedValue(undefined);
+    virtualMicMocks.start.mockReset().mockResolvedValue(undefined);
+    virtualMicMocks.stop.mockReset().mockResolvedValue(undefined);
     const hotkeyConfiguration = {
       schemaVersion: 1,
       bindings: [
@@ -481,9 +539,10 @@ describe("desktop navigation", () => {
 
     await user.click(screen.getAllByRole("button", { name: "Virtual Microphone" })[0]);
     expect(screen.getByRole("heading", { name: "Virtual Microphone" })).toBeInTheDocument();
-    expect(await screen.findByLabelText("Virtual cable playback endpoint")).toHaveValue(
-      "wasapi:cable",
-    );
+    expect(
+      await screen.findByText("Driver and virtual capture endpoint are available."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Connect" })).toBeEnabled();
 
     await user.click(screen.getAllByRole("button", { name: "Settings" })[0]);
     expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
@@ -570,6 +629,20 @@ describe("desktop navigation", () => {
 
     await user.click(screen.getByRole("button", { name: "Stop monitoring" }));
     expect(runtimeMocks.stop).toHaveBeenCalledOnce();
+  });
+
+  it("synchronizes virtual driver state and connects only after user action", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getAllByRole("button", { name: "Virtual Microphone" })[0]);
+
+    expect(
+      await screen.findByText("Driver and virtual capture endpoint are available."),
+    ).toBeInTheDocument();
+    expect(virtualMicMocks.connect).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Connect" }));
+    expect(virtualMicMocks.connect).toHaveBeenCalledOnce();
+    expect(screen.getByRole("button", { name: "Start Routing" })).toBeDisabled();
   });
 
   it("updates independent gain controls and microphone mute", async () => {

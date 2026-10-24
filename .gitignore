@@ -8,6 +8,7 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
+.vite-cache/
 dist
 dist-ssr
 coverage
@@ -18,6 +19,7 @@ coverage
 
 # Rust / Tauri
 src-tauri/target
+src-tauri/target-dev
 target
 
 # Windows build artifacts
@@ -25,6 +27,10 @@ target
 *.msi
 *.msix
 *-setup.exe
+drivers/voicemorph-virtual-audio/obj/
+drivers/voicemorph-virtual-audio/artifacts/
+src-tauri/driver-package/
+release-artifacts/
 
 # Release signing secrets (public keys may be committed explicitly when approved)
 *.key
@@ -45,6 +51,9 @@ target
 
 # Local headless browser profiles used for UI screenshots
 .edge-*/
+
+# Local Microsoft SDK/WDK installers, samples and offline documentation
+.downloads/
 
 # Local AI environments, downloaded model weights and benchmark output
 .venv-ai/

@@ -21,6 +21,8 @@ jobs:
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
       VOICEMORPH_UPDATER_PUBLIC_KEY: ${{ secrets.VOICEMORPH_UPDATER_PUBLIC_KEY }}
+      VOICEMORPH_SIGNED_DRIVER_PACKAGE_URL: ${{ secrets.VOICEMORPH_SIGNED_DRIVER_PACKAGE_URL }}
+      VOICEMORPH_SIGNED_DRIVER_PACKAGE_SHA256: ${{ secrets.VOICEMORPH_SIGNED_DRIVER_PACKAGE_SHA256 }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -43,6 +45,20 @@ jobs:
         run: |
           if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY)) { throw "TAURI_SIGNING_PRIVATE_KEY is required" }
           if ([string]::IsNullOrWhiteSpace($env:VOICEMORPH_UPDATER_PUBLIC_KEY)) { throw "VOICEMORPH_UPDATER_PUBLIC_KEY is required" }
+          if ([string]::IsNullOrWhiteSpace($env:VOICEMORPH_SIGNED_DRIVER_PACKAGE_URL)) { throw "VOICEMORPH_SIGNED_DRIVER_PACKAGE_URL is required" }
+          if ([string]::IsNullOrWhiteSpace($env:VOICEMORPH_SIGNED_DRIVER_PACKAGE_SHA256)) { throw "VOICEMORPH_SIGNED_DRIVER_PACKAGE_SHA256 is required" }
+      - name: Download and validate Microsoft-signed driver package
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP 'voicemorph-signed-driver.zip'
+          $expanded = Join-Path $env:RUNNER_TEMP 'voicemorph-signed-driver'
+          Invoke-WebRequest -Uri $env:VOICEMORPH_SIGNED_DRIVER_PACKAGE_URL -OutFile $archive
+          $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash
+          if ($actual -ne $env:VOICEMORPH_SIGNED_DRIVER_PACKAGE_SHA256) { throw "Signed driver archive checksum mismatch" }
+          Expand-Archive -LiteralPath $archive -DestinationPath $expanded
+          $inf = Get-ChildItem -LiteralPath $expanded -Filter VoiceMorphVirtualAudio.inf -Recurse -File
+          if ($inf.Count -ne 1) { throw "Signed driver archive must contain exactly one VoiceMorphVirtualAudio.inf" }
+          ./scripts/prepare-driver-release.ps1 -SourceDirectory $inf[0].DirectoryName
       - run: npm run test
       - run: cargo test --manifest-path src-tauri/Cargo.toml
       - uses: tauri-apps/tauri-action@v1
@@ -54,4 +70,24 @@ jobs:
           releaseBody: See CHANGELOG.md and the signed assets attached to this draft.
           releaseDraft: true
           prerelease: false
-          args: --target x86_64-pc-windows-msvc --bundles nsis --config src-tauri/tauri.release.conf.json
+          args: --target x86_64-pc-windows-msvc --bundles nsis --config src-tauri/tauri.release.conf.json --config src-tauri/tauri.driver-release.conf.json
+      - name: Generate and attach release artifact manifest
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $bundle = 'src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis'
+          $files = Get-ChildItem -LiteralPath $bundle -Filter '*-setup.exe' -File
+          if (-not $files) { throw 'No NSIS release artifact was produced' }
+          $artifacts = @($files | ForEach-Object {
+            [ordered]@{ name = $_.Name; size = $_.Length; sha256 = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
+          })
+          $driverVersion = (Get-Content drivers/voicemorph-virtual-audio/driver-package.json -Raw | ConvertFrom-Json).driverVersion
+          [ordered]@{
+            schemaVersion = 1
+            applicationVersion = (Get-Content package.json -Raw | ConvertFrom-Json).version
+            driverVersion = $driverVersion
+            architecture = 'x64'
+            artifacts = $artifacts
+          } | ConvertTo-Json -Depth 5 | Set-Content release-artifact-manifest.json -Encoding utf8
+          gh release upload $env:RELEASE_TAG release-artifact-manifest.json --clobber

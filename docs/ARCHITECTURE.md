@@ -4,6 +4,8 @@
 
 Updater dùng Tauri 2 updater/process plugins. GitHub HTTPS endpoint là cố định, nhưng public key được inject tại Rust compile-time từ `VOICEMORPH_UPDATER_PUBLIC_KEY`; thiếu key thì UI fail closed và không gọi network. `requireSignedVersion=true`, downgrade bị tắt. Private key chỉ đi qua CI secret. Release config riêng bật updater artifacts để build dev không cần signing key.
 
+Windows driver release dùng NSIS per-machine với hook PnPUtil cố định. Package SYS/INF/CAT phải qua staging validation (Microsoft signature, kernel policy, identity/version và SHA-256) trước khi Tauri bundle; package unsigned/test-signed bị từ chối. `DriverInstallationService` chỉ quyết định Install/Repair/Upgrade/Keep, không elevation từ frontend. App uninstall giữ driver mặc định để tránh xóa endpoint đang được dùng.
+
 Installer không chứa virtual audio driver. User data ở Tauri app data/config/cache, tách khỏi binary/install directory và được bảo toàn qua update.
 
 ## Task 15 - Diagnostics và release observability
@@ -226,3 +228,15 @@ Task 04–08 tiếp tục làm fallback.
 `ai/manager.rs` quản lý model tại `app_data_dir/ai-models`. Chỉ manifest versioned + ONNX được chấp nhận;
 path traversal, license ngoài allow-list, file quá 2 GiB và SHA-256 sai bị từ chối. Prototype OpenVoice V2
 MIT chạy offline ngoài app trước khi cân nhắc ONNX Runtime/WinML. Xem `docs/AI_VOICE_CONVERSION.md`.
+
+## Phase 11.2.4 - Tauri Virtual Microphone Integration
+
+`virtual_audio/manager.rs` là control-plane của microphone ảo. Manager phân biệt `NotInstalled`, `Installed`,
+`DriverUnavailable`, `Ready`, `BridgeConnected`, `Streaming` và `Error`; startup chỉ probe device interface,
+protocol và driver version rồi đóng handle tạm, không cấu hình producer hoặc mở microphone.
+
+Các Tauri command trả DTO/error có schema rõ ràng. `Connect` giữ control handle để theo dõi driver; `Start`
+ủy quyền cho `AudioStreamManager` kích hoạt data-plane từ Phase 11.2.3. PCM không đi qua Tauri IPC. Capture
+endpoint được đối chiếu từ danh sách CPAL input nhưng identity chính vẫn là custom device interface GUID,
+không dùng display name làm định danh duy nhất. UI poll status/metrics ở tốc độ thấp; device disconnect làm
+routing dừng/fault an toàn mà không ảnh hưởng monitoring hoặc thiết bị khác.

@@ -81,6 +81,10 @@ npm.cmd run tauri:dev
 Các hook `beforeDevCommand` và `beforeBuildCommand` trong `tauri.conf.json` cũng gọi trực tiếp
 `npm.cmd`. Cấu hình này tránh việc PowerShell chọn `npm.ps1` và thất bại do Execution Policy.
 
+Script `tauri:dev` dùng riêng `src-tauri/target-dev` cho Cargo incremental cache. Cách này tránh lỗi
+`failed to garbage collect ... Access is denied (os error 5)` khi thư mục `target` trước đó được tạo bởi
+CI, sandbox hoặc một tài khoản Windows khác. Release build vẫn dùng `src-tauri/target` như bình thường.
+
 Nếu Tauri báo `beforeDevCommand terminated with a non-zero status code`, kiểm tra port cố định 1420:
 
 ```powershell
@@ -92,12 +96,20 @@ Get-NetTCPConnection -LocalPort 1420 -State Listen
 
 Nếu log có `EPERM: operation not permitted, unlink node_modules\\.vite\\deps\\...`, đóng ứng dụng
 VoiceMorph/Vite đang chạy và đóng các tab editor đang mở trực tiếp file trong `node_modules/.vite`.
-Sau đó xóa cache có thể tái tạo và chạy lại:
+Project hiện cô lập Vite cache theo tài khoản Windows tại `.vite-cache/<username>`, vì vậy tài khoản desktop
+không cần unlink cache do CI/sandbox tạo. Với cache cũ từ phiên bản trước, không cần xóa
+`node_modules/.vite`; chỉ cần chạy lại lệnh sau:
 
 ```powershell
-Remove-Item -LiteralPath .\node_modules\.vite -Recurse -Force
 npm.cmd run tauri:dev
 ```
+
+Nếu WebView2 báo `0x800700AA: The requested resource is in use` ngay sau dòng
+`Running target\debug\voicemorph-studio.exe`, hãy chạy lệnh từ terminal của phiên desktop Windows đang
+đăng nhập (VS Code/PowerShell của chính người dùng), không chạy qua Windows service, tài khoản automation
+cô lập hoặc session không tương tác. Có thể kiểm tra tài khoản hiện tại bằng `whoami`. Trên môi trường dự án
+đã xác minh, cùng executable khởi động bình thường trong phiên desktop tương tác; đổi hoặc xóa WebView2
+profile không khắc phục lỗi khi tiến trình vẫn chạy trong session cô lập.
 
 Build x64:
 
