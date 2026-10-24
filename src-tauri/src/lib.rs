@@ -12,6 +12,7 @@ pub mod profiles;
 pub mod routing;
 pub mod soundboard;
 pub mod tray;
+pub mod virtual_audio;
 
 use ai::{AIModelManager, AIModelStatus, AIProviderStatus};
 use audio::{AudioEngine, NullAudioEngine};
@@ -55,6 +56,10 @@ use soundboard::{SoundEntry, repository::SoundboardRepository};
 use std::{path::PathBuf, sync::Mutex};
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_global_shortcut::ShortcutState;
+use virtual_audio::manager::{
+    DRIVER_NAME, VirtualMicrophoneCommandError, VirtualMicrophoneManager, VirtualMicrophoneMetrics,
+    VirtualMicrophoneStatus, VirtualMicrophoneVersion, VirtualRoutingController,
+};
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -138,6 +143,23 @@ struct AudioDeviceService {
     provider: Box<dyn AudioDeviceProvider>,
     preferences_path: PathBuf,
     preferences: AudioDevicePreferences,
+}
+
+type VirtualMicrophoneState = Mutex<VirtualMicrophoneManager>;
+
+fn virtual_capture_endpoint(devices: &mut AudioDeviceService) -> Option<String> {
+    devices
+        .refresh()
+        .ok()?
+        .input_devices
+        .into_iter()
+        .find(|device| {
+            device
+                .name
+                .to_ascii_lowercase()
+                .contains(&DRIVER_NAME.to_ascii_lowercase())
+        })
+        .map(|device| device.name)
 }
 
 impl AudioDeviceService {
@@ -899,6 +921,166 @@ fn stop_virtual_routing(
         .stop_routing()
 }
 
+fn current_virtual_microphone_status(
+    manager: &mut VirtualMicrophoneManager,
+    devices: &mut AudioDeviceService,
+    runtime: &AudioStreamManager,
+) -> VirtualMicrophoneStatus {
+    manager.poll_connection();
+    manager.status(
+        virtual_capture_endpoint(devices),
+        runtime.driver_bridge_status(),
+    )
+}
+
+#[tauri::command]
+fn get_virtual_microphone_status(
+    manager: State<'_, VirtualMicrophoneState>,
+    devices: State<'_, AudioDeviceState>,
+    runtime: State<'_, AudioRuntimeState>,
+) -> Result<VirtualMicrophoneStatus, VirtualMicrophoneCommandError> {
+    let mut devices = devices.lock().map_err(|_| {
+        VirtualMicrophoneCommandError::new(
+            "stateLock",
+            "Audio device state lock was poisoned",
+            true,
+        )
+    })?;
+    let runtime = runtime.lock().map_err(|_| {
+        VirtualMicrophoneCommandError::new("stateLock", "Audio runtime lock was poisoned", true)
+    })?;
+    let mut manager = manager.lock().map_err(|_| {
+        VirtualMicrophoneCommandError::new(
+            "stateLock",
+            "Virtual microphone state lock was poisoned",
+            true,
+        )
+    })?;
+    Ok(current_virtual_microphone_status(
+        &mut manager,
+        &mut devices,
+        &runtime,
+    ))
+}
+
+#[tauri::command]
+fn get_virtual_microphone_version(
+    manager: State<'_, VirtualMicrophoneState>,
+) -> Result<VirtualMicrophoneVersion, VirtualMicrophoneCommandError> {
+    let manager = manager.lock().map_err(|_| {
+        VirtualMicrophoneCommandError::new(
+            "stateLock",
+            "Virtual microphone state lock was poisoned",
+            true,
+        )
+    })?;
+    Ok(manager.version())
+}
+
+#[tauri::command]
+fn connect_virtual_microphone(
+    manager: State<'_, VirtualMicrophoneState>,
+) -> Result<VirtualMicrophoneVersion, VirtualMicrophoneCommandError> {
+    let mut manager = manager.lock().map_err(|_| {
+        VirtualMicrophoneCommandError::new(
+            "stateLock",
+            "Virtual microphone state lock was poisoned",
+            true,
+        )
+    })?;
+    manager.connect()?;
+    Ok(manager.version())
+}
+
+#[tauri::command]
+fn disconnect_virtual_microphone(
+    manager: State<'_, VirtualMicrophoneState>,
+    runtime: State<'_, AudioRuntimeState>,
+) -> Result<(), VirtualMicrophoneCommandError> {
+    runtime
+        .lock()
+        .map_err(|_| {
+            VirtualMicrophoneCommandError::new("stateLock", "Audio runtime lock was poisoned", true)
+        })?
+        .stop_routing()
+        .map_err(|error| VirtualMicrophoneCommandError::new("routingStop", error.message, true))?;
+    manager
+        .lock()
+        .map_err(|_| {
+            VirtualMicrophoneCommandError::new(
+                "stateLock",
+                "Virtual microphone state lock was poisoned",
+                true,
+            )
+        })?
+        .disconnect();
+    Ok(())
+}
+
+#[tauri::command]
+fn start_virtual_microphone_stream(
+    manager: State<'_, VirtualMicrophoneState>,
+    runtime: State<'_, AudioRuntimeState>,
+) -> Result<RoutingStatus, VirtualMicrophoneCommandError> {
+    manager
+        .lock()
+        .map_err(|_| {
+            VirtualMicrophoneCommandError::new(
+                "stateLock",
+                "Virtual microphone state lock was poisoned",
+                true,
+            )
+        })?
+        .validate_stream_start()?;
+    runtime
+        .lock()
+        .map_err(|_| {
+            VirtualMicrophoneCommandError::new("stateLock", "Audio runtime lock was poisoned", true)
+        })?
+        .start_routing()
+        .map_err(|error| VirtualMicrophoneCommandError::new("routingStart", error.message, true))
+}
+
+#[tauri::command]
+fn stop_virtual_microphone_stream(
+    runtime: State<'_, AudioRuntimeState>,
+) -> Result<RoutingStatus, VirtualMicrophoneCommandError> {
+    runtime
+        .lock()
+        .map_err(|_| {
+            VirtualMicrophoneCommandError::new("stateLock", "Audio runtime lock was poisoned", true)
+        })?
+        .stop_routing()
+        .map_err(|error| VirtualMicrophoneCommandError::new("routingStop", error.message, true))
+}
+
+#[tauri::command]
+fn get_virtual_microphone_metrics(
+    runtime: State<'_, AudioRuntimeState>,
+) -> Result<VirtualMicrophoneMetrics, VirtualMicrophoneCommandError> {
+    let runtime = runtime.lock().map_err(|_| {
+        VirtualMicrophoneCommandError::new("stateLock", "Audio runtime lock was poisoned", true)
+    })?;
+    Ok(VirtualMicrophoneManager::metrics(
+        runtime.driver_bridge_status(),
+    ))
+}
+
+#[tauri::command]
+fn check_virtual_microphone_driver(
+    manager: State<'_, VirtualMicrophoneState>,
+) -> Result<VirtualMicrophoneVersion, VirtualMicrophoneCommandError> {
+    let mut manager = manager.lock().map_err(|_| {
+        VirtualMicrophoneCommandError::new(
+            "stateLock",
+            "Virtual microphone state lock was poisoned",
+            true,
+        )
+    })?;
+    manager.check_driver();
+    Ok(manager.version())
+}
+
 #[tauri::command]
 fn open_windows_sound_settings() -> Result<(), RoutingError> {
     std::process::Command::new("explorer.exe")
@@ -1452,6 +1634,9 @@ pub fn run() {
             runtime.set_soundboard_entries(soundboard_repository.list());
             runtime.set_routing_configuration(routing_configuration);
             app.manage(Mutex::new(runtime));
+            // Startup probe only opens the control interface briefly; it never configures
+            // an audio producer or starts microphone capture.
+            app.manage(Mutex::new(VirtualMicrophoneManager::default()));
             app.manage(Mutex::new(soundboard_repository));
             app.manage(Mutex::new(
                 AIModelManager::new(ai_models_dir).map_err(std::io::Error::other)?,
@@ -1530,6 +1715,14 @@ pub fn run() {
             get_routing_status,
             start_virtual_routing,
             stop_virtual_routing,
+            get_virtual_microphone_status,
+            get_virtual_microphone_version,
+            check_virtual_microphone_driver,
+            connect_virtual_microphone,
+            disconnect_virtual_microphone,
+            start_virtual_microphone_stream,
+            stop_virtual_microphone_stream,
+            get_virtual_microphone_metrics,
             open_windows_sound_settings,
             get_hotkey_configuration,
             set_hotkey_configuration,

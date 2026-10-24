@@ -460,3 +460,47 @@ cài Windows x64 đã được xác nhận trong quality gate ngày 22/10/2026.
   transitive hiện hữu (`atty`, `proc-macro-error`, `glib`).
 - `npm.cmd run tauri:dev`: PASS smoke launch; shortcut `Ctrl+Alt+M` bị ứng dụng khác chiếm nhưng lỗi được
   báo và app vẫn chạy, không tự mở microphone.
+
+## Phase 11.2.2 - Windows Virtual Microphone Driver Prototype
+
+- Đã tạo prototype source overlay dựa trên Microsoft Simple Audio Sample/WaveRT tại upstream commit đã ghim.
+- Identity: `VoiceMorph Virtual Microphone`, provider `VoiceMorph Studio`, x64, version `0.1.0.0`.
+- Chỉ đăng ký capture endpoint 48 kHz mono PCM32; render endpoint mẫu bị vô hiệu hóa.
+- Capture path hiện trả silence đã khởi tạo an toàn; chưa có PCM bridge và không tuyên bố routing voice thật.
+- Package contract/overlay validation: PASS.
+- Driver Debug x64 compilation: PASS với WDK 10.0.28000.2526, 0 warnings/0 errors.
+- ApiValidator, Inf2Cat và InfVerif `/w`: PASS; `.sys`, stamped `.inf` và unsigned `.cat` đã tạo.
+- Installation, enumeration và WaveRT stream tests: NOT TESTED; không cài prototype lên máy làm việc chính.
+
+## Phase 11.2.3 - Rust-to-Driver Audio Bridge
+
+- Implemented processed-audio fan-out tới bounded SPSC queue; callback không gọi Win32, không lock và không allocation.
+- Worker Rust chuyển Float32 mono 48 kHz sang PCM signed 32-bit, gửi packet 480 frames qua buffered IOCTL.
+- Driver có stable device interface, protocol validation, single producer, bounded PCM ring, underrun/overflow counters và silence fallback.
+- WaveRT capture path đọc ring thật; VB-CABLE không còn bắt buộc khi VoiceMorph driver interface khả dụng, nhưng routing cũ vẫn là fallback.
+- Driver Debug x64 build, ApiValidator, Inf2Cat và Rust compile/tests: PASS.
+- Driver installation, Windows capture client, processed pitch/noise, disconnect/reconnect, long session và loopback latency: NOT TESTED/BLOCKED vì package chưa ký và chưa cài trên test target.
+
+## Phase 11.2.4 - Tauri Virtual Microphone Integration
+
+- Hoàn thiện control-plane manager và 7 Tauri commands typed cho status, version, connect/disconnect, stream start/stop và metrics; thêm command Check Driver cho thao tác UI.
+- Startup tự probe driver identity/protocol/version nhưng không mở microphone, không tự routing và không cần elevation khi sử dụng.
+- Virtual Microphone page hiển thị state machine riêng, endpoint/bridge status, input/output meters, queue counters và latency estimate không giả là loopback measurement.
+- React/Vitest, TypeScript/Vite, ESLint, Rust tests/check/clippy và driver build/package validation: PASS.
+- Driver thật chưa ký/cài nên kernel connection, endpoint capture, restart/disconnect hardware tests: NOT TESTED/BLOCKED.
+- `npm.cmd run tauri:dev`: PASS khi chạy ngoài sandbox trong phiên desktop Windows tương tác; Vite và executable Tauri khởi động, cửa sổ duy trì hoạt động cho tới khi chủ động dừng. WebView2 `0x800700AA` chỉ tái hiện dưới tài khoản automation cô lập `codexsandboxoffline`, không phải regression của ứng dụng.
+
+## Phase 11.2.5 - Windows Installer & Driver Packaging
+
+- Tạo NSIS per-machine config/hook, staging production driver đã ký, validation bằng Authenticode + SignTool kernel policy và artifact SHA-256 manifest.
+- Thêm `DriverInstallationService` policy cho Install/Repair/Upgrade/Keep; frontend không được thực thi command elevated tùy ý.
+- Sửa WDK StampInf để Release INF giữ version `0.1.0.0`; Release x64 build/Inf2Cat PASS, 0 warnings/errors.
+- Package local unsigned bị release staging từ chối: PASS security negative test.
+- Production installer và installation lifecycle tests: BLOCKED vì chưa có Microsoft-signed driver package; không tuyên bố installer production hoàn tất.
+
+## Phase 11.2.6 - External Application Compatibility Testing
+
+- Precondition thực tế ngày 24/10/2026: Windows build 26200 x64 không có VoiceMorph service/PnP endpoint/audio endpoint/driver-store package; CAT/SYS local unsigned.
+- Discord 1.0.9265 và OBS 32.1.0 có cài; VALORANT và Zoom không được phát hiện.
+- Không mở microphone hoặc dùng VB-CABLE để mô phỏng: Discord/OBS/VALORANT và multi-app tests đều BLOCKED; latency/long-run NOT TESTED.
+- Cập nhật setup guides cho driver riêng và tạo `COMPATIBILITY_MATRIX.md`, `AUDIO_COMPATIBILITY_TESTING.md` với evidence gate rõ ràng.

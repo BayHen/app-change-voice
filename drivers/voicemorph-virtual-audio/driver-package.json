@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "name": "VoiceMorph Virtual Microphone",
+  "provider": "VoiceMorph Studio",
+  "architecture": "x64",
+  "driverVersion": "0.1.0.0",
+  "driverDate": "10/23/2026",
+  "hardwareId": "ROOT\\VoiceMorphVirtualMicrophone",
+  "serviceName": "VoiceMorphVirtualAudio",
+  "upstream": {
+    "repository": "https://github.com/microsoft/Windows-driver-samples",
+    "commit": "bb68ed5e770bce04dc5395ec9258dafab034184d",
+    "project": "audio/simpleaudiosample"
+  },
+  "endpoint": {
+    "kind": "capture",
+    "sampleRate": 48000,
+    "channels": 1,
+    "bitsPerSample": 32,
+    "sampleFormat": "pcm-signed-integer",
+    "fallback": "silence"
+  },
+  "outputs": {
+    "driver": "VoiceMorphVirtualAudio.sys",
+    "inf": "VoiceMorphVirtualAudio.inf",
+    "catalog": "VoiceMorphVirtualAudio.cat"
+  }
+}

@@ -1,9 +1,17 @@
-# Thiết lập VALORANT
+# Thiết lập VALORANT với VoiceMorph Virtual Microphone
 
-1. VoiceMorph: microphone vật lý → Start Monitoring → chọn `CABLE Input` → Start Routing.
-2. VALORANT Audio/Voice Chat: chọn input `CABLE Output (VB-Audio Virtual Cable)`.
-3. Output của game phải là headphone vật lý. Kiểm tra Team/Party Voice và input threshold.
-4. Apply profile VALORANT thủ công; thử Natural/Deep và mute trước khi vào trận.
+1. Xác nhận `VoiceMorph Virtual Microphone` hoạt động trong Windows Sound Settings trước khi mở game.
+2. VoiceMorph: Start Routing với microphone vật lý và preset mong muốn.
+3. VALORANT → Settings → Audio → Voice Chat:
+   - Input Device: `VoiceMorph Virtual Microphone`.
+   - Output Device: headphone vật lý.
+4. Chạy Loopback Test, sau đó kiểm tra Push-to-Talk, Party/Team Voice, mute và chuyển preset khi game đang mở.
+5. Đóng/mở lại game và xác nhận VoiceMorph Audio Engine không bị dừng.
 
-VoiceMorph chỉ dùng Windows Audio API. Không inject, hook, sửa file, bypass hoặc can thiệp Riot Vanguard.
-Nếu VALORANT không thấy endpoint, đóng/mở lại game sau khi VB-CABLE đã được Windows nhận diện.
+VoiceMorph chỉ dùng Windows Audio APIs chuẩn. Không inject code, hook process, đọc bộ nhớ, thay đổi file game hoặc
+can thiệp/bypass Riot Vanguard.
+
+## Trạng thái kiểm thử 24/10/2026
+
+VALORANT/Riot Client không được phát hiện trên máy test và VoiceMorph virtual endpoint chưa tồn tại. Các test game
+được ghi **BLOCKED**, không mô phỏng và không dùng VB-CABLE thay cho driver riêng.

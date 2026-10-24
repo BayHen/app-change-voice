@@ -1,0 +1,163 @@
+diff --git a/Source/Filters/minipairs.h b/Source/Filters/minipairs.h
+--- a/Source/Filters/minipairs.h
++++ b/Source/Filters/minipairs.h
+@@ -151,12 +151,11 @@ ENDPOINT_MINIPAIR MicArray1Miniports =
+ // unnessary, this array could contain capture endpoints.
+ //
+ static
+-PENDPOINT_MINIPAIR  g_RenderEndpoints[] = 
++PENDPOINT_MINIPAIR  g_RenderEndpoints[1] =
+ {
+-    &SpeakerMiniports,
++    NULL,
+ };
+-
+-#define g_cRenderEndpoints  (SIZEOF_ARRAY(g_RenderEndpoints))
++#define g_cRenderEndpoints  0
+ 
+ //=============================================================================
+ //
+diff --git a/Source/Filters/micarraywavtable.h b/Source/Filters/micarraywavtable.h
+--- a/Source/Filters/micarraywavtable.h
++++ b/Source/Filters/micarraywavtable.h
+@@ -18,6 +18,6 @@ Abstract:-
+ // Mic array range.
+ //
+-#define MICARRAY_RAW_CHANNELS                   2       // Channels for raw mode
+-#define MICARRAY_DEVICE_MAX_CHANNELS            2       // Max channels overall
++#define MICARRAY_RAW_CHANNELS                   1       // VoiceMorph bridge is mono
++#define MICARRAY_DEVICE_MAX_CHANNELS            1       // One virtual capture channel
+ #define MICARRAY_32_BITS_PER_SAMPLE_PCM         32      // 32 Bits Per Sample
+ #define MICARRAY_RAW_SAMPLE_RATE                48000   // Raw sample rate
+@@ -33,6 +33,6 @@ static
+ KSDATAFORMAT_WAVEFORMATEXTENSIBLE MicArrayPinSupportedDeviceFormats[] =
+ {
+-    // 48 KHz 32-bit 2 channels
++    // 48 KHz 32-bit mono PCM
+     {
+         {
+             sizeof(KSDATAFORMAT_WAVEFORMATEXTENSIBLE),
+@@ -48,15 +48,15 @@ KSDATAFORMAT_WAVEFORMATEXTENSIBLE MicArrayPinSupportedDeviceFormats[] =
+         {
+             {
+                 WAVE_FORMAT_EXTENSIBLE,
+-                2,
++                1,
+                 48000,
+-                384000,
+-                8,
++                192000,
++                4,
+                 32,
+                 sizeof(WAVEFORMATEXTENSIBLE) - sizeof(WAVEFORMATEX)
+             },
+             32,
+-            KSAUDIO_SPEAKER_STEREO,
++            KSAUDIO_SPEAKER_MONO,
+             STATICGUIDOF(KSDATAFORMAT_SUBTYPE_PCM)
+         }
+     }
+diff --git a/Source/Main/minwavertstream.cpp b/Source/Main/minwavertstream.cpp
+--- a/Source/Main/minwavertstream.cpp
++++ b/Source/Main/minwavertstream.cpp
+@@ -4,6 +4,7 @@
+ #include "endpoints.h"
+ #include "minwavert.h"
+ #include "minwavertstream.h"
++#include "voicemorph_bridge_driver.h"
+ #define MINWAVERTSTREAM_POOLTAG 'SRWM'
+ 
+ #pragma warning (disable : 4127)
+@@ -1413,7 +1413,7 @@ ByteDisplacement - # of bytes to process.
+     {
+         ULONG runWrite = min(ByteDisplacement, m_ulDmaBufferSize - bufferOffset);
+         
+-        m_ToneGenerator.GenerateSine(m_pDmaBuffer + bufferOffset, runWrite);
++        VoiceMorphBridgeRead(m_pDmaBuffer + bufferOffset, runWrite);
+            	
+         bufferOffset = (bufferOffset + runWrite) % m_ulDmaBufferSize;
+         ByteDisplacement -= runWrite;
+diff --git a/Source/Main/adapter.cpp b/Source/Main/adapter.cpp
+--- a/Source/Main/adapter.cpp
++++ b/Source/Main/adapter.cpp
+@@ -17,11 +17,12 @@
+ //
+ // All the GUIDS for all the miniports end up in this object.
+ //
+ #define PUT_GUIDS_HERE
+ 
+ #include "definitions.h"
+ #include "endpoints.h"
+ #include "minipairs.h"
++#include "voicemorph_bridge_driver.h"
+ 
+ typedef void (*fnPcDriverUnload) (PDRIVER_OBJECT);
+ fnPcDriverUnload gPCDriverUnloadRoutine = NULL;
+@@ -330,8 +331,14 @@ DriverEntry
+                                           (PDRIVER_ADD_DEVICE)AddDevice);
+     IF_FAILED_ACTION_JUMP(
+         ntStatus,
+         DPF(D_ERROR, ("PcInitializeAdapterDriver failed, 0x%x", ntStatus)),
+         Done);
++
++    VoiceMorphBridgeInitialize();
++    VoiceMorphBridgeSetFallbackDispatch(DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL],
++                                         DriverObject->MajorFunction[IRP_MJ_CLEANUP]);
++    DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = VoiceMorphBridgeDeviceControl;
++    DriverObject->MajorFunction[IRP_MJ_CLEANUP] = VoiceMorphBridgeCleanup;
+ 
+     //
+     // To intercept stop/remove/surprise-remove.
+@@ -601,19 +601,11 @@ InstallAllRenderFilters(
+     )
+ {
+-    NTSTATUS            ntStatus;
+-    PENDPOINT_MINIPAIR* ppAeMiniports   = g_RenderEndpoints;
+-    
+     PAGED_CODE();
+ 
+-    for(ULONG i = 0; i < g_cRenderEndpoints; ++i, ++ppAeMiniports)
+-    {
+-        ntStatus = InstallEndpointRenderFilters(_pDeviceObject, _pIrp, _pAdapterCommon, *ppAeMiniports);
+-        IF_FAILED_JUMP(ntStatus, Exit);
+-    }
+-    
+-    ntStatus = STATUS_SUCCESS;
++    UNREFERENCED_PARAMETER(_pDeviceObject);
++    UNREFERENCED_PARAMETER(_pIrp);
++    UNREFERENCED_PARAMETER(_pAdapterCommon);
+ 
+-Exit:
+-    return ntStatus;
++    return STATUS_SUCCESS;
+ }
+ 
+ #pragma code_seg("PAGE")
+diff --git a/Source/Main/Main.vcxproj b/Source/Main/Main.vcxproj
+--- a/Source/Main/Main.vcxproj
++++ b/Source/Main/Main.vcxproj
+@@ -179,12 +179,12 @@
+   </ItemDefinitionGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+-    <TargetName>SimpleAudioSample</TargetName>
++    <TargetName>VoiceMorphVirtualAudio</TargetName>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">
+     <TargetName>SimpleAudioSample</TargetName>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+-    <TargetName>SimpleAudioSample</TargetName>
++    <TargetName>VoiceMorphVirtualAudio</TargetName>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">
+     <TargetName>SimpleAudioSample</TargetName>
+@@ -317,6 +317,8 @@
+     <ClCompile Include="mintopo.cpp" />
+     <ClCompile Include="minwavert.cpp" />
+     <ClCompile Include="minwavertstream.cpp" />
++    <ClCompile Include="voicemorph_silence.cpp" />
++    <ClCompile Include="voicemorph_bridge_driver.cpp" />
+     <ClCompile Include="newdelete.cpp" />
+-    <ResourceCompile Include="SimpleAudioSample.rc" />
++    <ResourceCompile Include="VoiceMorphVirtualAudio.rc" />
+   </ItemGroup>

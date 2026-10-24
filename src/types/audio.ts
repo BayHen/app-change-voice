@@ -149,6 +149,54 @@ export interface RoutingStatus {
   message: string | null;
 }
 
+export type VirtualMicrophoneState =
+  | "notInstalled"
+  | "installed"
+  | "driverUnavailable"
+  | "ready"
+  | "bridgeConnected"
+  | "streaming"
+  | "error";
+export interface VirtualMicrophoneStatus {
+  state: VirtualMicrophoneState;
+  driverName: string;
+  driverVersion: string | null;
+  expectedDriverVersion: string;
+  versionCompatible: boolean;
+  protocolVersion: number;
+  captureEndpointAvailable: boolean;
+  captureEndpointName: string | null;
+  bridgeConnected: boolean;
+  routingActive: boolean;
+  message: string;
+}
+export interface VirtualMicrophoneVersion {
+  driverName: string;
+  installedVersion: string | null;
+  expectedVersion: string;
+  protocolVersion: number;
+  compatible: boolean;
+}
+export interface VirtualMicrophoneMetrics {
+  connected: boolean;
+  streaming: boolean;
+  sampleRate: number;
+  channels: number;
+  packetFrames: number;
+  queuedFrames: number;
+  capacityFrames: number;
+  writtenFrames: number;
+  droppedFrames: number;
+  underrunFrames: number;
+  transportErrors: number;
+  bridgeBufferEstimateMs: number;
+}
+export interface VirtualMicrophoneCommandError {
+  code: string;
+  message: string;
+  recoverable: boolean;
+}
+
 export interface AudioDiagnosticsReport {
   reportSchemaVersion: number;
   generatedAtUnixSeconds: number;

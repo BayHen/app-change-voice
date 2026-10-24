@@ -19,6 +19,9 @@ import type {
   RecordingStatus,
   RoutingConfiguration,
   RoutingStatus,
+  VirtualMicrophoneMetrics,
+  VirtualMicrophoneStatus,
+  VirtualMicrophoneVersion,
   VirtualOutputDevice,
 } from "../types/audio";
 
@@ -172,6 +175,21 @@ export const selectVirtualOutputDevice = (id: string) =>
 export const getRoutingStatus = () => invoke<RoutingStatus>("get_routing_status");
 export const startVirtualRouting = () => invoke<RoutingStatus>("start_virtual_routing");
 export const stopVirtualRouting = () => invoke<RoutingStatus>("stop_virtual_routing");
+export const getVirtualMicrophoneStatus = () =>
+  invoke<VirtualMicrophoneStatus>("get_virtual_microphone_status");
+export const getVirtualMicrophoneVersion = () =>
+  invoke<VirtualMicrophoneVersion>("get_virtual_microphone_version");
+export const checkVirtualMicrophoneDriver = () =>
+  invoke<VirtualMicrophoneVersion>("check_virtual_microphone_driver");
+export const connectVirtualMicrophone = () =>
+  invoke<VirtualMicrophoneVersion>("connect_virtual_microphone");
+export const disconnectVirtualMicrophone = () => invoke<void>("disconnect_virtual_microphone");
+export const startVirtualMicrophoneStream = () =>
+  invoke<RoutingStatus>("start_virtual_microphone_stream");
+export const stopVirtualMicrophoneStream = () =>
+  invoke<RoutingStatus>("stop_virtual_microphone_stream");
+export const getVirtualMicrophoneMetrics = () =>
+  invoke<VirtualMicrophoneMetrics>("get_virtual_microphone_metrics");
 export const openWindowsSoundSettings = () => invoke<void>("open_windows_sound_settings");
 export const getHotkeyConfiguration = () => invoke<HotkeyConfiguration>("get_hotkey_configuration");
 export const setHotkeyConfiguration = (configuration: HotkeyConfiguration) =>

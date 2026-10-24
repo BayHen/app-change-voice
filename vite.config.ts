@@ -3,10 +3,16 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import process from "node:process";
 const host = process.env.TAURI_DEV_HOST;
+const cacheOwner = (process.env.USERNAME || "default")
+  .toLowerCase()
+  .replace(/[^a-z0-9._-]/g, "_");
 
 // https://vite.dev/config/
 export default defineConfig(() => ({
   plugins: [react(), tailwindcss()],
+  // Keep dependency caches isolated when the workspace is used by both the
+  // interactive Windows account and an automation/sandbox account.
+  cacheDir: `.vite-cache/${cacheOwner}`,
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //

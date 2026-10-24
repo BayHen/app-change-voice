@@ -22,6 +22,8 @@ use crate::soundboard::{
     SoundEntry,
     mixer::{MixerCommand, SoundboardMixer},
 };
+#[cfg(target_os = "windows")]
+use crate::virtual_audio::audio_bridge::{DriverBridgeProducer, DriverBridgeRuntime};
 use cpal::{
     BufferSize, Device, DeviceId, SampleFormat, Stream, StreamConfig, SupportedBufferSize,
     SupportedStreamConfig, SupportedStreamConfigRange,
@@ -69,6 +71,8 @@ struct ActiveStreams {
     dsp_latency_frames: usize,
     metrics: SharedAudioMetrics,
     routing: Option<WindowsVirtualOutputSink>,
+    #[cfg(target_os = "windows")]
+    driver_bridge: Option<DriverBridgeRuntime>,
 }
 
 pub struct AudioStreamManager {
@@ -307,6 +311,14 @@ impl AudioStreamManager {
         self.active_preset_id.as_deref()
     }
 
+    #[cfg(target_os = "windows")]
+    pub fn driver_bridge_status(&self) -> Option<crate::virtual_audio::BridgeStatus> {
+        self.streams
+            .as_ref()
+            .and_then(|streams| streams.driver_bridge.as_ref())
+            .map(DriverBridgeRuntime::snapshot)
+    }
+
     pub fn start(
         &mut self,
         input_id: &str,
@@ -368,6 +380,15 @@ impl AudioStreamManager {
             } else {
                 (None, None)
             };
+        #[cfg(target_os = "windows")]
+        let (driver_bridge, driver_bridge_producer) = if sample_rate == PREFERRED_SAMPLE_RATE {
+            match DriverBridgeRuntime::start() {
+                Ok((runtime, producer)) => (Some(runtime), Some(producer)),
+                Err(_) => (None, None),
+            }
+        } else {
+            (None, None)
+        };
         let (input_stream, dsp_latency_frames) = build_input(
             &input,
             input_config,
@@ -380,6 +401,8 @@ impl AudioStreamManager {
             record_producer,
             recording_shared.clone(),
             routing_producer,
+            #[cfg(target_os = "windows")]
+            driver_bridge_producer,
             mixer,
             soundboard_command_consumer,
             sound_producer,
@@ -422,6 +445,8 @@ impl AudioStreamManager {
             dsp_latency_frames,
             metrics,
             routing: routing_sink,
+            #[cfg(target_os = "windows")]
+            driver_bridge,
         });
         self.recording = Some(recording);
         self.state = MonitoringState::Running;
@@ -469,6 +494,15 @@ impl AudioStreamManager {
     }
 
     pub fn start_routing(&mut self) -> Result<RoutingStatus, RoutingError> {
+        #[cfg(target_os = "windows")]
+        if let Some(bridge) = self
+            .streams
+            .as_ref()
+            .and_then(|streams| streams.driver_bridge.as_ref())
+        {
+            bridge.set_active(true);
+            return Ok(self.routing_status());
+        }
         if self.routing_configuration.output_device_id.is_none() {
             return Err(RoutingError::new(
                 "notConfigured",
@@ -548,6 +582,20 @@ impl AudioRoutingService for AudioStreamManager {
                 message: Some("Audio processing is stopped; routing is not active.".into()),
             };
         };
+        #[cfg(target_os = "windows")]
+        if let Some(bridge) = &streams.driver_bridge {
+            let status = bridge.snapshot();
+            return RoutingStatus {
+                state: if status.transport_errors > 0 || !status.connected { RoutingState::Faulted } else if status.active { RoutingState::Active } else { RoutingState::Ready },
+                output_device_id: Some("voicemorph-driver-interface-v1".into()),
+                output_device_name: Some("VoiceMorph Virtual Microphone".into()),
+                sample_rate: Some(PREFERRED_SAMPLE_RATE), channels: Some(1),
+                underrun_count: status.underrun_frames, overflow_count: status.dropped_frames,
+                output_peak_dbfs: streams.metrics.snapshot(streams.sample_rate, streams.input_buffer_frames, streams.output_buffer_frames, streams.dsp_latency_frames).input_peak_dbfs,
+                endpoint_verified: status.connected && status.active,
+                message: Some(if status.active { "VoiceMorph driver bridge is active. Verify capture in the target application." } else { "VoiceMorph driver interface is available and ready." }.into()),
+            };
+        }
         let Some(sink) = &streams.routing else {
             return RoutingStatus {
                 state: RoutingState::NotConfigured,
@@ -591,6 +639,14 @@ impl AudioRoutingService for AudioStreamManager {
     }
 
     fn stop_routing(&mut self) -> Result<RoutingStatus, RoutingError> {
+        #[cfg(target_os = "windows")]
+        if let Some(bridge) = self
+            .streams
+            .as_ref()
+            .and_then(|streams| streams.driver_bridge.as_ref())
+        {
+            bridge.set_active(false);
+        }
         if let Some(sink) = self
             .streams
             .as_ref()
@@ -744,6 +800,7 @@ fn build_input(
     record_producer: Producer<RecordingFrame>,
     recording_shared: std::sync::Arc<crate::audio::recording::Shared>,
     routing_producer: Option<RoutingProducer>,
+    #[cfg(target_os = "windows")] driver_bridge_producer: Option<DriverBridgeProducer>,
     mixer: SoundboardMixer,
     soundboard_commands: Consumer<MixerCommand>,
     sound_producer: Producer<f32>,
@@ -760,6 +817,8 @@ fn build_input(
             record_producer,
             recording_shared,
             routing_producer,
+            #[cfg(target_os = "windows")]
+            driver_bridge_producer,
             mixer,
             soundboard_commands,
             sound_producer,
@@ -775,6 +834,8 @@ fn build_input(
             record_producer,
             recording_shared,
             routing_producer,
+            #[cfg(target_os = "windows")]
+            driver_bridge_producer,
             mixer,
             soundboard_commands,
             sound_producer,
@@ -790,6 +851,8 @@ fn build_input(
             record_producer,
             recording_shared,
             routing_producer,
+            #[cfg(target_os = "windows")]
+            driver_bridge_producer,
             mixer,
             soundboard_commands,
             sound_producer,
@@ -812,6 +875,7 @@ fn build_input_typed<T: RealtimeSample>(
     mut record_producer: Producer<RecordingFrame>,
     recording_shared: std::sync::Arc<crate::audio::recording::Shared>,
     mut routing_producer: Option<RoutingProducer>,
+    #[cfg(target_os = "windows")] mut driver_bridge_producer: Option<DriverBridgeProducer>,
     mut mixer: SoundboardMixer,
     mut soundboard_commands: Consumer<MixerCommand>,
     mut sound_producer: Producer<f32>,
@@ -855,6 +919,10 @@ fn build_input_typed<T: RealtimeSample>(
                         meter.push(processed);
                         if let Some(routing) = routing_producer.as_mut() {
                             routing.push(processed + virtual_sound);
+                        }
+                        #[cfg(target_os = "windows")]
+                        if let Some(bridge) = driver_bridge_producer.as_mut() {
+                            bridge.push(processed + virtual_sound);
                         }
                         let _ = sound_producer.push(headphone_sound);
                         overflowed |= producer.push(processed).is_err();
