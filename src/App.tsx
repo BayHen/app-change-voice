@@ -88,10 +88,10 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-[100dvh] bg-[#080a0d] text-zinc-100">
-      <div className="mx-auto flex min-h-[100dvh] max-w-[1600px]">
+    <div className="min-h-[100dvh] bg-[#0e101c] text-zinc-100">
+      <div className="mx-auto flex min-h-[100dvh] max-w-[1920px]">
         <AppSidebar activePage={activePage} onNavigate={setActivePage} />
-        <main className="min-w-0 flex-1 px-4 pb-24 pt-6 sm:px-6 md:pb-8 lg:px-9 lg:pt-8">
+        <main className="min-w-0 flex-1 px-4 pb-24 pt-6 sm:px-6 md:pb-8 lg:px-7 lg:pt-6">
           {renderPage()}
         </main>
       </div>
