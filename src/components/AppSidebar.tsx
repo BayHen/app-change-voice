@@ -24,12 +24,12 @@ interface NavigationEntry {
 }
 
 const navigation: NavigationEntry[] = [
-  { id: "dashboard", label: "Dashboard", icon: CirclesFour },
+  { id: "dashboard", label: "Voice Lab", icon: CirclesFour },
   { id: "effects", label: "Voice Effects", icon: Waveform },
   { id: "studio", label: "Voice Studio", icon: FadersHorizontal },
   { id: "soundboard", label: "Soundboard", icon: MusicNotes },
   { id: "integrations", label: "Games & Apps", icon: GameController },
-  { id: "ai-studio", label: "AI Voice", icon: Brain },
+  { id: "ai-studio", label: "AI Voice Studio", icon: Brain },
   { id: "virtual-microphone", label: "Virtual Microphone", icon: MicrophoneStage },
   { id: "settings", label: "Settings", icon: GearSix },
 ];
@@ -37,7 +37,7 @@ const navigation: NavigationEntry[] = [
 export function AppSidebar({ activePage, onNavigate }: AppSidebarProps) {
   return (
     <>
-      <aside className="sticky top-0 hidden h-[100dvh] w-[232px] shrink-0 border-r border-white/[0.07] bg-[#0b0d10] px-4 py-5 md:flex md:flex-col">
+      <aside className="sticky top-0 hidden h-[100dvh] w-[220px] shrink-0 border-r border-white/[0.07] bg-[#151827] px-4 py-5 md:flex md:flex-col">
         <div className="flex items-center gap-3 px-2 py-1">
           <BrandMark />
           <div>
@@ -59,14 +59,14 @@ export function AppSidebar({ activePage, onNavigate }: AppSidebarProps) {
                 onClick={() => onNavigate(id)}
                 className={`group flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm transition-colors active:translate-y-px ${
                   active
-                    ? "bg-cyan-300/10 font-medium text-cyan-100"
-                    : "text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200"
+                    ? "border border-violet-400/60 bg-gradient-to-r from-violet-600/70 to-indigo-600/50 font-medium text-white shadow-lg shadow-violet-950/40"
+                    : "text-zinc-300 hover:bg-white/[0.04] hover:text-zinc-200"
                 }`}
               >
                 <NavIcon
                   size={19}
                   weight={active ? "fill" : "regular"}
-                  className={active ? "text-cyan-300" : "text-zinc-600 group-hover:text-zinc-300"}
+                  className={active ? "text-violet-200" : "text-zinc-400 group-hover:text-zinc-300"}
                   aria-hidden="true"
                 />
                 {label}
@@ -97,7 +97,7 @@ export function AppSidebar({ activePage, onNavigate }: AppSidebarProps) {
               aria-current={active ? "page" : undefined}
               aria-label={label}
               onClick={() => onNavigate(id)}
-              className={`flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl text-[10px] transition-colors ${active ? "bg-cyan-300/10 text-cyan-200" : "text-zinc-600"}`}
+              className={`flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl text-[10px] transition-colors ${active ? "bg-violet-500/25 text-violet-100" : "text-zinc-600"}`}
             >
               <NavIcon size={18} weight={active ? "fill" : "regular"} aria-hidden="true" />
               <span className="max-w-full truncate">{label}</span>
