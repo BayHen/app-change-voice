@@ -1,5 +1,21 @@
 # Open-source integration research
 
+## MASK source comparison
+
+Reference checkout: `66db12914b768b6ff2a44dac5bf82229bbf36b0a`. The upstream LICENSE is MIT. No MASK source, model weights or driver binaries are included in the current change. The code license does not establish redistribution rights for external weights.
+
+| MASK files                                               | Decision    | VoiceMorph integration boundary                                                                                                                                                                                      |
+| -------------------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| audio/                                                   | SKIP        | Retain the existing CPAL pipeline and stable selected device IDs. MASK's virtual endpoint hints use friendly names and can prefer VB-CABLE.                                                                          |
+| dsp/                                                     | DEFER       | Keep Signalsmith Stretch and existing presets. Benchmark reverb separately before changing the live DSP.                                                                                                             |
+| soundboard/                                              | ADAPT       | MASK decodes with Symphonia off the callback. VoiceMorph now bounds WAV decoding before allocating and uses one mono buffer per clip. Select and review a narrowly featured decoder before adding MP3, OGG and FLAC. |
+| driver_install.rs, driver_devnode.rs, commands_driver.rs | REIMPLEMENT | Inspect SetupAPI lifecycle as reference. Root device registration, signed package integrity, instance ownership and uninstall require tests on an isolated Windows fixture.                                          |
+| vc/, commands_vc.rs                                      | DEFER       | RVC/ONNX, optional GPU providers and digest-checked downloads need genuine inference tests and verified per-weight rights. Keep DSP independent.                                                                     |
+| tests/local_hardware.rs, docs/specs/                     | ADAPT       | Use dedicated ignored hardware tests with endpoint and capture evidence.                                                                                                                                             |
+| src/components/, src/stores/                             | SKIP        | Keep the current branding and state architecture. Add UI for verified capabilities as each backend lands.                                                                                                            |
+
+Next milestones are multi-format decode and configurable mixer settings, paired render-to-capture verification and signed packaging, optional offline AI, then real-device UI and release acceptance. The upstream release candidate is [Virtual Audio Driver 25.7.14](https://github.com/VirtualDrivers/Virtual-Audio-Driver/releases/tag/25.7.14). The upstream release label does not establish actual capture behavior or permission to redistribute its signed package.
+
 The upstream repositories were inspected as references. Current stable tags and exact maintenance dates were not independently confirmed unless noted. Benchmark claims below are evaluation criteria for VoiceMorph rather than upstream performance results.
 
 | Upstream                                                                       | Architecture and license evidence                                                                                                                               | Decision and integration boundary                                                                                                                                                                                                                                                  |

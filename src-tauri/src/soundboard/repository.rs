@@ -55,9 +55,7 @@ impl SoundboardRepository {
         {
             return Err("Only WAV files are supported in this version".into());
         }
-        let reader = hound::WavReader::open(path).map_err(|e| format!("Invalid WAV: {e}"))?;
-        let spec = reader.spec();
-        let duration = reader.duration() as f32 / spec.sample_rate as f32;
+        let duration = mixer::wav_duration(path)?;
         let id = format!(
             "sound-{}",
             std::time::SystemTime::now()
