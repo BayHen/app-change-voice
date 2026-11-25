@@ -90,12 +90,11 @@ Get-NetTCPConnection -LocalPort 1420 -State Listen
 Đóng Vite/Tauri dev cũ đang giữ port rồi chạy lại; không chạy riêng `npm.cmd run dev` đồng thời với
 `npm.cmd run tauri:dev` vì Tauri tự khởi động Vite.
 
-Nếu log có `EPERM: operation not permitted, unlink node_modules\\.vite\\deps\\...`, đóng ứng dụng
-VoiceMorph/Vite đang chạy và đóng các tab editor đang mở trực tiếp file trong `node_modules/.vite`.
-Sau đó xóa cache có thể tái tạo và chạy lại:
+Nếu log có lỗi EPERM khi Vite xóa cache cũ, kiểm tra `cacheDir` trong `vite.config.ts`.
+Vite dùng thư mục con riêng cho từng tài khoản dưới `.vite-cache/` để tránh xung đột quyền.
+Giữ nguyên cache cũ và chạy lại:
 
 ```powershell
-Remove-Item -LiteralPath .\node_modules\.vite -Recurse -Force
 npm.cmd run tauri:dev
 ```
 
