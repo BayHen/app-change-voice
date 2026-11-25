@@ -7,10 +7,62 @@ use crate::{
     soundboard::SoundRoute,
 };
 use serde::{Deserialize, Serialize};
-use std::{collections::HashSet, fs, path::Path};
+use std::{
+    collections::HashSet,
+    fs,
+    io::{self, Read, Write},
+    path::Path,
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 pub const BACKUP_SCHEMA_VERSION: u32 = 1;
 pub const MAX_BACKUP_BYTES: u64 = 4 * 1024 * 1024;
+
+fn replace_file(path: &Path, bytes: &[u8]) -> io::Result<()> {
+    static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
+    let parent = path.parent().ok_or(io::ErrorKind::InvalidInput)?;
+    fs::create_dir_all(parent)?;
+    let (temporary, mut file) = loop {
+        let sequence = NEXT_TEMP.fetch_add(1, Ordering::Relaxed);
+        let temporary = parent.join(format!(".voicemorph-{}-{sequence}.tmp", std::process::id()));
+        match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)
+        {
+            Ok(file) => break (temporary, file),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error),
+        }
+    };
+    let written = file.write_all(bytes).and_then(|()| file.sync_all());
+    drop(file);
+    let result = written.and_then(|()| fs::rename(&temporary, path));
+    if result.is_err() {
+        let _ = fs::remove_file(&temporary);
+    }
+    result
+}
+
+fn read_limited(path: &Path, kind: &str) -> Result<Vec<u8>, String> {
+    let file = fs::File::open(path).map_err(|error| error.to_string())?;
+    let mut bytes = Vec::new();
+    file.take(MAX_BACKUP_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| error.to_string())?;
+    if bytes.len() as u64 > MAX_BACKUP_BYTES {
+        return Err(format!("{kind} exceeds 4 MiB limit"));
+    }
+    Ok(bytes)
+}
+
+fn write_limited(path: &Path, value: &impl Serialize, kind: &str) -> Result<(), String> {
+    let bytes = serde_json::to_vec_pretty(value).map_err(|error| error.to_string())?;
+    if bytes.len() as u64 > MAX_BACKUP_BYTES {
+        return Err(format!("{kind} exceeds 4 MiB limit"));
+    }
+    replace_file(path, &bytes).map_err(|error| error.to_string())
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -51,31 +103,17 @@ pub fn write_presets(path: &Path, presets: &[VoicePreset]) -> Result<(), String>
         application_version: env!("CARGO_PKG_VERSION").into(),
         presets: presets.to_vec(),
     };
-    for preset in &pack.presets {
-        validate_preset(preset)?;
-        if preset.built_in {
-            return Err("Built-in presets are already included with the application".into());
-        }
-    }
-    let parent = path.parent().ok_or("Invalid preset pack destination")?;
-    fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    let temp = path.with_extension("preset-pack.tmp");
-    fs::write(
-        &temp,
-        serde_json::to_vec_pretty(&pack).map_err(|e| e.to_string())?,
-    )
-    .map_err(|e| e.to_string())?;
-    if path.exists() {
-        fs::remove_file(path).map_err(|e| e.to_string())?
-    }
-    fs::rename(temp, path).map_err(|e| e.to_string())
+    validate_pack(&pack)?;
+    write_limited(path, &pack, "Preset pack")
 }
 pub fn read_presets(path: &Path) -> Result<Vec<VoicePreset>, String> {
-    if fs::metadata(path).map_err(|e| e.to_string())?.len() > MAX_BACKUP_BYTES {
-        return Err("Preset pack exceeds 4 MiB limit".into());
-    }
-    let pack: PresetPack = serde_json::from_slice(&fs::read(path).map_err(|e| e.to_string())?)
+    let pack: PresetPack = serde_json::from_slice(&read_limited(path, "Preset pack")?)
         .map_err(|e| format!("Invalid preset pack: {e}"))?;
+    validate_pack(&pack)?;
+    Ok(pack.presets)
+}
+
+fn validate_pack(pack: &PresetPack) -> Result<(), String> {
     if pack.schema_version != 1 {
         return Err("Unsupported preset pack schema".into());
     }
@@ -86,7 +124,7 @@ pub fn read_presets(path: &Path) -> Result<Vec<VoicePreset>, String> {
             return Err("Preset pack contains built-in or duplicate IDs".into());
         }
     }
-    Ok(pack.presets)
+    Ok(())
 }
 
 #[derive(Debug, Clone, Copy, Deserialize)]
@@ -154,29 +192,14 @@ pub fn validate(value: &BackupManifest) -> Result<(), String> {
 }
 
 pub fn read(path: &Path) -> Result<BackupManifest, String> {
-    let meta = fs::metadata(path).map_err(|e| e.to_string())?;
-    if meta.len() > MAX_BACKUP_BYTES {
-        return Err("Backup exceeds 4 MiB limit".into());
-    }
-    let value: BackupManifest = serde_json::from_slice(&fs::read(path).map_err(|e| e.to_string())?)
+    let value: BackupManifest = serde_json::from_slice(&read_limited(path, "Backup")?)
         .map_err(|e| format!("Invalid backup JSON: {e}"))?;
     validate(&value)?;
     Ok(value)
 }
 pub fn write(path: &Path, value: &BackupManifest) -> Result<(), String> {
     validate(value)?;
-    let parent = path.parent().ok_or("Invalid backup destination")?;
-    fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    let temp = path.with_extension("vms-backup.tmp");
-    fs::write(
-        &temp,
-        serde_json::to_vec_pretty(value).map_err(|e| e.to_string())?,
-    )
-    .map_err(|e| e.to_string())?;
-    if path.exists() {
-        fs::remove_file(path).map_err(|e| e.to_string())?
-    }
-    fs::rename(temp, path).map_err(|e| e.to_string())
+    write_limited(path, value, "Backup")
 }
 
 pub trait SyncProvider {
@@ -255,6 +278,38 @@ mod tests {
         let p = std::env::temp_dir().join(format!("vm-backup-{}.json", std::process::id()));
         write(&p, &sample()).unwrap();
         assert_eq!(read(&p).unwrap().presets.len(), 1);
+        let mut updated = sample();
+        updated.created_at = "2".into();
+        write(&p, &updated).unwrap();
+        assert_eq!(read(&p).unwrap(), updated);
         let _ = fs::remove_file(p);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn failed_replacement_preserves_backup_and_cleans_temporary_file() {
+        use std::os::windows::fs::OpenOptionsExt;
+
+        let dir = std::env::temp_dir().join(format!("vm-locked-backup-{}", std::process::id()));
+        fs::create_dir(&dir).unwrap();
+        let path = dir.join("backup.json");
+        write(&path, &sample()).unwrap();
+        let previous = fs::read(&path).unwrap();
+        let lock = fs::OpenOptions::new()
+            .read(true)
+            .share_mode(1) // FILE_SHARE_READ, without FILE_SHARE_DELETE.
+            .open(&path)
+            .unwrap();
+        let mut updated = sample();
+        updated.created_at = "2".into();
+        let result = write(&path, &updated);
+        drop(lock);
+        let unchanged = fs::read(&path).unwrap() == previous;
+        let files = fs::read_dir(&dir).unwrap().count();
+        fs::remove_file(&path).unwrap();
+        fs::remove_dir(&dir).unwrap();
+        assert!(result.is_err());
+        assert!(unchanged);
+        assert_eq!(files, 1);
     }
 }

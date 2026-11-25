@@ -1,5 +1,24 @@
 # Kiến trúc VoiceMorph Studio
 
+## Current release architecture
+
+This snapshot describes `feature/new-version` at `c5c419f`. The sections below retain the historical implementation notes.
+
+```mermaid
+flowchart LR
+    UI[React desktop UI] -->|Tauri commands| Services[Rust application services]
+    Services --> State[Settings and atomic DSP parameters]
+    Mic[WASAPI microphone] --> DSP[CPAL capture and Rust DSP]
+    State --> DSP
+    DSP --> Monitor[Bounded monitoring queue]
+    DSP --> Writer[Recording queue and WAV writer]
+    DSP --> Route[Bounded WASAPI virtual output]
+    Route --> Cable[Separately installed virtual audio device]
+    Cable --> Client[External capture application]
+```
+
+The current branch has one voice DSP path. Recording and routing tap that path, and soundboard playback is mixed at the relevant output. AI metadata is managed separately and the shipping audio path uses DSP. Future experiments and release prerequisites are specified in [the implementation roadmap](IMPLEMENTATION_ROADMAP.md).
+
 ## Task 16 - Release và signed updater
 
 Updater dùng Tauri 2 updater/process plugins. GitHub HTTPS endpoint là cố định, nhưng public key được inject tại Rust compile-time từ `VOICEMORPH_UPDATER_PUBLIC_KEY`; thiếu key thì UI fail closed và không gọi network. `requireSignedVersion=true`, downgrade bị tắt. Private key chỉ đi qua CI secret. Release config riêng bật updater artifacts để build dev không cần signing key.
