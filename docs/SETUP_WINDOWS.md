@@ -91,8 +91,11 @@ Get-NetTCPConnection -LocalPort 1420 -State Listen
 `npm.cmd run tauri:dev` vì Tauri tự khởi động Vite.
 
 Nếu log có lỗi EPERM khi Vite xóa cache cũ, kiểm tra `cacheDir` trong `vite.config.ts`.
-Vite dùng thư mục con riêng cho từng tài khoản dưới `.vite-cache/` để tránh xung đột quyền.
-Giữ nguyên cache cũ và chạy lại:
+Vite dùng thư mục `session-<pid>-<uuid>` riêng cho mỗi lần chạy dưới `.vite-cache/`.
+Không dùng `USERNAME`/`USERDOMAIN` để phân biệt cache vì tiến trình sandbox có thể kế thừa
+biến môi trường của tài khoản khác. Cache cũ được giữ nguyên; không cần đổi ACL hoặc chạy
+terminal bằng Administrator. Mỗi phiên mới sẽ tối ưu dependency lại một lần.
+Chạy lại:
 
 ```powershell
 npm.cmd run tauri:dev
