@@ -6,7 +6,7 @@ import {
   Plus,
   SlidersHorizontal,
   UploadSimple,
-} from "@phosphor-icons/react";
+} from "../components/icons";
 import { useMemo, useState } from "react";
 import { AppHeader } from "../components/AppHeader";
 import { EffectCard } from "../components/EffectCard";
@@ -161,7 +161,7 @@ export function VoiceEffects({ onPresetSelected }: VoiceEffectsProps) {
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Search presets"
-                className="h-11 w-full rounded-xl border border-white/[0.09] bg-[#101318] pl-10 pr-4 text-sm text-zinc-200 outline-none placeholder:text-zinc-700 focus:border-cyan-300/60"
+                className="h-11 w-full rounded-xl border border-white/[0.09] bg-[var(--surface)] pl-10 pr-4 text-sm text-zinc-200 outline-none placeholder:text-zinc-700 focus:border-cyan-300/60"
               />
             </div>
             <div className="flex gap-1 overflow-x-auto pb-1" aria-label="Preset category filter">
@@ -260,7 +260,7 @@ export function VoiceEffects({ onPresetSelected }: VoiceEffectsProps) {
           )}
         </section>
 
-        <aside className="h-fit rounded-2xl border border-white/[0.08] bg-[#0f1216] p-5 xl:sticky xl:top-6">
+        <aside className="h-fit rounded-2xl border border-white/[0.08] bg-[var(--surface)] p-5 xl:sticky xl:top-6">
           <div className="flex items-center justify-between gap-4">
             <p className="text-xs font-medium text-zinc-500">Preset details</p>
             <SlidersHorizontal size={17} className="text-zinc-700" aria-hidden="true" />

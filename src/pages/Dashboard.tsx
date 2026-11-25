@@ -6,7 +6,7 @@ import {
   Pause,
   SlidersHorizontal,
   SpeakerHigh,
-} from "@phosphor-icons/react";
+} from "../components/icons";
 import { useEffect, useMemo } from "react";
 import { AppHeader } from "../components/AppHeader";
 import { ClippingIndicator } from "../components/ClippingIndicator";
@@ -19,11 +19,9 @@ import { ToggleSwitch } from "../components/ToggleSwitch";
 import { VolumeSlider } from "../components/VolumeSlider";
 import { RecordingPanel } from "../components/RecordingPanel";
 import { useAppStatus } from "../hooks/useAppStatus";
-import { useAudioDevices } from "../hooks/useAudioDevices";
-import { useAudioRuntime } from "../hooks/useAudioRuntime";
+import { useAudioSession } from "../hooks/AudioSession";
 import { useVolumeSettings } from "../hooks/useVolumeSettings";
 import { useNoiseSettings } from "../hooks/useNoiseSettings";
-import { useRecording } from "../hooks/useRecording";
 import type { AudioDevice, DeviceOption } from "../types/audio";
 
 const unavailableInput: DeviceOption[] = [
@@ -63,11 +61,9 @@ function deviceDetails(device: AudioDevice | undefined): string {
 
 export function Dashboard({ onNotify }: DashboardProps) {
   const { loading, error } = useAppStatus();
-  const devices = useAudioDevices();
-  const runtime = useAudioRuntime();
+  const { devices, runtime, recording } = useAudioSession();
   const volume = useVolumeSettings();
   const noise = useNoiseSettings();
-  const recording = useRecording();
   const inputDevices = useMemo(
     () => devices.snapshot?.inputDevices ?? [],
     [devices.snapshot?.inputDevices],
@@ -98,7 +94,7 @@ export function Dashboard({ onNotify }: DashboardProps) {
   return (
     <div className="mx-auto max-w-[1180px]">
       <AppHeader
-        title="Dashboard"
+        title="Audio devices"
         description="Configure the signal path and check connection status before starting a session."
         action={
           <StatusIndicator
@@ -180,7 +176,7 @@ export function Dashboard({ onNotify }: DashboardProps) {
           ) : null}
 
           <div className="mt-5 grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
-            <section className="rounded-2xl border border-white/[0.08] bg-[#0f1216] p-5 sm:p-6">
+            <section className="rounded-2xl border border-white/[0.08] bg-[var(--surface)] p-5 sm:p-6">
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <h2 className="text-sm font-semibold text-zinc-200">Signal path</h2>
@@ -352,7 +348,7 @@ export function Dashboard({ onNotify }: DashboardProps) {
               </div>
             </section>
 
-            <section className="rounded-2xl border border-white/[0.08] bg-[#0f1216] p-5 sm:p-6">
+            <section className="rounded-2xl border border-white/[0.08] bg-[var(--surface)] p-5 sm:p-6">
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <h2 className="text-sm font-semibold text-zinc-200">Live levels</h2>
@@ -443,7 +439,7 @@ export function Dashboard({ onNotify }: DashboardProps) {
             onDelete={() => void recording.remove()}
           />
 
-          <section className="mt-5 grid gap-5 rounded-2xl border border-white/[0.08] bg-[#0f1216] p-5 sm:p-6 lg:grid-cols-[1fr_auto] lg:items-center">
+          <section className="mt-5 grid gap-5 rounded-2xl border border-white/[0.08] bg-[var(--surface)] p-5 sm:p-6 lg:grid-cols-[1fr_auto] lg:items-center">
             <div className="flex items-center gap-4">
               <div className="grid size-11 shrink-0 place-items-center rounded-xl border border-cyan-300/15 bg-cyan-300/[0.06] text-cyan-300">
                 <span className="font-mono text-xs font-semibold">CV</span>

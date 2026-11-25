@@ -1,4 +1,4 @@
-import { Play, Square, Trash, Star } from "@phosphor-icons/react";
+import { Play, Square, Trash, Star } from "./icons";
 import type { SoundEntry, SoundRoute } from "../types/soundboard";
 import { SoundVolumeSlider } from "./SoundVolumeSlider";
 import { HotkeyAssignment } from "./HotkeyAssignment";
@@ -12,10 +12,11 @@ interface Props {
 }
 export function SoundCard({ sound, busy, onPlay, onStop, onDelete, onUpdate }: Props) {
   return (
-    <article className="rounded-2xl border border-white/[.08] bg-[#111419] p-4">
+    <article className="vm-card vm-sound-card">
       <div className="flex items-start gap-3">
         <button
           aria-label={sound.favorite ? "Remove favorite" : "Add favorite"}
+          disabled={busy}
           onClick={() => onUpdate({ ...sound, favorite: !sound.favorite })}
         >
           <Star
@@ -57,41 +58,49 @@ export function SoundCard({ sound, busy, onPlay, onStop, onDelete, onUpdate }: P
           Stop
         </button>
       </div>
-      <div className="mt-4 space-y-3">
-        <SoundVolumeSlider
-          value={sound.volumePercent}
-          disabled={busy}
-          onChange={(volumePercent) => onUpdate({ ...sound, volumePercent })}
-        />
-        <label className="block text-xs text-zinc-500">
-          Category
-          <input
-            aria-label="Sound category"
-            className="mt-2 w-full rounded-lg border border-white/10 bg-[#0c0f13] px-3 py-2 text-sm text-zinc-200"
-            value={sound.category}
+      <details className="vm-advanced">
+        <summary>Volume, routing & shortcut</summary>
+        <div className="mt-4 space-y-3">
+          <SoundVolumeSlider
+            value={sound.volumePercent}
             disabled={busy}
-            onChange={(event) => onUpdate({ ...sound, category: event.target.value })}
+            onChange={(volumePercent) => onUpdate({ ...sound, volumePercent })}
           />
-        </label>
-        <label className="block text-xs text-zinc-500">
-          Route
-          <select
-            aria-label="Sound route"
-            className="mt-2 w-full rounded-lg border border-white/10 bg-[#0c0f13] px-3 py-2 text-sm text-zinc-200"
-            value={sound.route}
-            onChange={(e) => onUpdate({ ...sound, route: e.target.value as SoundRoute })}
-          >
-            <option value="headphones">Headphones</option>
-            <option value="virtualMicrophone">Virtual microphone</option>
-            <option value="both">Both</option>
-          </select>
-        </label>
-        <HotkeyAssignment
-          value={sound.hotkey}
-          onChange={(hotkey) => onUpdate({ ...sound, hotkey })}
-        />
-      </div>
-      <button onClick={onDelete} className="mt-4 flex items-center gap-2 text-xs text-rose-300">
+          <label className="block text-xs text-zinc-500">
+            Category
+            <input
+              aria-label="Sound category"
+              className="mt-2 w-full rounded-lg border border-white/10 bg-[var(--surface)] px-3 py-2 text-sm text-zinc-200"
+              value={sound.category}
+              disabled={busy}
+              onChange={(event) => onUpdate({ ...sound, category: event.target.value })}
+            />
+          </label>
+          <label className="block text-xs text-zinc-500">
+            Route
+            <select
+              aria-label="Sound route"
+              className="mt-2 w-full rounded-lg border border-white/10 bg-[var(--surface)] px-3 py-2 text-sm text-zinc-200"
+              value={sound.route}
+              disabled={busy}
+              onChange={(e) => onUpdate({ ...sound, route: e.target.value as SoundRoute })}
+            >
+              <option value="headphones">Headphones</option>
+              <option value="virtualMicrophone">Virtual microphone</option>
+              <option value="both">Both</option>
+            </select>
+          </label>
+          <HotkeyAssignment
+            value={sound.hotkey}
+            onChange={(hotkey) => onUpdate({ ...sound, hotkey })}
+          />
+        </div>
+      </details>
+      <button
+        disabled={busy}
+        onClick={onDelete}
+        className="mt-4 flex items-center gap-2 text-xs text-rose-300"
+      >
         <Trash />
         Remove reference
       </button>

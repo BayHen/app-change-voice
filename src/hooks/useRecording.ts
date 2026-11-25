@@ -41,7 +41,7 @@ export function useRecording() {
         .then((value) => mounted.current && setStatus(value))
         .catch(() => undefined);
     refresh();
-    const timer = window.setInterval(refresh, 100);
+    const timer = window.setInterval(refresh, 250);
     return () => {
       mounted.current = false;
       window.clearInterval(timer);

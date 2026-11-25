@@ -2,6 +2,11 @@ import { useCallback, useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { AppSidebar } from "./components/AppSidebar";
 import { NotificationToast } from "./components/NotificationToast";
+import { VoiceLab } from "./pages/VoiceLab";
+import { Recordings } from "./pages/Recordings";
+import { AudioSessionProvider } from "./hooks/AudioSession";
+import { AudioStatusBar } from "./components/AudioStatusBar";
+import { AudioLines } from "lucide-react";
 import { Dashboard } from "./pages/Dashboard";
 import { Settings } from "./pages/Settings";
 import { VoiceEffects } from "./pages/VoiceEffects";
@@ -16,6 +21,14 @@ import type { ToastMessage } from "./types/ui";
 import type { DesktopActionResult } from "./types/hotkeys";
 
 export default function App() {
+  return (
+    <AudioSessionProvider>
+      <StudioApp />
+    </AudioSessionProvider>
+  );
+}
+
+function StudioApp() {
   const [activePage, setActivePage] = useState<NavigationItem>("dashboard");
   const [toast, setToast] = useState<ToastMessage | null>(null);
 
@@ -68,12 +81,22 @@ export default function App() {
 
   function renderPage() {
     switch (activePage) {
+      case "recordings":
+        return <Recordings />;
       case "effects":
         return <VoiceEffects onPresetSelected={handlePresetSelected} />;
       case "studio":
         return <VoiceStudio />;
       case "settings":
-        return <Settings />;
+        return (
+          <Settings
+            advanced={<Dashboard onNotify={notify} />}
+            effects={<VoiceEffects onPresetSelected={handlePresetSelected} />}
+            studio={<VoiceStudio />}
+            routing={<VirtualMicrophone />}
+            integrations={<GameAppIntegration />}
+          />
+        );
       case "virtual-microphone":
         return <VirtualMicrophone />;
       case "soundboard":
@@ -83,18 +106,25 @@ export default function App() {
       case "ai-studio":
         return <AIVoiceStudio />;
       default:
-        return <Dashboard onNotify={notify} />;
+        return <VoiceLab />;
     }
   }
 
   return (
-    <div className="min-h-[100dvh] bg-[#080a0d] text-zinc-100">
-      <div className="mx-auto flex min-h-[100dvh] max-w-[1600px]">
+    <div className="vm-app">
+      <div className="vm-titlebar">
+        <span>
+          <AudioLines size={14} /> VoiceMorph Studio
+        </span>
+        <span>Realtime voice workspace</span>
+      </div>
+      <div className="vm-shell">
         <AppSidebar activePage={activePage} onNavigate={setActivePage} />
-        <main className="min-w-0 flex-1 px-4 pb-24 pt-6 sm:px-6 md:pb-8 lg:px-9 lg:pt-8">
+        <main className="vm-workspace" id="main-content">
           {renderPage()}
         </main>
       </div>
+      <AudioStatusBar onSettings={() => setActivePage("settings")} />
       <NotificationToast toast={toast} onDismiss={dismissToast} />
     </div>
   );

@@ -1,4 +1,4 @@
-import { ArrowClockwise, Broadcast, DiscordLogo, Warning } from "@phosphor-icons/react";
+import { ArrowClockwise, Broadcast, DiscordLogo, Warning } from "./icons";
 import { useAudioRuntime } from "../hooks/useAudioRuntime";
 import { useVirtualRouting } from "../hooks/useVirtualRouting";
 import { AudioMeter } from "./AudioMeter";

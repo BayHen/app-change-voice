@@ -1,4 +1,4 @@
-import { DownloadSimple, Play, Record, Stop, Trash } from "@phosphor-icons/react";
+import { DownloadSimple, Play, Record, Stop, Trash } from "./icons";
 import { useState } from "react";
 import type { RecordingSource, RecordingStatus } from "../types/audio";
 import { ToggleSwitch } from "./ToggleSwitch";
@@ -38,7 +38,7 @@ export function RecordingPanel({
   const [source, setSource] = useState<RecordingSource>("processed");
   return (
     <section
-      className="mt-5 rounded-2xl border border-white/[0.08] bg-[#0f1216] p-5 sm:p-6"
+      className="mt-5 rounded-2xl border border-white/[0.08] bg-[var(--surface)] p-5 sm:p-6"
       aria-label="Voice testing"
     >
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -84,7 +84,7 @@ export function RecordingPanel({
               value={source}
               disabled={!status.hasRecording || status.playing}
               onChange={(event) => setSource(event.target.value as RecordingSource)}
-              className="h-10 rounded-xl border border-white/10 bg-[#090b0e] px-3 text-sm text-zinc-300"
+              className="h-10 rounded-xl border border-white/10 bg-[var(--surface)] px-3 text-sm text-zinc-300"
             >
               <option value="processed">Processed</option>
               <option value="original">Original</option>

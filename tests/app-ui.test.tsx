@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+﻿import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../src/App";
@@ -41,6 +41,7 @@ const effectMocks = vi.hoisted(() => ({
   reset: vi.fn(),
 }));
 const presetMocks = vi.hoisted(() => ({
+  create: vi.fn(),
   list: vi.fn(),
   active: vi.fn(),
   apply: vi.fn(),
@@ -185,6 +186,7 @@ vi.mock("../src/services/tauri", () => ({
   resetEffectParameters: effectMocks.reset,
   getBuiltinPresets: presetMocks.list,
   getAllPresets: presetMocks.list,
+  createUserPreset: presetMocks.create,
   getPresetWarnings: vi.fn().mockResolvedValue([]),
   getActivePresetId: presetMocks.active,
   applyBuiltinPreset: presetMocks.apply,
@@ -389,11 +391,25 @@ describe("desktop navigation", () => {
       formantSemitones: 0,
       enabled: true,
       bypassed: false,
+      makeupGainDb: 0,
+      ringModFrequencyHz: 72,
+      ringModMix: 0,
+      radioHighPassHz: 280,
+      radioLowPassHz: 3400,
+      radioDrive: 1,
+      radioMix: 0,
+      tremoloRateHz: 5,
+      tremoloDepth: 0,
+      bassDb: 0,
+      trebleDb: 0,
     };
     effectMocks.get.mockReset().mockResolvedValue(effectParameters);
     effectMocks.set.mockReset().mockImplementation(async (parameters) => parameters);
     effectMocks.reset.mockReset().mockResolvedValue(effectParameters);
     presetMocks.list.mockReset().mockResolvedValue(builtInPresets);
+    presetMocks.create
+      .mockReset()
+      .mockImplementation(async (preset) => ({ ...preset, id: "my-studio-voice" }));
     presetMocks.active.mockReset().mockResolvedValue("natural");
     presetMocks.apply.mockReset().mockImplementation(async (id) => ({
       preset: builtInPresets.find((item) => item.id === id),
@@ -455,50 +471,31 @@ describe("desktop navigation", () => {
     window.dispatchEvent(new Event("resize"));
   });
 
-  it("navigates between every Task 02 page at the minimum window width", async () => {
+  it("navigates all five workspaces and preserves access to legacy capabilities", async () => {
     const user = userEvent.setup();
     render(<App />);
-
-    expect(screen.getByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
-
-    await user.click(screen.getAllByRole("button", { name: "Voice Effects" })[0]);
-    expect(screen.getByRole("heading", { name: "Voice Effects" })).toBeInTheDocument();
-
-    await user.click(screen.getAllByRole("button", { name: "Voice Studio" })[0]);
-    expect(screen.getByRole("heading", { name: "Voice Studio" })).toBeInTheDocument();
-
-    await user.click(screen.getAllByRole("button", { name: "Soundboard" })[0]);
-    expect(screen.getByRole("heading", { name: "Soundboard" })).toBeInTheDocument();
-    expect(await screen.findByText("No sounds in this view.")).toBeInTheDocument();
-
-    await user.click(screen.getAllByRole("button", { name: "Games & Apps" })[0]);
+    expect(screen.getByRole("heading", { name: "Voice Lab" })).toBeInTheDocument();
+    for (const label of ["Soundboard", "AI Voice Studio", "Recordings", "Settings"]) {
+      await user.click(screen.getByRole("button", { name: label }));
+      expect(screen.getByRole("heading", { name: label })).toBeInTheDocument();
+      expect(screen.getByRole("contentinfo", { name: "Audio status" })).toBeInTheDocument();
+    }
+    expect(screen.getByRole("button", { name: /Backup Now/ })).toBeInTheDocument();
+    expect(screen.getByText("Audio Diagnostics")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Check for updates/ })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Games & apps" }));
     expect(screen.getByRole("heading", { name: "Game & App Integration" })).toBeInTheDocument();
-
-    await user.click(screen.getAllByRole("button", { name: "AI Voice" })[0]);
-    expect(screen.getByRole("heading", { name: "AI Voice Studio" })).toBeInTheDocument();
-    expect(await screen.findByText("No trusted ONNX model installed")).toBeInTheDocument();
-    expect(screen.getByText("Not verified")).toBeInTheDocument();
-
-    await user.click(screen.getAllByRole("button", { name: "Virtual Microphone" })[0]);
-    expect(screen.getByRole("heading", { name: "Virtual Microphone" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Virtual microphone" }));
     expect(await screen.findByLabelText("Virtual cable playback endpoint")).toHaveValue(
       "wasapi:cable",
     );
-
-    await user.click(screen.getAllByRole("button", { name: "Settings" })[0]);
-    expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Backup Now/ })).toBeInTheDocument();
-    expect(screen.getByText("Audio Diagnostics")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Export Diagnostics Report/ })).toBeEnabled();
-    expect(screen.getByText("Application Updates")).toBeInTheDocument();
-    expect(screen.getByText(/Signed updates: Not configured/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Check for updates/ })).toBeDisabled();
-    expect(await screen.findByText(/Cloud sync is deferred/)).toBeInTheDocument();
   });
 
   it("renders disconnected microphone state without fake live data", async () => {
     render(<App />);
 
+    await userEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await userEvent.click(screen.getByRole("button", { name: "Audio devices" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Microphone is not connected");
     expect(screen.getByLabelText("Input device")).toBeDisabled();
     expect(screen.getByRole("meter", { name: "Input level" })).toHaveAttribute(
@@ -527,11 +524,78 @@ describe("desktop navigation", () => {
     expect(hotkeyMocks.set).toHaveBeenCalled();
   });
 
+  it("keeps monitoring and recording alive while navigating all workspaces", async () => {
+    audioMocks.refresh.mockResolvedValue(connectedSnapshot);
+    const user = userEvent.setup();
+    render(<App />);
+    const monitor = await screen.findByRole("switch", { name: "Monitor" });
+    await user.click(monitor);
+    expect(runtimeMocks.start).toHaveBeenCalledOnce();
+    expect(await screen.findByText("Audio engine running")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Record" }));
+    expect(recordingMocks.start).toHaveBeenCalledOnce();
+    for (const name of ["Soundboard", "AI Voice Studio", "Recordings", "Settings", "Voice Lab"]) {
+      await user.click(screen.getByRole("button", { name }));
+      expect(screen.getByRole("switch", { name: "Monitor" })).toHaveAttribute(
+        "aria-checked",
+        "true",
+      );
+    }
+    expect(runtimeMocks.start).toHaveBeenCalledOnce();
+    expect(runtimeMocks.stop).not.toHaveBeenCalled();
+    expect(recordingMocks.stop).not.toHaveBeenCalled();
+  });
+
+  it("opens the preset dialog with focus and closes it with Escape", async () => {
+    audioMocks.refresh.mockResolvedValue(connectedSnapshot);
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("option", { name: "Studio Microphone" });
+    const trigger = screen.getByRole("button", { name: "New preset" });
+    await user.click(trigger);
+    expect(screen.getByRole("dialog", { name: "Save your voice" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Preset name")).toHaveFocus();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  it("saves edited DSP settings and enables export for the newly created preset", async () => {
+    audioMocks.refresh.mockResolvedValue(connectedSnapshot);
+    volumeMocks.get.mockResolvedValue({
+      inputPercent: 65,
+      outputPercent: 75,
+      inputMuted: false,
+      outputMuted: false,
+    });
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("option", { name: "Studio Microphone" });
+    fireEvent.change(screen.getByLabelText("Pitch"), { target: { value: "2" } });
+    fireEvent.change(screen.getByLabelText("Bass"), { target: { value: "3" } });
+    await user.click(screen.getByRole("button", { name: "New preset" }));
+    const saves = screen.getAllByRole("button", { name: "Save preset" });
+    await user.click(saves[saves.length - 1]);
+    expect(presetMocks.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pitchSemitones: 2,
+        parameters: expect.objectContaining({
+          bassDb: 3,
+          inputGainPercent: 65,
+          outputGainPercent: 75,
+        }),
+      }),
+    );
+    expect(await screen.findByText("Preset saved to your local library.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Export" })).toBeEnabled();
+  });
+
   it("filters and applies a validated backend preset", async () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(screen.getAllByRole("button", { name: "Voice Effects" })[0]);
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    await user.click(screen.getByRole("button", { name: "Voice presets" }));
     await user.type(screen.getByLabelText("Search presets"), "Deep");
 
     expect(await screen.findByRole("button", { name: /Deep Voice/i })).toBeInTheDocument();
@@ -540,13 +604,17 @@ describe("desktop navigation", () => {
     await user.click(screen.getByRole("button", { name: /Deep Voice/i }));
     await user.click(screen.getByRole("button", { name: "Apply preset" }));
     expect(presetMocks.apply).toHaveBeenCalledWith("deep");
-    expect(await screen.findByRole("status")).toHaveTextContent("validated and applied");
+    expect(
+      await screen.findByText("Preset validated and applied to the realtime Rust DSP chain."),
+    ).toBeInTheDocument();
   });
 
   it("renders backend devices and refreshes without opening an audio stream", async () => {
     audioMocks.refresh.mockResolvedValue(connectedSnapshot);
     const user = userEvent.setup();
     render(<App />);
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    await user.click(screen.getByRole("button", { name: "Audio devices" }));
 
     expect(
       await screen.findByRole("option", { name: "Studio Microphone (Default)" }),
@@ -561,6 +629,8 @@ describe("desktop navigation", () => {
     audioMocks.refresh.mockResolvedValue(connectedSnapshot);
     const user = userEvent.setup();
     render(<App />);
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    await user.click(screen.getByRole("button", { name: "Audio devices" }));
 
     const start = await screen.findByRole("button", { name: "Start monitoring" });
     expect(runtimeMocks.start).not.toHaveBeenCalled();
@@ -576,6 +646,8 @@ describe("desktop navigation", () => {
     audioMocks.refresh.mockResolvedValue(connectedSnapshot);
     const user = userEvent.setup();
     render(<App />);
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    await user.click(screen.getByRole("button", { name: "Audio devices" }));
 
     const inputGain = await screen.findByLabelText("Microphone input gain");
     fireEvent.change(inputGain, { target: { value: "65" } });
@@ -610,6 +682,17 @@ describe("voice controls", () => {
       formantSemitones: 0,
       enabled: true,
       bypassed: false,
+      makeupGainDb: 0,
+      ringModFrequencyHz: 72,
+      ringModMix: 0,
+      radioHighPassHz: 280,
+      radioLowPassHz: 3400,
+      radioDrive: 1,
+      radioMix: 0,
+      tremoloRateHz: 5,
+      tremoloDepth: 0,
+      bassDb: 0,
+      trebleDb: 0,
     };
     effectMocks.get.mockResolvedValue(effectParameters);
     effectMocks.set.mockImplementation(async (parameters) => parameters);

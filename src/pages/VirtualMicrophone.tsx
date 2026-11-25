@@ -4,7 +4,7 @@ import {
   Broadcast,
   Headphones,
   Warning,
-} from "@phosphor-icons/react";
+} from "../components/icons";
 import { AppHeader } from "../components/AppHeader";
 import { AudioMeter } from "../components/AudioMeter";
 import { DeviceSelector } from "../components/DeviceSelector";
@@ -104,7 +104,7 @@ export function VirtualMicrophone() {
       ) : null}
 
       <div className="mt-5 grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
-        <section className="rounded-2xl border border-white/[0.08] bg-[#0f1216] p-5 sm:p-6">
+        <section className="rounded-2xl border border-white/[0.08] bg-[var(--surface)] p-5 sm:p-6">
           <div className="flex items-start justify-between gap-4">
             <div>
               <h2 className="text-sm font-semibold text-zinc-200">Virtual output sink</h2>
@@ -164,7 +164,7 @@ export function VirtualMicrophone() {
           ) : null}
         </section>
 
-        <section className="rounded-2xl border border-white/[0.08] bg-[#0f1216] p-5 sm:p-6">
+        <section className="rounded-2xl border border-white/[0.08] bg-[var(--surface)] p-5 sm:p-6">
           <h2 className="text-sm font-semibold text-zinc-200">Routing telemetry</h2>
           <div className="mt-6">
             <AudioMeter
@@ -204,7 +204,7 @@ export function VirtualMicrophone() {
         </section>
       </div>
 
-      <section className="mt-5 rounded-2xl border border-white/[0.08] bg-[#0f1216] p-5 sm:p-6">
+      <section className="mt-5 rounded-2xl border border-white/[0.08] bg-[var(--surface)] p-5 sm:p-6">
         <div className="flex gap-3">
           <Headphones size={19} className="shrink-0 text-cyan-300" />
           <div>

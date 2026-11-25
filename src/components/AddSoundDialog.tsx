@@ -1,3 +1,5 @@
+import { StudioDialog } from "./ui";
+
 interface Props {
   path: string;
   name: string;
@@ -9,16 +11,14 @@ interface Props {
 }
 export function AddSoundDialog(p: Props) {
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="add-sound-title"
-      className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4"
+    <StudioDialog
+      open
+      onOpenChange={(open) => {
+        if (!open && !p.busy) p.onCancel();
+      }}
+      title="Add WAV sound"
     >
-      <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#13171c] p-6">
-        <h2 id="add-sound-title" className="text-lg font-semibold">
-          Add WAV sound
-        </h2>
+      <div>
         <p className="mt-2 text-sm text-zinc-500">
           Files stay local. Decoding happens before realtime playback.
         </p>
@@ -56,6 +56,6 @@ export function AddSoundDialog(p: Props) {
           </button>
         </div>
       </div>
-    </div>
+    </StudioDialog>
   );
 }

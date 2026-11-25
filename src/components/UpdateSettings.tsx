@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowClockwise, DownloadSimple, ShieldCheck, WarningCircle } from "@phosphor-icons/react";
+import { ArrowClockwise, DownloadSimple, ShieldCheck, WarningCircle } from "./icons";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { getUpdateConfiguration } from "../services/tauri";

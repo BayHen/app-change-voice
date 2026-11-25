@@ -1,4 +1,12 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke as tauriInvoke, isTauri } from "@tauri-apps/api/core";
+
+function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  if (!isTauri())
+    return Promise.reject(
+      new Error("Desktop audio bridge unavailable. Open VoiceMorph Studio in the desktop app."),
+    );
+  return tauriInvoke<T>(command, args);
+}
 import type { AppStatus, UpdateConfiguration } from "../types/app";
 import type { VoicePresetSummary } from "../types/preset";
 import type { HotkeyConfiguration } from "../types/hotkeys";

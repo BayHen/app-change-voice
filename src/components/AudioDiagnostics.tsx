@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
-import { ArrowClockwise, DownloadSimple, WarningCircle } from "@phosphor-icons/react";
+import { ArrowClockwise, DownloadSimple, WarningCircle } from "./icons";
 import * as api from "../services/tauri";
 import type { AudioDiagnosticsReport } from "../types/audio";
 

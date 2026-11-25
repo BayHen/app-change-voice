@@ -59,14 +59,14 @@ export function useAudioRuntime() {
 
   useEffect(() => {
     mounted.current = true;
-    void getAudioRuntimeStatus().then(
-      (next) => mounted.current && applyRuntimeStatus(next, setStatus, setError),
-    );
+    void getAudioRuntimeStatus()
+      .then((next) => mounted.current && applyRuntimeStatus(next, setStatus, setError))
+      .catch((reason) => mounted.current && setError(message(reason)));
     const interval = window.setInterval(() => {
       void getAudioRuntimeStatus()
         .then((next) => mounted.current && applyRuntimeStatus(next, setStatus, setError))
         .catch((reason) => mounted.current && setError(message(reason)));
-    }, 40);
+    }, 100);
     return () => {
       mounted.current = false;
       window.clearInterval(interval);

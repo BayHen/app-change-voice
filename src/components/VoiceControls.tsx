@@ -25,22 +25,22 @@ const controlDefinitions: Array<{
 }> = [
   { key: "pitch", label: "Pitch", min: -12, max: 12, step: 0.1, unit: " st", available: true },
   { key: "formant", label: "Formant", min: -6, max: 6, step: 0.1, unit: " st", available: true },
-  { key: "bass", label: "Bass — Coming Soon", min: -12, max: 12, unit: " dB", available: false },
+  { key: "bass", label: "Bass", min: -12, max: 12, unit: " dB", available: true },
   {
     key: "treble",
-    label: "Treble — Coming Soon",
+    label: "Treble",
     min: -12,
     max: 12,
     unit: " dB",
-    available: false,
+    available: true,
   },
   {
     key: "gain",
-    label: "Studio gain — Coming Soon",
-    min: -24,
-    max: 12,
+    label: "Studio gain",
+    min: -12,
+    max: 6,
     unit: " dB",
-    available: false,
+    available: true,
   },
 ];
 
