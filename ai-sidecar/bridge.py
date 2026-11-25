@@ -68,10 +68,14 @@ class WOkadaEngine:
     def probe(self):
         import torch
         import onnxruntime as ort
+        import platform
         return {"upstreamCommit": UPSTREAM_COMMIT, "sampleRate": 48000,
                 "channels": 1, "pcmFormat": "s16le", "providers": ort.get_available_providers(),
                 "cudaDevices": [torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())],
-                "torchVersion": torch.__version__, "onnxRuntimeVersion": ort.__version__}
+                "torchVersion": torch.__version__, "onnxRuntimeVersion": ort.__version__,
+                "pythonVersion": platform.python_version(), "cpuThreads": os.cpu_count(),
+                "torchCudaAvailable": torch.cuda.is_available(), "torchCudaVersion": torch.version.cuda,
+                "gpuMemoryBytes": [torch.cuda.get_device_properties(i).total_memory for i in range(torch.cuda.device_count())]}
 
     def load(self, request):
         config = validate_config(request["config"])
@@ -122,6 +126,18 @@ class WOkadaEngine:
         import torch
         import onnxruntime as ort
         torch.set_num_threads(config["cpuThreads"])
+        # Upstream creates sessions without thread limits. Apply the user's actual
+        # budget to metadata, voice and F0 sessions instead of reporting Torch's
+        # thread count while ORT silently starts a machine-wide thread pool.
+        session_class = getattr(ort, "_voicemorph_original_session", ort.InferenceSession)
+        ort._voicemorph_original_session = session_class
+        class BoundedSession(session_class):
+            def __init__(self, path_or_bytes, sess_options=None, *args, **kwargs):
+                options = sess_options or ort.SessionOptions()
+                options.intra_op_num_threads = config["cpuThreads"]
+                options.inter_op_num_threads = 1
+                super().__init__(path_or_bytes, options, *args, **kwargs)
+        ort.InferenceSession = BoundedSession
         # Upstream's optional fallback/checkpoint loaders are not allowed to unpickle anything.
         def no_pickle(*_args, **_kwargs):
             raise ValueError("Checkpoint/pickle loading is disabled by VoiceMorph; use verified ONNX assets")
@@ -160,6 +176,9 @@ class WOkadaEngine:
             name = getattr(file, "name", file)
             if not isinstance(name, (str, os.PathLike)) or Path(name).resolve() != Path(content):
                 raise ValueError("Only the verified runtime HuBERT asset may use the checkpoint loader")
+            # fairseq's explicitly trusted embedding checkpoint contains config objects.
+            # PyTorch 2.6 defaults to weights_only; never relax this for a user voice model.
+            kwargs["weights_only"] = False
             return trusted_torch_load(file, *args, **kwargs)
         torch.load = trusted_asset_load
         rmvpe = str(contained(self.root, assets["rmvpeModel"])) if assets.get("rmvpeModel") else ""
@@ -208,7 +227,57 @@ class WOkadaEngine:
         self.config = config
         self.np = np
         return {"provider": self.provider, "loadingMs": (time.perf_counter() - start) * 1000,
-                "modelSampleRate": slot.samplingRate, "f0": slot.f0, "indexAvailable": False}
+                "modelSampleRate": slot.samplingRate, "f0": slot.f0, "indexAvailable": False,
+                "torchCpuThreads": torch.get_num_threads(),
+                "onnxCpuThreads": self.model.pipeline.inferencer.model.get_session_options().intra_op_num_threads}
+
+    def metrics(self):
+        import torch
+        import psutil
+        process = psutil.Process()
+        return {"rssBytes": process.memory_info().rss,
+                "cpuSeconds": sum(process.cpu_times()[:2]),
+                "cudaAllocatedBytes": torch.cuda.memory_allocated() if self.provider == "cuda" else None,
+                "cudaReservedBytes": torch.cuda.memory_reserved() if self.provider == "cuda" else None,
+                "cudaPeakAllocatedBytes": torch.cuda.max_memory_allocated() if self.provider == "cuda" else None,
+                "cudaPeakReservedBytes": torch.cuda.max_memory_reserved() if self.provider == "cuda" else None}
+
+    def convert_approved_voice(self, request):
+        if self.vc is not None or self.model is not None:
+            raise ValueError("Stop conversion before preparing an approved model")
+        checkpoint = Path(request["checkpointPath"]).resolve(strict=True)
+        expected = "cd4996435d0e9c9f93858a13d9ddf5442a011388478daab1f732e0ac2b2c4020"
+        if checkpoint.name != "tsukuyomi-official-normal1.pth" or self.hash_file(checkpoint) != expected:
+            raise ValueError("Only the reviewed original-owner checkpoint may be converted")
+        output_dir = checkpoint.parent / "converted"
+        output_dir.mkdir(exist_ok=False)
+        server = self.root.joinpath(self.manifest["serverDirectory"]).resolve(strict=True)
+        if not server.is_relative_to(self.root):
+            raise ValueError("Invalid server directory")
+        sys.path.insert(0, str(server))
+        import torch
+        from const import EnumInferenceTypes
+        from voice_changer.RVC.onnxExporter.export2onnx import _export2onnx
+        metadata = {"application": "VC_CLIENT", "version": "2.1", "modelType": EnumInferenceTypes.pyTorchRVCv2.value,
+            "samplingRate": 40000, "f0": True, "embChannels": 768, "embedder": "hubert_base",
+            "embOutputLayer": 12, "useFinalProj": False,
+            "sourceCheckpointSha256": expected, "sourceUrl": "https://tyc.rei-yumesaki.net/files/voice/tyc-rvc.zip",
+            "licenseUrl": "https://tyc.rei-yumesaki.net/work/software/rvc/terms/",
+            "attribution": "Tsukuyomi-chan official RVC model (CV. Rei Yumesaki)"}
+        original_load = torch.load
+        def safe_weights(file, *args, **kwargs):
+            if Path(getattr(file, "name", file)).resolve() != checkpoint:
+                raise ValueError("Unexpected checkpoint loader path")
+            kwargs["weights_only"] = True
+            return original_load(file, *args, **kwargs)
+        output = output_dir / "tsukuyomi-normal1.onnx"
+        try:
+            torch.load = safe_weights
+            torch.set_num_threads(4)
+            _export2onnx(str(checkpoint), str(output_dir / "tsukuyomi-normal1-raw.onnx"), str(output), False, metadata)
+        finally:
+            torch.load = original_load
+        return {"modelPath": str(output), "sha256": self.hash_file(output), "sourceSha256": expected}
 
     @staticmethod
     def hash_file(path):
@@ -267,6 +336,10 @@ def serve(engine, source, destination):
                 response.update(engine.infer(request))
             elif operation == "health":
                 response.update(ready=engine.vc is not None)
+            elif operation == "metrics":
+                response.update(engine.metrics())
+            elif operation == "convertApprovedVoice":
+                response.update(engine.convert_approved_voice(request))
             elif operation in ("unload", "shutdown"):
                 engine.vc = None
                 engine.model = None

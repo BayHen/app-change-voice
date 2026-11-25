@@ -1,4 +1,6 @@
 pub mod adapter;
+pub mod bootstrap;
+pub mod catalog;
 pub mod config;
 pub mod engine;
 pub mod inference;

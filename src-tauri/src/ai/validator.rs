@@ -36,7 +36,14 @@ pub fn validate_metadata(metadata: &AIModelMetadata) -> Result<(), String> {
             "RVC requires architecture rvc, 48 kHz transport and acknowledged voice rights".into(),
         );
     }
-    if !ALLOWED_LICENSES.contains(&metadata.license.as_str()) {
+    let approved_owner_model = metadata.license == "LicenseRef-TsukuyomiChan-Official"
+        && metadata.sha256 == "d9caedd48ea81672946ce4896022da5e302996e1f5c1bf0ae2c141c2f7d3afe6"
+        && metadata.source_url == "https://tyc.rei-yumesaki.net/work/software/rvc/"
+        && metadata.license_url.as_deref()
+            == Some("https://tyc.rei-yumesaki.net/work/software/rvc/terms/")
+        && metadata.attribution.as_deref()
+            == Some("Tsukuyomi-chan official RVC model (CV. Rei Yumesaki)");
+    if !ALLOWED_LICENSES.contains(&metadata.license.as_str()) && !approved_owner_model {
         return Err(format!(
             "Model license is not allow-listed: {}",
             metadata.license
@@ -116,6 +123,8 @@ mod tests {
             frame_samples: 2_048,
             supported_profiles: vec!["deep".into()],
             consent_confirmed: false,
+            license_url: None,
+            attribution: None,
         }
     }
 

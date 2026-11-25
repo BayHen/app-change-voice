@@ -21,6 +21,10 @@ pub struct AIModelMetadata {
     pub supported_profiles: Vec<String>,
     #[serde(default)]
     pub consent_confirmed: bool,
+    #[serde(default)]
+    pub license_url: Option<String>,
+    #[serde(default)]
+    pub attribution: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

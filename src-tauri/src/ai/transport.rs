@@ -7,6 +7,7 @@ use std::sync::{
 
 #[derive(Default)]
 pub struct SharedTransport {
+    pub process_id: AtomicU64,
     pub ai_selected: AtomicBool,
     pub ready: AtomicBool,
     pub faulted: AtomicBool,

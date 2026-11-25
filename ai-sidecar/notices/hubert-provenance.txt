@@ -1,0 +1,14 @@
+HuBERT Base (Facebook Research / Meta)
+Original checkpoint: https://dl.fbaipublicfiles.com/hubert/hubert_base_ls960.pt
+Original source reference: https://github.com/facebookresearch/fairseq/tree/main/examples/hubert
+Publisher model card: https://huggingface.co/facebook/hubert-base-ls960
+Publisher model card license: Apache-2.0 (model card links to original fairseq model).
+Downloaded original checkpoint SHA-256:
+1703cf8d2cdc76f8c046f5f6a9bcd224e0e6caf4744cad1a1f4199c32cac8c8d
+
+Authors: Wei-Ning Hsu, Benjamin Bolte, Yao-Hung Hubert Tsai, Kushal Lakhotia,
+Ruslan Salakhutdinov, Abdelrahman Mohamed.
+HuBERT: Self-Supervised Speech Representation Learning by Masked Prediction of Hidden Units.
+
+This embedding model does not grant rights to arbitrary target speaker identities.
+Voice model provenance/terms are checked separately. Retain Apache-2.0 notice with the asset.

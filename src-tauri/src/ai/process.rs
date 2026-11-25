@@ -124,10 +124,33 @@ impl ManagedProcess {
                 command.env(key, value);
             }
         }
+        // platformdirs' Windows KnownFolder lookup fails without a user profile.
+        // Use its supported overrides and an app-owned cache profile, rather than
+        // inheriting user credentials/environment or writing into the runtime release.
+        let profile = log
+            .parent()
+            .unwrap_or(Path::new("."))
+            .join("runtime-profile");
+        fs::create_dir_all(profile.join("Local")).map_err(|e| e.to_string())?;
+        fs::create_dir_all(profile.join("Roaming")).map_err(|e| e.to_string())?;
+        let profile = profile.canonicalize().map_err(|e| e.to_string())?;
         command
+            .env("USERPROFILE", &profile)
+            .env("HOME", &profile)
+            .env("LOCALAPPDATA", profile.join("Local"))
+            .env("APPDATA", profile.join("Roaming"))
+            .env("WIN_PD_OVERRIDE_LOCAL_APPDATA", profile.join("Local"))
+            .env("WIN_PD_OVERRIDE_APPDATA", profile.join("Roaming"))
+            .env("TORCH_HOME", profile.join("torch"))
+            .env("HF_HOME", profile.join("huggingface"))
             .env("PYTHONIOENCODING", "utf-8")
             .env("HF_HUB_OFFLINE", "1")
             .env("TRANSFORMERS_OFFLINE", "1")
+            .env("PYTHONDONTWRITEBYTECODE", "1")
+            .env(
+                "NUMBA_CACHE_DIR",
+                log.parent().unwrap_or(Path::new(".")).join("numba-cache"),
+            )
             .env("OMP_NUM_THREADS", "4")
             .env("OPENBLAS_NUM_THREADS", "4");
         Self::spawn_command(command, log, cancel)
@@ -282,6 +305,9 @@ impl ManagedProcess {
             .lock()
             .map(|mut c| c.try_wait().ok().flatten().is_some())
             .unwrap_or(true)
+    }
+    pub fn process_id(&self) -> Option<u32> {
+        self.child.lock().ok().map(|child| child.id())
     }
 }
 impl Drop for ManagedProcess {

@@ -57,7 +57,10 @@ def main():
     subprocess.run([str(python), "-I", "-c", source_probe, str((args.upstream / "server").resolve())], check=True)
     root = args.destination
     root.mkdir(parents=True)
-    shutil.copytree(args.python_dir, root / "python", ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".git"))
+    # Runtime inference does not compile native extensions or execute test suites.
+    # Keep license/metadata files; omit developer headers, scripts and tests.
+    shutil.copytree(args.python_dir, root / "python", ignore=shutil.ignore_patterns(
+        "__pycache__", "*.pyc", ".git", "include", "Include", "tests", "test", "benchmarks", "Scripts"))
     shutil.copytree(args.upstream / "server", root / "server", ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "test.wav", "Beatrice"))
     for directory in ("assets", "notices"):
         (root / directory).mkdir()

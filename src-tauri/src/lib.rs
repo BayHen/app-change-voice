@@ -310,6 +310,60 @@ fn get_ai_engine_status(
 }
 
 #[tauri::command]
+async fn detect_ai_hardware(app: AppHandle) -> Result<ai::engine::EngineStatus, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        use std::sync::atomic::Ordering;
+        let state = app.state::<AudioRuntimeState>();
+        let (root, busy, cancel) = {
+            let audio = state
+                .lock()
+                .map_err(|_| "Audio runtime lock was poisoned")?;
+            if matches!(
+                audio.ai.status().state.as_str(),
+                "starting" | "ready" | "converting"
+            ) {
+                return Err("Stop AI before checking hardware".to_string());
+            }
+            audio
+                .ai
+                .installing
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .map_err(|_| "Another runtime operation is in progress")?;
+            audio.ai.install_cancel.store(false, Ordering::Release);
+            (
+                audio.ai.runtime_root(),
+                audio.ai.installing.clone(),
+                audio.ai.install_cancel.clone(),
+            )
+        };
+        let result = (|| {
+            let runtime = ai::runtime::discover(&root)?;
+            let mut process = ai::process::ManagedProcess::spawn(
+                &runtime,
+                &root.join("logs/hardware-probe.log"),
+                cancel,
+            )?;
+            let hardware = process.call(
+                serde_json::json!({"op":"hello"}),
+                std::time::Duration::from_secs(90),
+            )?;
+            if hardware["upstreamCommit"] != ai::config::UPSTREAM_COMMIT {
+                return Err("Runtime hardware probe version mismatch".to_string());
+            }
+            let audio = state
+                .lock()
+                .map_err(|_| "Audio runtime lock was poisoned")?;
+            audio.ai.update(|s| s.hardware = Some(hardware));
+            Ok(audio.ai.status())
+        })();
+        busy.store(false, Ordering::Release);
+        result
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn set_ai_engine_config(
     app: AppHandle,
     config: ai::config::EngineConfig,
@@ -416,6 +470,91 @@ async fn select_classic_voice(app: AppHandle) -> Result<ai::engine::EngineStatus
 }
 
 #[tauri::command]
+async fn install_recommended_ai_runtime(
+    app: AppHandle,
+) -> Result<ai::engine::EngineStatus, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        use std::sync::atomic::Ordering;
+        if !cfg!(all(windows, target_arch = "x86_64")) { return Err("Recommended runtime supports Windows x64".to_string()); }
+        let state = app.state::<AudioRuntimeState>();
+        let (root, cancel, busy, snapshot) = {
+            let audio = state.lock().map_err(|_| "Audio runtime lock was poisoned")?;
+            if matches!(audio.ai.status().state.as_str(), "starting" | "ready" | "converting") {
+                return Err("Stop AI before installing/updating its runtime".to_string());
+            }
+            audio.ai.installing.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .map_err(|_| "Another runtime operation is in progress")?;
+            audio.ai.install_cancel.store(false, Ordering::Release);
+            audio.ai.update(|s| { s.install.installing = true; s.install.message = None; s.hardware = None; s.download = None; });
+            (audio.ai.runtime_root(), audio.ai.install_cancel.clone(), audio.ai.installing.clone(), audio.ai.snapshot.clone())
+        };
+        let result = ai::bootstrap::install(&root, &cancel, |progress| {
+            if let Ok(mut status) = snapshot.lock() { status.download = Some(progress); }
+        });
+        busy.store(false, Ordering::Release);
+        let audio = state.lock().map_err(|_| "Audio runtime lock was poisoned")?;
+        audio.ai.update(|s| {
+            s.install.installing = false;
+            match &result {
+                Ok(runtime) => { s.runtime_installed = true; s.install.installed = true; s.state = "stopped".into();
+                    s.runtime_version = Some(runtime.manifest.version.clone()); s.install.version = s.runtime_version.clone();
+                    if let Some(progress) = &mut s.download { progress.phase = "complete".into(); }
+                    s.install.message = Some("Recommended runtime installed. Detect hardware, then choose a licensed voice.".into()); }
+                Err(error) => { s.install.message = Some(error.clone()); if let Some(progress) = &mut s.download { progress.phase = "interrupted".into(); } }
+            }
+        });
+        result?;
+        Ok(audio.ai.status())
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn install_official_ai_voice(
+    app: AppHandle,
+    rights_confirmed: bool,
+) -> Result<ai::engine::EngineStatus, String> {
+    if !rights_confirmed {
+        return Err(
+            "Read and acknowledge the original owner's voice/model terms before downloading".into(),
+        );
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        use std::sync::atomic::Ordering;
+        let models = app.state::<AIModelState>();
+        if models.lock().map_err(|_| "AI model lock was poisoned")?.resolve(ai::catalog::VOICE_ID).is_ok() {
+            return Err("This official voice is already installed".to_string());
+        }
+        let state = app.state::<AudioRuntimeState>();
+        let (root, cancel, busy, snapshot) = {
+            let audio = state.lock().map_err(|_| "Audio runtime lock was poisoned")?;
+            if matches!(audio.ai.status().state.as_str(), "starting" | "ready" | "converting") { return Err("Stop AI before preparing a voice model".to_string()); }
+            audio.ai.installing.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).map_err(|_| "Another runtime operation is in progress")?;
+            audio.ai.install_cancel.store(false, Ordering::Release);
+            audio.ai.update(|s| { s.install.installing = true; s.install.message = None; s.download = None; });
+            (audio.ai.runtime_root(), audio.ai.install_cancel.clone(), audio.ai.installing.clone(), audio.ai.snapshot.clone())
+        };
+        let result = (|| {
+            let runtime = ai::runtime::discover(&root)?;
+            let prepared = ai::catalog::prepare(&root, &runtime, cancel, |progress| {
+                if let Ok(mut status) = snapshot.lock() { status.download = Some(progress); }
+            })?;
+            let result = ai::catalog::import_prepared(&mut *models.lock().map_err(|_| "AI model lock was poisoned")?, &prepared);
+            if prepared.canonicalize().ok().is_some_and(|p| root.canonicalize().ok().is_some_and(|r| p.starts_with(r))) { let _ = std::fs::remove_dir_all(prepared); }
+            result
+        })();
+        busy.store(false, Ordering::Release);
+        let audio = state.lock().map_err(|_| "Audio runtime lock was poisoned")?;
+        audio.ai.update(|s| {
+            s.install.installing = false;
+            s.install.message = Some(match &result { Ok(_) => "Official voice installed with owner attribution and terms. Select it and start AI.".into(), Err(e) => e.clone() });
+            if let Some(p) = &mut s.download { p.phase = if result.is_ok() { "complete" } else { "interrupted" }.into(); }
+        });
+        result?;
+        Ok(audio.ai.status())
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn install_ai_runtime(
     app: AppHandle,
     source: PathBuf,
@@ -485,6 +624,8 @@ async fn install_ai_runtime(
             s.install.installing = false;
             match &result {
                 Ok(runtime) => {
+                    s.hardware = None;
+                    s.runtime_version = Some(runtime.manifest.version.clone());
                     s.install.installed = true;
                     s.install.version = Some(runtime.manifest.version.clone());
                     s.runtime_installed = true;
@@ -541,6 +682,20 @@ async fn rollback_ai_runtime(app: AppHandle) -> Result<ai::engine::EngineStatus,
         let result = ai::runtime::rollback(&root);
         busy.store(false, std::sync::atomic::Ordering::Release);
         result?;
+        let manifest = ai::runtime::installed_manifest(&root)?;
+        state
+            .lock()
+            .map_err(|_| "Audio runtime lock was poisoned")?
+            .ai
+            .update(|s| {
+                s.runtime_version = Some(manifest.version.clone());
+                s.install.version = Some(manifest.version);
+                s.runtime_installed = true;
+                s.install.installed = true;
+                s.hardware = None;
+                s.download = None;
+                s.install.message = Some("Previous runtime restored and verified".into());
+            });
         Ok(state
             .lock()
             .map_err(|_| "Audio runtime lock was poisoned")?
@@ -1909,6 +2064,9 @@ pub fn run() {
             remove_ai_model,
             set_ai_model_enabled,
             get_ai_engine_status,
+            detect_ai_hardware,
+            install_recommended_ai_runtime,
+            install_official_ai_voice,
             set_ai_engine_config,
             start_ai_conversion,
             stop_ai_conversion,

@@ -25,6 +25,11 @@ pub struct EngineStatus {
     pub state: String,
     pub mode: String,
     pub classic_fallback_active: bool,
+    pub hardware: Option<serde_json::Value>,
+    pub runtime_version: Option<String>,
+    pub recommended_runtime_version: String,
+    pub recommended_download_bytes: u64,
+    pub download: Option<super::bootstrap::Progress>,
     pub runtime_installed: bool,
     pub model_id: Option<String>,
     pub provider: Option<String>,
@@ -45,10 +50,22 @@ pub struct EngineStatus {
 }
 impl Default for EngineStatus {
     fn default() -> Self {
+        let recipe = super::bootstrap::recipe().ok();
         Self {
             state: "notInstalled".into(),
             mode: "classicDsp".into(),
             classic_fallback_active: false,
+            hardware: None,
+            runtime_version: None,
+            recommended_runtime_version: recipe
+                .as_ref()
+                .map(|r| r.version.clone())
+                .unwrap_or_default(),
+            recommended_download_bytes: recipe
+                .as_ref()
+                .map(|r| r.components.iter().map(|c| c.bytes).sum())
+                .unwrap_or(0),
+            download: None,
             runtime_installed: false,
             model_id: None,
             provider: None,
@@ -112,11 +129,15 @@ impl AIEngine {
             self.config.failure_policy == FailurePolicy::ClassicDsp,
             Ordering::Release,
         );
-        let installed = self.runtime_root.join("current.json").is_file();
+        let manifest = super::runtime::installed_manifest(&self.runtime_root).ok();
+        let installed = manifest.is_some();
         let config = self.config.clone();
         self.update(|s| {
             s.config = config;
             s.runtime_installed = installed;
+            s.runtime_version = manifest.as_ref().map(|m| m.version.clone());
+            s.install.installed = installed;
+            s.install.version = s.runtime_version.clone();
             s.state = if installed { "stopped" } else { "notInstalled" }.into();
         });
     }
@@ -275,25 +296,37 @@ impl AIEngine {
                 super::validator::verify_model(&metadata, &target)?;
                 Ok::<_, String>(target)
             })();
+            // Ring endpoints belong to the audio stream, not to one sidecar process.
+            // Retain them across crashes and return them for an explicit Stop/Start.
+            let mut port: Option<WorkerPort> = None;
             if let Ok(model_path) = staged.as_ref() {
                 for attempt in 0..=2 {
                     if stop.load(Ordering::Acquire) {
                         break;
                     }
                     let generation = shared.generation.fetch_add(1, Ordering::AcqRel) + 1;
+                    let mut attempt_config = config.clone();
+                    if attempt > 0
+                        && attempt_config.allow_cpu_fallback
+                        && attempt_config.provider != "cpu"
+                    {
+                        attempt_config.provider = "cpu".into();
+                    }
                     let result = run_worker(
                         &runtime,
                         model_path,
                         &metadata,
-                        &config,
+                        &attempt_config,
                         &root.join("logs/ai-runtime.log"),
                         &shared,
                         &snapshot,
                         &attachment,
+                        &mut port,
                         &stop,
                         cancel.clone(),
                         generation,
                     );
+                    shared.process_id.store(0, Ordering::Release);
                     shared.ready.store(false, Ordering::Release);
                     if stop.load(Ordering::Acquire) {
                         break;
@@ -324,6 +357,11 @@ impl AIEngine {
                 }
             }
             shared.ready.store(false, Ordering::Release);
+            if let Ok(mut pending) = attachment.lock() {
+                if pending.is_none() {
+                    *pending = port.take();
+                }
+            }
             let _ = fs::remove_dir_all(session);
         }));
         Ok(self.status())
@@ -346,6 +384,7 @@ impl AIEngine {
             let _ = worker.join();
         }
         let installed = self.runtime_root.join("current.json").is_file();
+        self.shared.process_id.store(0, Ordering::Release);
         self.shared.faulted.store(false, Ordering::Release);
         self.update(|s| {
             s.state = if installed { "stopped" } else { "notInstalled" }.into();
@@ -376,21 +415,37 @@ fn run_worker(
     shared: &Arc<SharedTransport>,
     snapshot: &Arc<Mutex<EngineStatus>>,
     attachment: &Arc<Mutex<Option<WorkerPort>>>,
+    port: &mut Option<WorkerPort>,
     stop: &AtomicBool,
     cancel: Arc<AtomicBool>,
     generation: u64,
 ) -> Result<(), String> {
     let (mut backend, loaded) = WOkadaBackend::load(runtime, model, metadata, config, log, cancel)?;
+    shared.process_id.store(
+        u64::from(backend.process_id().unwrap_or(0)),
+        Ordering::Release,
+    );
     if let Ok(mut state) = snapshot.lock() {
         state.state = "ready".into();
         state.provider = loaded["provider"].as_str().map(str::to_owned);
+        state.hardware = Some(loaded["hardware"].clone());
         state.loading_ms = loaded["loadingMs"].as_f64();
-        state.message = None;
+        state.message = if state.provider.as_deref() == Some("cpu")
+            && state.config.provider != "cpu"
+            && (state.restarts > 0 || state.config.provider == "cuda")
+        {
+            Some("CPU fallback is active under your saved policy. Larger chunks can help if output is missing.".into())
+        } else {
+            None
+        };
     }
     shared.ready.store(true, Ordering::Release);
-    let mut port: Option<WorkerPort> = None;
-    let mut input_resampler = Resampler::new(AI_SAMPLE_RATE, AI_SAMPLE_RATE)?;
-    let mut output_resampler = Resampler::new(AI_SAMPLE_RATE, AI_SAMPLE_RATE)?;
+    let native_rate = port
+        .as_ref()
+        .map(|p| p.sample_rate)
+        .unwrap_or(AI_SAMPLE_RATE);
+    let mut input_resampler = Resampler::new(native_rate, AI_SAMPLE_RATE)?;
+    let mut output_resampler = Resampler::new(AI_SAMPLE_RATE, native_rate)?;
     let mut pending = Vec::<f32>::with_capacity(config.chunk_frames + 16);
     let mut output = Vec::<f32>::with_capacity(config.chunk_frames * 2);
     let mut health = Instant::now();
@@ -404,7 +459,21 @@ fn run_worker(
             input_resampler = Resampler::new(next.sample_rate, AI_SAMPLE_RATE)?;
             output_resampler = Resampler::new(AI_SAMPLE_RATE, next.sample_rate)?;
             pending.clear();
-            port = Some(next);
+            *port = Some(next);
+            sent = 0;
+            if let Ok(mut state) = snapshot.lock() {
+                state.state = "ready".into();
+            }
+        }
+        if port.as_ref().is_some_and(|p| p.input.is_abandoned()) {
+            *port = None;
+            pending.clear();
+            sent = 0;
+            shared.queued_input_samples.store(0, Ordering::Relaxed);
+            shared.queued_output_samples.store(0, Ordering::Relaxed);
+            if let Ok(mut state) = snapshot.lock() {
+                state.state = "ready".into();
+            }
         }
         if backend.exited() {
             return Err("AI sidecar exited unexpectedly".into());
@@ -486,6 +555,162 @@ fn run_worker(
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn feed_file_audio(port: &mut RealtimePort, source: &[f32], seconds: u64) -> usize {
+        let started = Instant::now();
+        let mut audible = 0;
+        for callback in 0..seconds * 100 {
+            for offset in 0..480 {
+                let value =
+                    port.process(source[((callback * 480) as usize + offset) % source.len()]);
+                assert!(value.is_some(), "AI unexpectedly selected Classic DSP");
+                if value.unwrap().abs() > 0.0001 {
+                    audible += 1;
+                }
+            }
+            let target = started + Duration::from_millis((callback + 1) * 10);
+            if let Some(delay) = target.checked_duration_since(Instant::now()) {
+                thread::sleep(delay);
+            }
+        }
+        audible
+    }
+    fn wait_provider(engine: &AIEngine, provider: &str) {
+        let deadline = Instant::now() + Duration::from_secs(120);
+        loop {
+            let status = engine.status();
+            if matches!(status.state.as_str(), "ready" | "converting")
+                && status.provider.as_deref() == Some(provider)
+            {
+                return;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "Runtime did not become ready: {status:?}"
+            );
+            assert!(
+                status.state != "faulted" || status.restarts < 2,
+                "Actual runtime failed: {status:?}"
+            );
+            thread::sleep(Duration::from_millis(20));
+        }
+    }
+    #[cfg(windows)]
+    fn terminate_owned_child(pid: u32, executable: &Path) {
+        use std::os::windows::ffi::OsStringExt;
+        use windows_sys::Win32::{
+            Foundation::CloseHandle,
+            System::Threading::{
+                OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE,
+                QueryFullProcessImageNameW, TerminateProcess,
+            },
+        };
+        let handle = unsafe {
+            OpenProcess(
+                PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE,
+                0,
+                pid,
+            )
+        };
+        assert!(!handle.is_null(), "Cannot open owned runtime child");
+        let mut path = vec![0u16; 32768];
+        let mut size = path.len() as u32;
+        let queried =
+            unsafe { QueryFullProcessImageNameW(handle, 0, path.as_mut_ptr(), &mut size) };
+        if queried == 0 {
+            unsafe {
+                CloseHandle(handle);
+            }
+            panic!("Cannot verify child executable");
+        }
+        let actual = PathBuf::from(std::ffi::OsString::from_wide(&path[..size as usize]))
+            .canonicalize()
+            .unwrap();
+        let expected = executable.canonicalize().unwrap();
+        if actual != expected {
+            unsafe {
+                CloseHandle(handle);
+            }
+            panic!("Refusing to terminate an unrelated process");
+        }
+        let killed = unsafe { TerminateProcess(handle, 77) };
+        unsafe {
+            CloseHandle(handle);
+        }
+        assert_ne!(killed, 0, "Owned runtime termination failed");
+    }
+    #[test]
+    #[cfg(windows)]
+    #[ignore = "manual actual CUDA inference, bounded PCM transport and owned-child crash recovery; no audio devices"]
+    fn real_transport_recovers_from_cuda_child_exit_to_opted_in_cpu() {
+        let project = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let root = project.join(".ai-runtime-build/bootstrap-installed");
+        let runtime = super::super::runtime::discover(&root).unwrap();
+        let executable = runtime.root.join(&runtime.manifest.python_executable);
+        let manager =
+            super::super::manager::AIModelManager::new(root.join("test-model-library")).unwrap();
+        let (model, path) = manager.resolve(super::super::catalog::VOICE_ID).unwrap();
+        let samples: Vec<f32> =
+            hound::WavReader::open(project.join(".ai-runtime-build/assets/owner-sample.wav"))
+                .unwrap()
+                .samples::<i16>()
+                .map(|s| f32::from(s.unwrap()) / 32768.0)
+                .collect();
+        let mut engine = AIEngine::default();
+        engine.configure(root.clone(), root.join("transport-test-config.json"));
+        engine
+            .save_config(EngineConfig {
+                provider: "cuda".into(),
+                allow_cpu_fallback: true,
+                chunk_frames: 8192,
+                ..EngineConfig::default()
+            })
+            .unwrap();
+        let mut port = engine.attach(48000);
+        engine
+            .start(runtime.clone(), model.clone(), path.clone())
+            .unwrap();
+        wait_provider(&engine, "cuda");
+        let cuda_audible = feed_file_audio(&mut port, &samples, 6);
+        assert!(
+            cuda_audible > 0,
+            "No converted CUDA samples reached the Rust real-time boundary"
+        );
+        assert!(engine.status().completed_chunks > 0);
+        let pid = engine.shared.process_id.load(Ordering::Acquire) as u32;
+        assert!(pid > 0);
+        terminate_owned_child(pid, &executable);
+        wait_provider(&engine, "cpu");
+        let cpu_audible = feed_file_audio(&mut port, &samples, 6);
+        assert!(
+            cpu_audible > 0,
+            "No real CPU conversion after controlled CUDA-child crash"
+        );
+        let final_status = engine.status();
+        assert!(final_status.restarts >= 1);
+        engine.stop();
+        for _ in 0..1024 {
+            assert_eq!(port.process(0.9), Some(0.0));
+        }
+        engine
+            .save_config(EngineConfig {
+                provider: "cpu".into(),
+                chunk_frames: 8192,
+                ..EngineConfig::default()
+            })
+            .unwrap();
+        engine.start(runtime, model, path).unwrap();
+        wait_provider(&engine, "cpu");
+        assert!(
+            feed_file_audio(&mut port, &samples, 3) > 0,
+            "Stop/Start lost the original audio stream endpoint"
+        );
+        engine.select_classic();
+        assert!(port.process(0.9).is_none());
+        println!(
+            "Actual bounded transport: CUDA audible samples {cuda_audible}; CPU audible samples {cpu_audible}; restarts {}; completed chunks {}. No devices or microphone were opened.",
+            final_status.restarts, final_status.completed_chunks
+        );
+    }
     #[test]
     fn explicit_stop_overrides_opted_in_fallback_until_classic_is_selected() {
         let mut engine = AIEngine::default();

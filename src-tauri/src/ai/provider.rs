@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 use std::{
     path::Path,
     sync::{Arc, atomic::AtomicBool},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 pub struct ConvertedChunk {
@@ -21,6 +21,9 @@ pub struct ConvertedChunk {
 /// Native providers can implement this boundary without changing CPAL or routing.
 /// Classic mode continues through the existing Rust DSP pipeline, outside this worker.
 pub trait VoiceConversionBackend {
+    fn process_id(&self) -> Option<u32> {
+        None
+    }
     fn convert(&mut self, input: &[i16]) -> Result<ConvertedChunk, String>;
     fn health(&mut self) -> Result<(), String>;
     fn exited(&self) -> bool;
@@ -48,14 +51,18 @@ impl WOkadaBackend {
         {
             return Err("AI runtime negotiation is incompatible".into());
         }
-        let loaded = process.call(
+        let loading = Instant::now();
+        let mut loaded = process.call(
             json!({"op":"load", "modelPath":model, "sha256":metadata.sha256,
             "consentConfirmed":metadata.consent_confirmed, "config":config}),
             Duration::from_secs(120),
         )?;
+        loaded["initializationMs"] = loaded["loadingMs"].clone();
+        loaded["loadingMs"] = serde_json::json!(loading.elapsed().as_secs_f64() * 1000.0);
         if !matches!(loaded["provider"].as_str(), Some("cpu" | "cuda")) {
             return Err("AI runtime reported an unsupported loaded provider".into());
         }
+        loaded["hardware"] = hello;
         Ok((
             Self {
                 process,
@@ -66,6 +73,9 @@ impl WOkadaBackend {
     }
 }
 impl VoiceConversionBackend for WOkadaBackend {
+    fn process_id(&self) -> Option<u32> {
+        self.process.process_id()
+    }
     fn convert(&mut self, input: &[i16]) -> Result<ConvertedChunk, String> {
         if input.len() != self.frames {
             return Err("AI input chunk length mismatch".into());

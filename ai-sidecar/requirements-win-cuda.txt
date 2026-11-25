@@ -1,0 +1,29 @@
+# Candidate dependency set for the audited Python 3.10 adapter.
+# Install torch/torchaudio first from https://download.pytorch.org/whl/cu124.
+# Final transitive hashes/versions are captured after real inference validation.
+torch==2.6.0+cu124
+torchaudio==2.6.0+cu124
+numpy==1.23.5
+scipy==1.10.1
+resampy==0.4.2
+onnx==1.17.0
+onnxruntime-gpu==1.21.0
+librosa==0.9.2
+faiss-cpu==1.7.4
+pyworld==0.3.4
+cython==0.29.37
+hydra-core==1.0.7
+omegaconf==2.0.6
+PyYAML==6.0.2
+bitarray==2.9.3
+sacrebleu==2.4.3
+soundfile==0.12.1
+psutil==6.1.1
+einops==0.8.1
+torchcrepe==0.0.23
+torchfcpe==0.0.3
+onnxsim==0.4.36
+numba==0.57.1
+llvmlite==0.40.1
+protobuf==4.25.8
+local-attention==1.9.15

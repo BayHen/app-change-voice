@@ -192,7 +192,7 @@ pub fn verify_bundle(root: &Path, expected: &str) -> Result<VerifiedRuntime, Str
         digest,
     })
 }
-pub fn discover(root: &Path) -> Result<VerifiedRuntime, String> {
+fn active_digest(root: &Path) -> Result<String, String> {
     let path = root.join("current.json");
     let file = fs::File::open(path).map_err(|_| "No managed AI runtime installed".to_string())?;
     if file.metadata().map_err(|e| e.to_string())?.len() > 1024 {
@@ -202,6 +202,15 @@ pub fn discover(root: &Path) -> Result<VerifiedRuntime, String> {
     if digest.len() != 64 || !digest.chars().all(|c| c.is_ascii_hexdigit()) {
         return Err("Invalid installed runtime digest".into());
     }
+    Ok(digest)
+}
+/// Verify the small manifest at startup; executable/model files are fully hashed before use.
+pub fn installed_manifest(root: &Path) -> Result<RuntimeManifest, String> {
+    let digest = active_digest(root)?;
+    read_manifest(&root.join("releases").join(&digest), &digest).map(|(manifest, _)| manifest)
+}
+pub fn discover(root: &Path) -> Result<VerifiedRuntime, String> {
+    let digest = active_digest(root)?;
     verify_bundle(&root.join("releases").join(&digest), &digest)
 }
 pub fn install(
@@ -311,6 +320,65 @@ pub fn rollback(root: &Path) -> Result<(), String> {
     fs::copy(previous, &temp).map_err(|e| e.to_string())?;
     replace_file(&temp, &root.join("current.json"))
 }
+
+/// Publish an already assembled, contained runtime without copying several GB twice.
+/// Files are fully verified before the atomic directory rename and pointer update.
+pub fn activate_staged(
+    staging: &Path,
+    root: &Path,
+    expected: &str,
+    cancel: &AtomicBool,
+) -> Result<VerifiedRuntime, String> {
+    let canonical_root = root.canonicalize().map_err(|e| e.to_string())?;
+    let canonical_stage = staging.canonicalize().map_err(|e| e.to_string())?;
+    if canonical_stage.parent() != Some(canonical_root.as_path()) {
+        return Err("Runtime staging must be an immediate contained child".into());
+    }
+    let mut verified = verify_bundle(staging, expected)?;
+    if cancel.load(Ordering::Acquire) {
+        return Err("Runtime activation cancelled".into());
+    }
+    fs::create_dir_all(root.join("releases")).map_err(|e| e.to_string())?;
+    let destination = root.join("releases").join(&verified.digest);
+    if destination.exists() {
+        if verify_bundle(&destination, expected).is_err() {
+            let quarantine = root.join(format!(
+                ".corrupt-{}-{}",
+                verified.digest,
+                super::process::now_ms()
+            ));
+            fs::rename(&destination, &quarantine).map_err(|e| e.to_string())?;
+            if let Err(error) = fs::rename(staging, &destination) {
+                let _ = fs::rename(quarantine, &destination);
+                return Err(error.to_string());
+            }
+        }
+    } else {
+        fs::rename(staging, &destination).map_err(|e| e.to_string())?;
+    }
+    if cancel.load(Ordering::Acquire) {
+        return Err("Runtime activation cancelled; previous active pointer retained".into());
+    }
+    if active_digest(root)
+        .ok()
+        .is_some_and(|old| old != verified.digest)
+    {
+        let temp = root.join("previous.json.new");
+        fs::copy(root.join("current.json"), &temp).map_err(|e| e.to_string())?;
+        replace_file(&temp, &root.join("previous.json"))?;
+    }
+    use std::io::Write;
+    let temp = root.join("current.json.new");
+    let mut pointer = fs::File::create(&temp).map_err(|e| e.to_string())?;
+    pointer
+        .write_all(&serde_json::to_vec(&verified.digest).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+    pointer.sync_all().map_err(|e| e.to_string())?;
+    drop(pointer);
+    replace_file(&temp, &root.join("current.json"))?;
+    verified.root = destination.canonicalize().map_err(|e| e.to_string())?;
+    Ok(verified)
+}
 pub fn replace_file(source: &Path, target: &Path) -> Result<(), String> {
     #[cfg(windows)]
     {
@@ -341,6 +409,40 @@ pub fn replace_file(source: &Path, target: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn staged_activation_is_atomic_cancellable_and_repairs_corrupt_release() {
+        let root = std::env::temp_dir().join(format!(
+            "vm-staged-test-{}-{}",
+            std::process::id(),
+            super::super::process::now_ms()
+        ));
+        let stage = root.join(".bootstrap-one");
+        let first = fixture(&stage, "fixture-one");
+        let cancel = AtomicBool::new(false);
+        activate_staged(&stage, &root, &first, &cancel).unwrap();
+        assert!(!stage.exists());
+        assert_eq!(discover(&root).unwrap().digest, first);
+        let second_stage = root.join(".bootstrap-two");
+        let second = fixture(&second_stage, "fixture-two");
+        cancel.store(true, Ordering::Release);
+        assert!(activate_staged(&second_stage, &root, &second, &cancel).is_err());
+        assert_eq!(discover(&root).unwrap().digest, first);
+        cancel.store(false, Ordering::Release);
+        activate_staged(&second_stage, &root, &second, &cancel).unwrap();
+        assert_eq!(discover(&root).unwrap().digest, second);
+        rollback(&root).unwrap();
+        fs::write(
+            root.join("releases").join(&first).join("assets/hubert.pt"),
+            b"corrupt",
+        )
+        .unwrap();
+        assert!(discover(&root).is_err());
+        let repair = root.join(".bootstrap-repair");
+        assert_eq!(fixture(&repair, "fixture-one"), first);
+        activate_staged(&repair, &root, &first, &cancel).unwrap();
+        assert_eq!(discover(&root).unwrap().digest, first);
+        fs::remove_dir_all(root).unwrap();
+    }
     fn fixture(root: &Path, version: &str) -> String {
         let contents: Vec<(&str, &[u8])> = vec![
             ("python/python.exe", b"test fixture, never executed"),

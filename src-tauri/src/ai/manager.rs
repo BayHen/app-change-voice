@@ -248,6 +248,8 @@ mod tests {
             frame_samples: 2_048,
             supported_profiles: vec![],
             consent_confirmed: false,
+            license_url: None,
+            attribution: None,
         };
         let manifest_path = source.join("manifest.json");
         fs::write(&manifest_path, serde_json::to_vec(&metadata).unwrap()).unwrap();
@@ -283,6 +285,8 @@ mod tests {
             frame_samples: 2_048,
             supported_profiles: vec![],
             consent_confirmed: false,
+            license_url: None,
+            attribution: None,
         };
         let manifest_path = root.join("manifest.json");
         fs::write(&manifest_path, serde_json::to_vec(&metadata).unwrap()).unwrap();
