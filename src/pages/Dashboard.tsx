@@ -23,6 +23,9 @@ import { useAudioDevices } from "../hooks/useAudioDevices";
 import { useAudioRuntime } from "../hooks/useAudioRuntime";
 import { useVolumeSettings } from "../hooks/useVolumeSettings";
 import { useNoiseSettings } from "../hooks/useNoiseSettings";
+import { usePresets } from "../hooks/usePresets";
+import { useVirtualRouting } from "../hooks/useVirtualRouting";
+import { EffectCard } from "../components/EffectCard";
 import { useRecording } from "../hooks/useRecording";
 import type { AudioDevice, DeviceOption } from "../types/audio";
 
@@ -68,6 +71,8 @@ export function Dashboard({ onNotify }: DashboardProps) {
   const volume = useVolumeSettings();
   const noise = useNoiseSettings();
   const recording = useRecording();
+  const library = usePresets();
+  const routing = useVirtualRouting();
   const inputDevices = useMemo(
     () => devices.snapshot?.inputDevices ?? [],
     [devices.snapshot?.inputDevices],
@@ -96,10 +101,10 @@ export function Dashboard({ onNotify }: DashboardProps) {
   }, [devices.snapshot, onNotify]);
 
   return (
-    <div className="mx-auto max-w-[1180px]">
+    <div className="mx-auto max-w-[1500px]">
       <AppHeader
-        title="Dashboard"
-        description="Configure the signal path and check connection status before starting a session."
+        title="Voice Lab"
+        description="Realtime voice processing workspace."
         action={
           <StatusIndicator
             label={
@@ -132,6 +137,31 @@ export function Dashboard({ onNotify }: DashboardProps) {
         }
       />
 
+      <section className="mt-5">
+        <h2 className="mb-3 text-lg font-semibold">Voice Presets</h2>
+        {library.error ? <p role="alert" className="text-xs text-rose-300">{library.error}</p> : null}
+        {library.loading ? <p className="text-sm text-zinc-400">Loading presets…</p> : null}
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 2xl:grid-cols-6">
+          {library.presets.slice(0, 6).map((preset) => (
+            <EffectCard key={preset.id} preset={preset} selected={library.activeId === preset.id}
+              active={library.activeId === preset.id}
+              onSelect={(item) => { if (!library.applyingId) void library.apply(item.id); }} />
+          ))}
+        </div>
+      </section>
+      <section className="mt-4 rounded-2xl border border-violet-400/25 bg-[#1d2133] p-4">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h2 className="font-semibold">Realtime Input</h2>
+          <StatusIndicator label={runtime.status.state === "running" ? "Live" : "Offline"} tone={runtime.status.state === "running" ? "online" : "offline"} />
+        </div>
+        <InputLevelMeter peakDbfs={runtime.status.metrics?.inputPeakDbfs ?? -96} rmsDbfs={runtime.status.metrics?.inputRmsDbfs ?? -96} disabled={runtime.status.state !== "running"} />
+      </section>
+      <section className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-[#1d2133] p-4">
+        <div><h2 className="font-semibold">Virtual Microphone</h2>
+          <p className="mt-1 text-xs text-zinc-400">{routing.status.outputDeviceName ?? "No virtual endpoint configured"}</p>
+        </div>
+        <StatusIndicator label={routing.error ? "Unavailable" : routing.status.endpointVerified ? routing.status.state : "Endpoint not verified"} tone={routing.error ? "error" : "offline"} />
+      </section>
       {loading || devices.loading ? (
         <div className="mt-6 grid gap-3" aria-label="Loading audio status" aria-busy="true">
           <div className="h-16 animate-pulse rounded-2xl bg-white/[0.035]" />
