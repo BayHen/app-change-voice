@@ -13,7 +13,7 @@
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-  background: #080a0d;
+  background: #0e101c;
 }
 
 * {
@@ -28,7 +28,7 @@ body,
 }
 
 button:focus-visible {
-  outline: 2px solid #67e8f9;
+  outline: 2px solid #a78bfa;
   outline-offset: 2px;
 }
 
@@ -47,7 +47,7 @@ button:not(:disabled) {
   appearance: none;
   border-radius: 999px;
   background: rgb(255 255 255 / 8%);
-  accent-color: #67e8f9;
+  accent-color: #a78bfa;
 }
 
 .audio-range::-webkit-slider-thumb {
@@ -56,8 +56,8 @@ button:not(:disabled) {
   appearance: none;
   border: 3px solid #101419;
   border-radius: 999px;
-  background: #a5f3fc;
-  box-shadow: 0 0 0 1px rgb(103 232 249 / 35%);
+  background: #ddd6fe;
+  box-shadow: 0 0 0 1px rgb(167 139 250 / 35%);
 }
 
 .audio-range::-moz-range-thumb {
@@ -65,8 +65,8 @@ button:not(:disabled) {
   height: 11px;
   border: 3px solid #101419;
   border-radius: 999px;
-  background: #a5f3fc;
-  box-shadow: 0 0 0 1px rgb(103 232 249 / 35%);
+  background: #ddd6fe;
+  box-shadow: 0 0 0 1px rgb(167 139 250 / 35%);
 }
 
 ::-webkit-scrollbar {
@@ -87,7 +87,7 @@ button:not(:disabled) {
 
 ::selection {
   color: #f4f4f5;
-  background: rgb(8 145 178 / 65%);
+  background: rgb(109 40 217 / 65%);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -99,4 +99,21 @@ button:not(:disabled) {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
   }
+}
+
+/* VoiceMorph premium desktop palette. Keep semantic warning and success colors intact. */
+@theme {
+  --color-cyan-200: #ddd6fe;
+  --color-cyan-300: #a78bfa;
+  --color-cyan-400: #a78bfa;
+}
+main {
+  background: radial-gradient(ellipse at 25% 0%, rgb(76 51 128 / 12%), transparent 55%);
+}
+main [class*="bg-[#0f1216]"],
+main [class*="bg-[#101318]"] {
+  background-color: #1d2133;
+}
+.audio-range {
+  background: #414660;
 }
