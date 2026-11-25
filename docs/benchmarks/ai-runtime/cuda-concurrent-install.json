@@ -1,0 +1,239 @@
+{
+  "kind": "Real w-okada RVC inference, offline WAV-to-WAV through private stdio; no microphone/speaker/virtual device",
+  "timestampUtc": "2026-11-25T16:59:05.101584+00:00",
+  "hardwareLoopbackLatencyMs": null,
+  "qualityListeningTest": "not performed by this script",
+  "inputCredit": "Tsukuyomi-chan official sample voice (CV. Rei Yumesaki)",
+  "modelCredit": "Tsukuyomi-chan official RVC normal1 (CV. Rei Yumesaki), converted from original-owner checkpoint",
+  "modelTerms": "https://tyc.rei-yumesaki.net/work/software/rvc/terms/",
+  "sourceTerms": "https://tyc.rei-yumesaki.net/material/voice/sample-voice/",
+  "inputSha256": "607d1dbb201330d017308fbc841abacbe12d672688af21d047b49be2c44dedd5",
+  "modelSha256": "d9caedd48ea81672946ce4896022da5e302996e1f5c1bf0ae2c141c2f7d3afe6",
+  "runtimeManifestSha256": "713abbb506a839c33e82bec189ca97f44e9382fb688da139cbaba5bb2911d8cc",
+  "hello": {
+    "id": 1,
+    "protocol": 1,
+    "ok": true,
+    "upstreamCommit": "7e2ce5c4800010bbc7604968bd29b802534fac05",
+    "sampleRate": 48000,
+    "channels": 1,
+    "pcmFormat": "s16le",
+    "providers": ["TensorrtExecutionProvider", "CUDAExecutionProvider", "CPUExecutionProvider"],
+    "cudaDevices": ["NVIDIA GeForce RTX 3080"],
+    "torchVersion": "2.6.0+cu124",
+    "onnxRuntimeVersion": "1.21.0",
+    "pythonVersion": "3.10.11",
+    "cpuThreads": 16,
+    "torchCudaAvailable": true,
+    "torchCudaVersion": "12.4",
+    "gpuMemoryBytes": [10736893952]
+  },
+  "load": {
+    "id": 2,
+    "protocol": 1,
+    "ok": true,
+    "provider": "cuda",
+    "loadingMs": 10198.862400022335,
+    "modelSampleRate": 40000,
+    "f0": true,
+    "indexAvailable": false,
+    "torchCpuThreads": 4,
+    "onnxCpuThreads": 4
+  },
+  "config": {
+    "provider": "cuda",
+    "allowCpuFallback": false,
+    "failurePolicy": "mute",
+    "pitchSemitones": 0,
+    "f0Method": "dio",
+    "chunkFrames": 4096,
+    "crossfadeFrames": 1024,
+    "extraContextFrames": 4096,
+    "noiseThreshold": 1e-5,
+    "cpuThreads": 4
+  },
+  "chunks": 117,
+  "warmupChunks": 1,
+  "modelLoadRpcMs": 14652.223199955188,
+  "completedChunks": 116,
+  "inputDurationSeconds": 9.984,
+  "wallSecondsIncludingWarmup": 10.836645300034434,
+  "realTimeFactorIncludingWarmup": 1.0854011718784489,
+  "ipcRoundTripMedianMs": 60.87134999688715,
+  "ipcRoundTripMaxMs": 104.23439997248352,
+  "inferenceMedianMs": 57.99299996579066,
+  "inferenceMaxMs": 101.59100010059774,
+  "processCpuPercentOneCore": 88.81900010116061,
+  "processCpuPercentMachine": 5.551187506322538,
+  "resourcesAfter": {
+    "id": 121,
+    "protocol": 1,
+    "ok": true,
+    "rssBytes": 2089926656,
+    "cpuSeconds": 22.703125,
+    "cudaAllocatedBytes": 232649216,
+    "cudaReservedBytes": 461373440,
+    "cudaPeakAllocatedBytes": 381396480,
+    "cudaPeakReservedBytes": 461373440
+  },
+  "outputPeakPcm16": 5186,
+  "peakRssBytesSampled": 2350239744,
+  "deviceGpuTelemetry": {
+    "scope": "Whole device, includes other applications and ORT allocations; not attributed per-process GPU utilization",
+    "samples": [
+      {
+        "timestampUtc": "2026-11-25T16:58:38.261411+00:00",
+        "utilizationPercent": 2.0,
+        "memoryUsedMiB": 1743.0,
+        "memoryTotalMiB": 10240.0
+      },
+      {
+        "timestampUtc": "2026-11-25T16:58:39.331647+00:00",
+        "utilizationPercent": 2.0,
+        "memoryUsedMiB": 1743.0,
+        "memoryTotalMiB": 10240.0
+      },
+      {
+        "timestampUtc": "2026-11-25T16:58:40.400016+00:00",
+        "utilizationPercent": 2.0,
+        "memoryUsedMiB": 1743.0,
+        "memoryTotalMiB": 10240.0
+      },
+      {
+        "timestampUtc": "2026-11-25T16:58:41.493631+00:00",
+        "utilizationPercent": 2.0,
+        "memoryUsedMiB": 1743.0,
+        "memoryTotalMiB": 10240.0
+      },
+      {
+        "timestampUtc": "2026-11-25T16:58:42.614964+00:00",
+        "utilizationPercent": 2.0,
+        "memoryUsedMiB": 1767.0,
+        "memoryTotalMiB": 10240.0
+      },
+      {
+        "timestampUtc": "2026-11-25T16:58:43.730891+00:00",
+        "utilizationPercent": 2.0,
+        "memoryUsedMiB": 1744.0,
+        "memoryTotalMiB": 10240.0
+      },
+      {
+        "timestampUtc": "2026-11-25T16:58:44.824572+00:00",
+        "utilizationPercent": 2.0,
+        "memoryUsedMiB": 2018.0,
+        "memoryTotalMiB": 10240.0
+      },
+      {
+        "timestampUtc": "2026-11-25T16:58:45.929875+00:00",
+        "utilizationPercent": 3.0,
+        "memoryUsedMiB": 2169.0,
+        "memoryTotalMiB": 10240.0
+      },
+      {
+        "timestampUtc": "2026-11-25T16:58:47.040232+00:00",
+        "utilizationPercent": 3.0,
+        "memoryUsedMiB": 2160.0,
+        "memoryTotalMiB": 10240.0
+      },
+      {
+        "timestampUtc": "2026-11-25T16:58:48.159480+00:00",
+        "utilizationPercent": 2.0,
+        "memoryUsedMiB": 2147.0,
+        "memoryTotalMiB": 10240.0
+      },
+      {
+        "timestampUtc": "2026-11-25T16:58:49.289695+00:00",
+        "utilizationPercent": 2.0,
+        "memoryUsedMiB": 2076.0,
+        "memoryTotalMiB": 10240.0
+      },
+      {
+        "timestampUtc": "2026-11-25T16:58:50.378702+00:00",
+        "utilizationPercent": 2.0,
+        "memoryUsedMiB": 2034.0,
+        "memoryTotalMiB": 10240.0
+      },
+      {
+        "timestampUtc": "2026-11-25T16:58:51.485566+00:00",
+        "utilizationPercent": 2.0,
+        "memoryUsedMiB": 2026.0,
+        "memoryTotalMiB": 10240.0
+      },
+      {
+        "timestampUtc": "2026-11-25T16:58:52.569379+00:00",
+        "utilizationPercent": 2.0,
+        "memoryUsedMiB": 2000.0,
+        "memoryTotalMiB": 10240.0
+      },
+      {
+        "timestampUtc": "2026-11-25T16:58:53.712810+00:00",
+        "utilizationPercent": 2.0,
+        "memoryUsedMiB": 2006.0,
+        "memoryTotalMiB": 10240.0
+      },
+      {
+        "timestampUtc": "2026-11-25T16:58:54.822658+00:00",
+        "utilizationPercent": 2.0,
+        "memoryUsedMiB": 2436.0,
+        "memoryTotalMiB": 10240.0
+      },
+      {
+        "timestampUtc": "2026-11-25T16:58:55.945807+00:00",
+        "utilizationPercent": 2.0,
+        "memoryUsedMiB": 2447.0,
+        "memoryTotalMiB": 10240.0
+      },
+      {
+        "timestampUtc": "2026-11-25T16:58:57.085618+00:00",
+        "utilizationPercent": 3.0,
+        "memoryUsedMiB": 2498.0,
+        "memoryTotalMiB": 10240.0
+      },
+      {
+        "timestampUtc": "2026-11-25T16:58:58.190263+00:00",
+        "utilizationPercent": 2.0,
+        "memoryUsedMiB": 2624.0,
+        "memoryTotalMiB": 10240.0
+      },
+      {
+        "timestampUtc": "2026-11-25T16:58:59.296460+00:00",
+        "utilizationPercent": 20.0,
+        "memoryUsedMiB": 2628.0,
+        "memoryTotalMiB": 10240.0
+      },
+      {
+        "timestampUtc": "2026-11-25T16:59:00.410559+00:00",
+        "utilizationPercent": 17.0,
+        "memoryUsedMiB": 2628.0,
+        "memoryTotalMiB": 10240.0
+      },
+      {
+        "timestampUtc": "2026-11-25T16:59:01.541519+00:00",
+        "utilizationPercent": 20.0,
+        "memoryUsedMiB": 2628.0,
+        "memoryTotalMiB": 10240.0
+      },
+      {
+        "timestampUtc": "2026-11-25T16:59:02.679715+00:00",
+        "utilizationPercent": 18.0,
+        "memoryUsedMiB": 2628.0,
+        "memoryTotalMiB": 10240.0
+      },
+      {
+        "timestampUtc": "2026-11-25T16:59:03.789762+00:00",
+        "utilizationPercent": 23.0,
+        "memoryUsedMiB": 2628.0,
+        "memoryTotalMiB": 10240.0
+      },
+      {
+        "timestampUtc": "2026-11-25T16:59:04.879914+00:00",
+        "utilizationPercent": 24.0,
+        "memoryUsedMiB": 2628.0,
+        "memoryTotalMiB": 10240.0
+      }
+    ]
+  },
+  "underruns": null,
+  "dropouts": null,
+  "limits": "Sequential throughput test on one machine with repeated same-speaker sample and instrumentation overhead. Not live audio latency, natural speech quality, device underruns, or per-process GPU utilization. CUDA allocator counters are PyTorch-only and exclude ORT allocations; nvidia-smi counters describe the whole device."
+}

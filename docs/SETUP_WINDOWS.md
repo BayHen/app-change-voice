@@ -116,8 +116,26 @@ MSI; lỗi này xảy ra sau khi Rust executable đã link thành công.
 
 # Optional managed AI runtime
 
-Classic DSP works without AI dependencies. The optional w-okada runtime uses a separate
-publisher-prepared portable package; end users do not install Python or run pip. See
-[AI runtime packaging and import](../ai-sidecar/README.md) and the
-[implementation/readiness report](AI_ENGINE_IMPLEMENTATION.md). No authorized runtime or
-voice weights ship with this source tree, and real inference remains unverified.
+Classic DSP works without AI dependencies. In **AI Voice Studio** or **Settings → AI runtime**,
+choose **Install recommended runtime**. Keep 13 GiB free; the pinned download is 3.90 GiB.
+The application installs its own embedded Python, dependencies and HuBERT, with progress,
+cancel/retry, integrity checks and atomic activation. End users do not install Python,
+open a terminal, run pip, install CUDA drivers or start w-okada separately.
+
+Choose **Detect hardware**, then optionally **Get official Tsukuyomi-chan voice**. Read
+and acknowledge the original owner's custom terms before downloading/preparing it.
+Select the voice and **Load & start AI**. This does not start the microphone; monitoring
+and virtual output remain explicit controls. **Stop AI** keeps the AI voice muted;
+**Use Classic DSP** explicitly restores the Classic voice. CPU fallback is opt-in.
+After assets are installed, inference stays offline through private process pipes.
+
+Runtime: `%APPDATA%\com.voicemorph.studio\ai-runtime`; models:
+`%APPDATA%\com.voicemorph.studio\ai-models`. A local trusted package import is also
+available. The base NSIS installer does not include the multi-GB runtime or voice weights.
+
+The validated compatibility recipe currently uses **Python 3.10.11 (end of support)**.
+A supported baseline and complete redistribution/security review remain release blockers.
+Real CUDA/CPU inference has now been exercised with an authorized original-owner model
+and sample; hardware loopback and conferencing tests remain separate. See
+[runtime guide](../ai-sidecar/README.md) and the current
+[execution, licensing and verification report](AI_RUNTIME_EXECUTION_REPORT.md).

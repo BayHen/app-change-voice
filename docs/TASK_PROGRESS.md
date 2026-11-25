@@ -479,3 +479,26 @@ cài Windows x64 đã được xác nhận trong quality gate ngày 22/10/2026.
   See [audit](AI_ENGINE_IMPLEMENTATION.md), [ADR](adr/2026-11-25-managed-rvc-sidecar.md),
   [verification and modified files](AI_ENGINE_VERIFICATION.md), and
   [runtime packaging](../ai-sidecar/README.md).
+
+# Authorized managed runtime execution — 2026-11-26
+
+- Continued on `feature/new-version` after explicit authorization to download/install/run
+  official free runtime assets and verified voices. Installed project-scoped Python and
+  built/tested the actual portable CUDA runtime; host Python/PATH/security settings unchanged.
+- Added 69-component pinned installer/repair/update recipe, cache/resume, safe extraction,
+  atomic activation/rollback, hardware probe, original-owner model preparation and unified
+  runtime/model management in AI Voice Studio and Settings. No frontend dependencies added.
+- Actual CUDA and CPU RVC inference passed with original-owner Tsukuyomi-chan Normal 1
+  and authorized sample audio. Verified exact ONNX export, real Rust PCM transport,
+  CUDA-child crash → opted-in CPU recovery, same-stream restart and explicit privacy gates.
+- Fixed real cleared-profile model-load failure and lost transport endpoints on restart;
+  bounded Torch/ORT CPU threads and corrected full model-load telemetry.
+- Verified: Rust 103 passed / 10 default ignored, plus all 3 new real-AI acceptance tests
+  run explicitly; frontend 18 passed; Python 4 passed; production EXE/NSIS, lint/format,
+  35 browser layouts and actual native runtime/model/CUDA-ready smoke. No microphone started.
+- Quiet file test: CUDA median 28.84 ms/chunk, RTF 0.625; CPU 8,192-frame median 160.24 ms,
+  RTF 1.086; unavailable-CUDA fallback CPU RTF 1.190. These are not hardware-loopback latency.
+- Remaining release qualifications: Python 3.10 EOL, full binary redistribution/security
+  review, CPU real-time/quality/long-session validation, physical virtual-cable and
+  Discord/Zoom/OBS testing, signed native virtual-microphone driver. Existing VB-Audio
+  endpoints were enumerated only. Full [execution/licensing/evidence report](AI_RUNTIME_EXECUTION_REPORT.md).

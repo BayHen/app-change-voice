@@ -2,6 +2,11 @@
 
 Branch: `feature/new-version`. Audit date: 2026-11-25.
 
+> Historical pre-authorization audit. Its unavailable-runtime/model statements describe
+> that earlier checkpoint. The user subsequently authorized installation and testing;
+> see [current real execution results](AI_RUNTIME_EXECUTION_REPORT.md) for the implemented
+> automatic installer, authorized assets, CUDA/CPU inference and remaining blockers.
+
 ## Readiness
 
 This is an implemented integration candidate, **not a production-approved AI release**.

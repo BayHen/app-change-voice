@@ -2,6 +2,9 @@
 
 Scope: managed w-okada integration candidate on `feature/new-version`.
 
+> Historical pre-authorization checkpoint. Real runtime/model installation and inference
+> were subsequently performed. See the [current execution report](AI_RUNTIME_EXECUTION_REPORT.md).
+
 | Check                                | Result               | Evidence / limits                                                                                                                                   |
 | ------------------------------------ | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Rust unit/integration tests          | 98 passed, 7 ignored | Real stdlib subprocess fixture, bounded transport, configuration, installation/rollback, privacy, existing DSP regressions; no AI inference fixture |

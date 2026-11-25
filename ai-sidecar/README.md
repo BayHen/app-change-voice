@@ -2,8 +2,34 @@
 
 `bridge.py` adapts the pinned w-okada `RVCr2` and `VoiceChangerV2` modules to private
 bounded JSON-line stdio RPC. Rust owns audio devices, queues, routing and process lifecycle.
-The upstream web server/manager is never started. A host Python installation is unnecessary
-for end users. This repository does not contain an approved portable runtime or voice weights.
+The upstream web server/manager is never started. End users choose **Install recommended
+runtime** in AI Voice Studio or Settings; they do not install Python, run pip or open a
+terminal. The base installer contains the pinned recipe/adapter, not the multi-GB runtime
+or voice weights. See the [actual execution report](../docs/AI_RUNTIME_EXECUTION_REPORT.md).
+
+## Managed installation
+
+The Windows x64 recipe pins 69 official HTTPS artifacts and SHA-256 digests. It assembles
+embedded Python, CUDA-compatible PyTorch/ORT, the pinned upstream source and Apache-2.0
+HuBERT in the user's application data directory. Download size is 3.90 GiB; installation
+requires 13 GiB free. Downloads are cached/resumable, extraction rejects traversal and
+links, and activation is atomic. Cancel/retry preserves the previous active runtime.
+Updates use a new reviewed recipe shipped with an application release; no floating pip
+upgrade is run. Repair reconstructs and verifies the pinned release. Rollback is available
+after changing releases. No administrator access, CUDA toolkit or GPU driver install is
+performed. CPU fallback is opt-in. Private inference works offline after installation.
+
+This tested compatibility baseline uses **Python 3.10.11, now end of support**. Qualify a
+supported Python/dependency baseline and complete binary redistribution/security review
+before general production redistribution. This is a working local integration candidate.
+The fairseq 0.12.2 source distribution lacks a native training source file; the recipe uses
+its unmodified Python inference modules and retains MIT notices, omitting unused training
+extensions. It does not claim a successful stock fairseq native wheel build.
+
+The curated **Get official Tsukuyomi-chan voice** action downloads the original owner's
+archive, verifies the exact checkpoint, converts Normal 1 locally with the managed runtime,
+and verifies the resulting ONNX digest. It requires acknowledgement of the owner's custom
+terms. This narrow reviewed converter does not enable arbitrary checkpoint imports.
 
 ## Release builder only
 
@@ -27,8 +53,9 @@ does not turn an untrusted checkpoint or runtime into safe code.
 
 Distribute the manifest digest independently through a trusted publisher channel. In AI Voice
 Studio, choose **Install local package**, select the folder, enter the digest and acknowledge
-publisher trust. Copying is cancellable; the prior runtime remains active on failure. No online
-catalog is enabled yet. Do not distribute synthetic test fixtures as usable AI packages.
+publisher trust. Copying is cancellable; the prior runtime remains active on failure.
+This remains an alternative to the recommended recipe. Do not distribute test fixtures
+as usable AI packages.
 
 ## Voice model manifest
 
@@ -54,7 +81,9 @@ Provide a JSON manifest alongside a licensed RVC `.onnx` voice model:
 
 The example is intentionally not importable until real provenance/hash values are supplied.
 `consentConfirmed` is set by the app only after the user's explicit import acknowledgement.
-Supported license identifiers currently are MIT, Apache-2.0, BSD-2-Clause and BSD-3-Clause.
+Generic imports support MIT, Apache-2.0, BSD-2-Clause and BSD-3-Clause. The curated
+`LicenseRef-TsukuyomiChan-Official` exception is bound to the exact audited ONNX digest,
+original-owner URL, full terms URL and required attribution; it is not an MIT license.
 These metadata labels alone do not establish permission. Upstream ONNX RVC metadata must
 also match supported embedding dimensions/model rates. Legacy generic ONNX imports remain
 storage-only and cannot be selected for this RVC engine.
@@ -63,4 +92,6 @@ storage-only and cannot be selected for this RVC engine.
 
 `python -m unittest discover -s ai-sidecar -p test_bridge.py` needs only stdlib. It verifies
 protocol/config contracts and explicitly performs no real inference or benchmark.
-See [implementation audit and release blockers](../docs/AI_ENGINE_IMPLEMENTATION.md).
+Real CUDA/CPU inference, curated conversion and crash-recovery acceptance tests are
+separate ignored-by-default tests requiring the approved local assets. See the
+[execution report and remaining release blockers](../docs/AI_RUNTIME_EXECUTION_REPORT.md).
