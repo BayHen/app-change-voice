@@ -113,3 +113,11 @@ Nếu NSIS build thành công nhưng MSI dừng ở `light.exe` với `LGHT0217`
 Service không truy cập được, kiểm tra service `msiserver` trong `services.msc`, khởi động lại Windows
 Installer và chạy terminal với quyền phù hợp. Có thể dùng bộ cài NSIS x64 đã tạo trong khi sửa môi trường
 MSI; lỗi này xảy ra sau khi Rust executable đã link thành công.
+
+# Optional managed AI runtime
+
+Classic DSP works without AI dependencies. The optional w-okada runtime uses a separate
+publisher-prepared portable package; end users do not install Python or run pip. See
+[AI runtime packaging and import](../ai-sidecar/README.md) and the
+[implementation/readiness report](AI_ENGINE_IMPLEMENTATION.md). No authorized runtime or
+voice weights ship with this source tree, and real inference remains unverified.

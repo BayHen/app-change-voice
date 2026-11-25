@@ -1,5 +1,9 @@
 # AI Voice Conversion — Task 17
 
+> Historical offline prototype notes. The current managed w-okada integration, source audit,
+> verification evidence and release blockers are documented in
+> [AI_ENGINE_IMPLEMENTATION.md](AI_ENGINE_IMPLEMENTATION.md).
+
 ## Lựa chọn kỹ thuật
 
 Task 17 chọn **OpenVoice V2** làm prototype offline. Mã nguồn OpenVoice phát hành theo MIT; revision

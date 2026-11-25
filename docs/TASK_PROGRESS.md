@@ -460,3 +460,22 @@ cài Windows x64 đã được xác nhận trong quality gate ngày 22/10/2026.
   transitive hiện hữu (`atty`, `proc-macro-error`, `glib`).
 - `npm.cmd run tauri:dev`: PASS smoke launch; shortcut `Ctrl+Alt+M` bị ứng dụng khác chiếm nhưng lỗi được
   báo và app vẫn chạy, không tự mở microphone.
+
+# Managed w-okada integration candidate — 2026-11-25
+
+- Worked on `feature/new-version` as requested. Implemented managed optional runtime
+  install/cancel/rollback, bounded stdio process lifecycle, RVC adapter and backend contract,
+  bounded capture/converted PCM transport, and downstream privacy gates.
+- AI Voice Studio now exposes real configuration, model consent/import, explicit mode/stop
+  controls, runtime package trust and measured IPC/conversion counters. Existing DSP,
+  capture, soundboard, recording and output route remain in Rust.
+- Verified: Rust 98 passed / 7 manual ignored; frontend 15 passed; Python protocol 4 passed;
+  TypeScript/Vite, lint, formatting, optimized Windows EXE and NSIS build; Playwright 35
+  page/viewport checks plus native no-runtime Tauri smoke. No microphone auto-start.
+- Blocked/unverified: authorized runtime/model absent (confirmed by user), real RVC CPU/CUDA
+  conversion, quality, end-to-end latency and resource benchmarks, Discord/Zoom/OBS, and
+  signed native virtual microphone. No unlicensed weights or large assets downloaded.
+- Production AI approval is **not** granted by the passing build/contract tests.
+  See [audit](AI_ENGINE_IMPLEMENTATION.md), [ADR](adr/2026-11-25-managed-rvc-sidecar.md),
+  [verification and modified files](AI_ENGINE_VERIFICATION.md), and
+  [runtime packaging](../ai-sidecar/README.md).

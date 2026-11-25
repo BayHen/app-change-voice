@@ -1,6 +1,6 @@
 import { chromium, expect } from "@playwright/test";
 import { mkdir, writeFile } from "node:fs/promises";
-const base = "docs/screenshots/redesign/after";
+const base = process.env.VOICEMORPH_SCREENSHOT_DIR ?? "docs/screenshots/redesign/after";
 const url = process.env.VOICEMORPH_TEST_URL ?? "http://127.0.0.1:1422";
 await mkdir(base, { recursive: true });
 const browser = await chromium.launch({ channel: "msedge", headless: true });
