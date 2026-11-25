@@ -229,35 +229,344 @@ struct HotkeyConfigPath(PathBuf);
 struct BackupSafetyPath(PathBuf);
 
 #[tauri::command]
-fn get_ai_models(state: State<'_, AIModelState>) -> Result<Vec<AIModelStatus>, String> {
-    Ok(state
+fn get_ai_models(
+    state: State<'_, AIModelState>,
+    runtime: State<'_, AudioRuntimeState>,
+) -> Result<Vec<AIModelStatus>, String> {
+    let engine = runtime
+        .lock()
+        .map_err(|_| "Audio runtime lock was poisoned")?
+        .ai
+        .status();
+    let mut models = state
         .lock()
         .map_err(|_| "AI model lock was poisoned")?
-        .list())
+        .list();
+    for model in &mut models {
+        if model.metadata.backend == "w-okada-rvc" {
+            model.runtime_available = engine.runtime_installed;
+            model.enabled = engine.model_id.as_deref() == Some(&model.metadata.id)
+                && matches!(engine.state.as_str(), "ready" | "converting");
+            model.status_message = if !model.integrity_verified {
+                "Model integrity check failed"
+            } else if engine.runtime_installed {
+                "RVC ONNX stored; compatibility is checked when loading"
+            } else {
+                "Install a managed w-okada runtime to load this RVC model"
+            }
+            .into();
+        }
+    }
+    Ok(models)
 }
 
 #[tauri::command]
-fn get_ai_provider_status(state: State<'_, AIModelState>) -> Result<AIProviderStatus, String> {
-    Ok(state
+fn get_ai_provider_status(state: State<'_, AudioRuntimeState>) -> Result<AIProviderStatus, String> {
+    let engine = state
         .lock()
-        .map_err(|_| "AI model lock was poisoned")?
-        .provider_status())
+        .map_err(|_| "Audio runtime lock was poisoned")?
+        .ai
+        .status();
+    let running = matches!(engine.state.as_str(), "ready" | "converting");
+    Ok(AIProviderStatus {
+        offline_only: true,
+        inference_backend: if engine.mode == "wOkada" { "Managed w-okada RVC" } else { "Classic Rust DSP" }.into(),
+        gpu_verified: running && engine.provider.as_deref() == Some("cuda"),
+        active_model_id: if running { engine.model_id } else { None },
+        fallback_active: engine.mode == "classicDsp" || engine.classic_fallback_active,
+        message: engine.message.unwrap_or_else(|| {
+            if running { "AI model loaded; conversion telemetry is available in AI Voice Studio" }
+            else { "AI is not converting. Classic voice is used only when explicitly selected or opted into." }.into()
+        }),
+    })
 }
 
 #[tauri::command]
 fn add_ai_model(
     manifest_path: PathBuf,
     model_path: PathBuf,
+    rights_confirmed: Option<bool>,
     state: State<'_, AIModelState>,
 ) -> Result<AIModelStatus, String> {
     state
         .lock()
         .map_err(|_| "AI model lock was poisoned")?
-        .add(&manifest_path, &model_path)
+        .add_with_consent(
+            &manifest_path,
+            &model_path,
+            rights_confirmed.unwrap_or(false),
+        )
 }
 
 #[tauri::command]
-fn remove_ai_model(id: String, state: State<'_, AIModelState>) -> Result<(), String> {
+fn get_ai_engine_status(
+    state: State<'_, AudioRuntimeState>,
+) -> Result<ai::engine::EngineStatus, String> {
+    Ok(state
+        .lock()
+        .map_err(|_| "Audio runtime lock was poisoned")?
+        .ai
+        .status())
+}
+
+#[tauri::command]
+async fn set_ai_engine_config(
+    app: AppHandle,
+    config: ai::config::EngineConfig,
+) -> Result<ai::engine::EngineStatus, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AudioRuntimeState>();
+        let mut audio = state
+            .lock()
+            .map_err(|_| "Audio runtime lock was poisoned")?;
+        audio.ai.save_config(config)?;
+        Ok(audio.ai.status())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn start_ai_conversion(
+    app: AppHandle,
+    model_id: String,
+) -> Result<ai::engine::EngineStatus, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AudioRuntimeState>();
+        let (root, generation) = {
+            let mut audio = state
+                .lock()
+                .map_err(|_| "Audio runtime lock was poisoned")?;
+            if audio
+                .ai
+                .installing
+                .load(std::sync::atomic::Ordering::Acquire)
+            {
+                return Err("Runtime installation is in progress".into());
+            }
+            let generation = audio.ai.begin_request();
+            (audio.ai.runtime_root(), generation)
+        };
+        // Hashing/runtime discovery is outside the audio-control mutex and callback.
+        let prepared = (|| {
+            let runtime = ai::runtime::discover(&root)?;
+            let models = app.state::<AIModelState>();
+            let (metadata, path) = models
+                .lock()
+                .map_err(|_| "AI model lock was poisoned")?
+                .resolve(&model_id)?;
+            Ok::<_, String>((runtime, metadata, path))
+        })();
+        let mut audio = state
+            .lock()
+            .map_err(|_| "Audio runtime lock was poisoned")?;
+        if audio
+            .ai
+            .shared
+            .generation
+            .load(std::sync::atomic::Ordering::Acquire)
+            != generation
+        {
+            return Err("AI start was cancelled or superseded".into());
+        }
+        match prepared {
+            Ok((runtime, metadata, path)) => {
+                let result = audio.ai.start(runtime, metadata, path);
+                if let Err(e) = &result {
+                    audio.ai.reject_request(e.clone());
+                }
+                result
+            }
+            Err(e) => {
+                audio.ai.reject_request(e.clone());
+                Err(e)
+            }
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn stop_ai_conversion(app: AppHandle) -> Result<ai::engine::EngineStatus, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AudioRuntimeState>();
+        let mut audio = state
+            .lock()
+            .map_err(|_| "Audio runtime lock was poisoned")?;
+        audio.ai.stop();
+        Ok(audio.ai.status())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn select_classic_voice(app: AppHandle) -> Result<ai::engine::EngineStatus, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AudioRuntimeState>();
+        let mut audio = state
+            .lock()
+            .map_err(|_| "Audio runtime lock was poisoned")?;
+        audio.ai.select_classic();
+        Ok(audio.ai.status())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn install_ai_runtime(
+    app: AppHandle,
+    source: PathBuf,
+    expected_sha256: String,
+    publisher_confirmed: bool,
+) -> Result<ai::engine::EngineStatus, String> {
+    if !publisher_confirmed {
+        return Err(
+            "Confirm that you trust this runtime publisher before installing executable code"
+                .into(),
+        );
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AudioRuntimeState>();
+        let (root, cancel, installing, snapshot) = {
+            let audio = state
+                .lock()
+                .map_err(|_| "Audio runtime lock was poisoned")?;
+            let engine = &audio.ai;
+            if matches!(
+                engine.status().state.as_str(),
+                "starting" | "ready" | "converting"
+            ) {
+                return Err("Stop AI before installing a runtime".into());
+            }
+            engine
+                .installing
+                .compare_exchange(
+                    false,
+                    true,
+                    std::sync::atomic::Ordering::AcqRel,
+                    std::sync::atomic::Ordering::Acquire,
+                )
+                .map_err(|_| "A runtime operation is already running")?;
+            engine
+                .install_cancel
+                .store(false, std::sync::atomic::Ordering::Release);
+            engine.update(|s| {
+                s.install.installing = true;
+                s.install.message = None;
+                s.install.copied_files = 0;
+            });
+            (
+                engine.runtime_root(),
+                engine.install_cancel.clone(),
+                engine.installing.clone(),
+                engine.snapshot.clone(),
+            )
+        };
+        let result = ai::runtime::install(
+            &source,
+            &root,
+            &expected_sha256,
+            &cancel,
+            |copied, total| {
+                if let Ok(mut status) = snapshot.lock() {
+                    status.install.copied_files = copied;
+                    status.install.total_files = total;
+                }
+            },
+        );
+        installing.store(false, std::sync::atomic::Ordering::Release);
+        let audio = state
+            .lock()
+            .map_err(|_| "Audio runtime lock was poisoned")?;
+        audio.ai.update(|s| {
+            s.install.installing = false;
+            match &result {
+                Ok(runtime) => {
+                    s.install.installed = true;
+                    s.install.version = Some(runtime.manifest.version.clone());
+                    s.runtime_installed = true;
+                    s.state = "stopped".into();
+                    s.install.message = Some("Runtime installed and verified".into());
+                }
+                Err(e) => s.install.message = Some(e.clone()),
+            }
+        });
+        result?;
+        Ok(audio.ai.status())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn cancel_ai_runtime_install(state: State<'_, AudioRuntimeState>) -> Result<(), String> {
+    state
+        .lock()
+        .map_err(|_| "Audio runtime lock was poisoned")?
+        .ai
+        .install_cancel
+        .store(true, std::sync::atomic::Ordering::Release);
+    Ok(())
+}
+
+#[tauri::command]
+async fn rollback_ai_runtime(app: AppHandle) -> Result<ai::engine::EngineStatus, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AudioRuntimeState>();
+        let (root, busy) = {
+            let audio = state
+                .lock()
+                .map_err(|_| "Audio runtime lock was poisoned")?;
+            if matches!(
+                audio.ai.status().state.as_str(),
+                "starting" | "ready" | "converting"
+            ) {
+                return Err("Stop AI before rolling back its runtime".into());
+            }
+            audio
+                .ai
+                .installing
+                .compare_exchange(
+                    false,
+                    true,
+                    std::sync::atomic::Ordering::AcqRel,
+                    std::sync::atomic::Ordering::Acquire,
+                )
+                .map_err(|_| "Runtime operation in progress")?;
+            (audio.ai.runtime_root(), audio.ai.installing.clone())
+        };
+        let result = ai::runtime::rollback(&root);
+        busy.store(false, std::sync::atomic::Ordering::Release);
+        result?;
+        Ok(state
+            .lock()
+            .map_err(|_| "Audio runtime lock was poisoned")?
+            .ai
+            .status())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn remove_ai_model(
+    id: String,
+    state: State<'_, AIModelState>,
+    runtime: State<'_, AudioRuntimeState>,
+) -> Result<(), String> {
+    let engine = runtime
+        .lock()
+        .map_err(|_| "Audio runtime lock was poisoned")?
+        .ai
+        .status();
+    if engine.model_id.as_deref() == Some(&id)
+        && matches!(engine.state.as_str(), "starting" | "ready" | "converting")
+    {
+        return Err("Stop AI before deleting its selected model".into());
+    }
     state
         .lock()
         .map_err(|_| "AI model lock was poisoned")?
@@ -1447,6 +1756,10 @@ pub fn run() {
             app.manage(Mutex::new(device_service));
             let mut runtime =
                 AudioStreamManager::with_settings(volume_settings, noise_settings, recordings_dir);
+            runtime.ai.configure(
+                app.path().app_data_dir()?.join("ai-runtime"),
+                app.path().app_config_dir()?.join("ai-engine.json"),
+            );
             let soundboard_repository =
                 SoundboardRepository::load(soundboard_path).map_err(std::io::Error::other)?;
             runtime.set_soundboard_entries(soundboard_repository.list());
@@ -1594,10 +1907,31 @@ pub fn run() {
             get_ai_provider_status,
             add_ai_model,
             remove_ai_model,
-            set_ai_model_enabled
+            set_ai_model_enabled,
+            get_ai_engine_status,
+            set_ai_engine_config,
+            start_ai_conversion,
+            stop_ai_conversion,
+            select_classic_voice,
+            install_ai_runtime,
+            cancel_ai_runtime_install,
+            rollback_ai_runtime
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                if let Some(state) = app.try_state::<AudioRuntimeState>() {
+                    if let Ok(mut audio) = state.lock() {
+                        audio
+                            .ai
+                            .install_cancel
+                            .store(true, std::sync::atomic::Ordering::Release);
+                        audio.ai.stop();
+                    }
+                }
+            }
+        });
 }
 
 #[cfg(test)]

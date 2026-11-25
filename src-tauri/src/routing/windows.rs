@@ -188,6 +188,7 @@ fn build_typed<T: RouteSample>(
     let mut phase = output_rate;
     let mut held = 0.0_f32;
     let mut limiter = OutputLimiter::new(output_rate);
+    let mut privacy = crate::ai::transport::OutputPrivacyGate::new(shared.voice_guard.clone());
     device
         .build_output_stream(
             config,
@@ -195,6 +196,9 @@ fn build_typed<T: RouteSample>(
                 let mut underrun = false;
                 let mut peak = 0.0_f32;
                 for frame in data.chunks_exact_mut(channels) {
+                    if privacy.discard_if_changed(&mut consumer) {
+                        held = 0.0;
+                    }
                     phase = phase.saturating_add(source_rate);
                     while phase >= output_rate {
                         phase -= output_rate;
@@ -206,6 +210,7 @@ fn build_typed<T: RouteSample>(
                             }
                         }
                     }
+                    let held = privacy.filter(held);
                     let sample = if held.is_finite() {
                         held.clamp(-1.0, 1.0)
                     } else {

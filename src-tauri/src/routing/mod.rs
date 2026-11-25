@@ -61,6 +61,7 @@ pub trait VirtualOutputSink {
 
 #[derive(Default)]
 pub(crate) struct SharedRoutingMetrics {
+    pub voice_guard: Arc<crate::ai::transport::SharedTransport>,
     pub active: AtomicBool,
     pub faulted: AtomicBool,
     pub underruns: AtomicU64,
@@ -92,14 +93,24 @@ impl RoutingProducer {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn routing_queue(
     sample_rate: u32,
+) -> (RoutingProducer, Consumer<f32>, Arc<SharedRoutingMetrics>) {
+    routing_queue_with_ai(sample_rate, Arc::default())
+}
+pub(crate) fn routing_queue_with_ai(
+    sample_rate: u32,
+    voice_guard: Arc<crate::ai::transport::SharedTransport>,
 ) -> (RoutingProducer, Consumer<f32>, Arc<SharedRoutingMetrics>) {
     let capacity = ((sample_rate * ROUTING_QUEUE_MILLISECONDS / 1_000) as usize)
         .max(1024)
         .next_power_of_two();
     let (producer, consumer) = RingBuffer::new(capacity);
-    let shared = Arc::new(SharedRoutingMetrics::default());
+    let shared = Arc::new(SharedRoutingMetrics {
+        voice_guard,
+        ..Default::default()
+    });
     (
         RoutingProducer {
             producer,

@@ -15,7 +15,7 @@ use crate::effects::{
 };
 use crate::routing::{
     AudioRoutingService, RoutingConfiguration, RoutingProducer, RoutingState, RoutingStatus,
-    VirtualOutputSink, amplitude_to_dbfs, errors::RoutingError, routing_queue,
+    VirtualOutputSink, amplitude_to_dbfs, errors::RoutingError, routing_queue_with_ai,
     windows::WindowsVirtualOutputSink,
 };
 use crate::soundboard::{
@@ -72,6 +72,7 @@ struct ActiveStreams {
 }
 
 pub struct AudioStreamManager {
+    pub ai: crate::ai::engine::AIEngine,
     streams: Option<ActiveStreams>,
     state: MonitoringState,
     controls: SharedGainControls,
@@ -92,6 +93,7 @@ pub struct AudioStreamManager {
 impl Default for AudioStreamManager {
     fn default() -> Self {
         Self {
+            ai: Default::default(),
             streams: None,
             state: MonitoringState::Stopped,
             controls: SharedGainControls::new(VolumeSettings::default()),
@@ -119,6 +121,7 @@ impl AudioStreamManager {
     ) -> Self {
         let settings = settings.validated();
         Self {
+            ai: Default::default(),
             streams: None,
             state: MonitoringState::Stopped,
             controls: SharedGainControls::new(settings),
@@ -355,7 +358,8 @@ impl AudioStreamManager {
         } = recording_endpoints;
         let (routing_producer, routing_sink) =
             if let Some(device_id) = self.routing_configuration.output_device_id.as_deref() {
-                let (producer, consumer, shared) = routing_queue(sample_rate);
+                let (producer, consumer, shared) =
+                    routing_queue_with_ai(sample_rate, self.ai.shared.clone());
                 let sink = WindowsVirtualOutputSink::build(
                     device_id,
                     sample_rate,
@@ -383,6 +387,7 @@ impl AudioStreamManager {
             mixer,
             soundboard_command_consumer,
             sound_producer,
+            self.ai.attach(sample_rate),
         )?;
         let output_stream = build_output(
             &output,
@@ -395,6 +400,7 @@ impl AudioStreamManager {
             playback_consumer,
             recording_shared,
             sound_consumer,
+            self.ai.shared.clone(),
         )?;
         let input_buffer_frames = input_stream
             .buffer_size()
@@ -747,6 +753,7 @@ fn build_input(
     mixer: SoundboardMixer,
     soundboard_commands: Consumer<MixerCommand>,
     sound_producer: Producer<f32>,
+    ai_port: crate::ai::transport::RealtimePort,
 ) -> Result<(Stream, usize), AudioDeviceError> {
     match format {
         SampleFormat::F32 => build_input_typed::<f32>(
@@ -763,6 +770,7 @@ fn build_input(
             mixer,
             soundboard_commands,
             sound_producer,
+            ai_port,
         ),
         SampleFormat::I16 => build_input_typed::<i16>(
             device,
@@ -778,6 +786,7 @@ fn build_input(
             mixer,
             soundboard_commands,
             sound_producer,
+            ai_port,
         ),
         SampleFormat::U16 => build_input_typed::<u16>(
             device,
@@ -793,6 +802,7 @@ fn build_input(
             mixer,
             soundboard_commands,
             sound_producer,
+            ai_port,
         ),
         _ => Err(AudioDeviceError::backend(format!(
             "Unsupported input sample format: {format}"
@@ -815,6 +825,7 @@ fn build_input_typed<T: RealtimeSample>(
     mut mixer: SoundboardMixer,
     mut soundboard_commands: Consumer<MixerCommand>,
     mut sound_producer: Producer<f32>,
+    mut ai_port: crate::ai::transport::RealtimePort,
 ) -> Result<(Stream, usize), AudioDeviceError> {
     let channels = usize::from(config.channels);
     let error_metrics = metrics.clone();
@@ -844,7 +855,7 @@ fn build_input_typed<T: RealtimeSample>(
                     let mono =
                         frame.iter().map(|sample| sample.to_f32()).sum::<f32>() / channels as f32;
                     let _ = original_producer.push(mono);
-                    pipeline.push(mono, |processed| {
+                    let mut emit = |processed| {
                         let (headphone_sound, virtual_sound) = mixer.next_sample();
                         let processed = gain.process(processed, controls.input_target());
                         let original = original_consumer.pop().unwrap_or(0.0);
@@ -861,7 +872,12 @@ fn build_input_typed<T: RealtimeSample>(
                         }
                         let _ = sound_producer.push(headphone_sound);
                         overflowed |= producer.push(processed).is_err();
-                    });
+                    };
+                    if let Some(converted) = ai_port.process(mono) {
+                        emit(converted);
+                    } else {
+                        pipeline.push(mono, &mut emit);
+                    }
                     frames += 1;
                 }
                 if overflowed {
@@ -893,6 +909,7 @@ fn build_output(
     playback_consumer: Consumer<f32>,
     recording_shared: std::sync::Arc<crate::audio::recording::Shared>,
     sound_consumer: Consumer<f32>,
+    ai_shared: std::sync::Arc<crate::ai::transport::SharedTransport>,
 ) -> Result<Stream, AudioDeviceError> {
     match format {
         SampleFormat::F32 => build_output_typed::<f32>(
@@ -905,6 +922,7 @@ fn build_output(
             playback_consumer,
             recording_shared,
             sound_consumer,
+            ai_shared,
         ),
         SampleFormat::I16 => build_output_typed::<i16>(
             device,
@@ -916,6 +934,7 @@ fn build_output(
             playback_consumer,
             recording_shared,
             sound_consumer,
+            ai_shared,
         ),
         SampleFormat::U16 => build_output_typed::<u16>(
             device,
@@ -927,6 +946,7 @@ fn build_output(
             playback_consumer,
             recording_shared,
             sound_consumer,
+            ai_shared,
         ),
         _ => Err(AudioDeviceError::backend(format!(
             "Unsupported output sample format: {format}"
@@ -945,11 +965,13 @@ fn build_output_typed<T: RealtimeSample>(
     mut playback_consumer: Consumer<f32>,
     recording_shared: std::sync::Arc<crate::audio::recording::Shared>,
     mut sound_consumer: Consumer<f32>,
+    ai_shared: std::sync::Arc<crate::ai::transport::SharedTransport>,
 ) -> Result<Stream, AudioDeviceError> {
     let channels = usize::from(config.channels);
     let error_metrics = metrics.clone();
     let mut gain = SmoothedGain::new(controls.output_target(), config.sample_rate);
     let mut limiter = OutputLimiter::new(config.sample_rate);
+    let mut privacy = crate::ai::transport::OutputPrivacyGate::new(ai_shared);
     device
         .build_output_stream(
             config,
@@ -957,6 +979,7 @@ fn build_output_typed<T: RealtimeSample>(
                 let mut underrun = false;
                 let mut meter = SignalMeter::default();
                 for frame in data.chunks_exact_mut(channels) {
+                    privacy.discard_if_changed(&mut consumer);
                     let source = match consumer.pop() {
                         Ok(sample) => sample,
                         Err(_) => {
@@ -964,6 +987,7 @@ fn build_output_typed<T: RealtimeSample>(
                             0.0
                         }
                     };
+                    let source = privacy.filter(source);
                     let source = recording_shared
                         .playback_or_monitor(&mut playback_consumer, source)
                         + sound_consumer.pop().unwrap_or(0.0);

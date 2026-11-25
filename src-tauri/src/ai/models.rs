@@ -19,6 +19,8 @@ pub struct AIModelMetadata {
     pub frame_samples: usize,
     #[serde(default)]
     pub supported_profiles: Vec<String>,
+    #[serde(default)]
+    pub consent_confirmed: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
