@@ -834,14 +834,17 @@ fn build_input_typed<T: RealtimeSample>(
                 let mut overflowed = false;
                 let mut meter = SignalMeter::default();
                 let mut frames = 0_u64;
+                // Snapshot pending commands once so a concurrent producer cannot extend this batch.
+                for _ in 0..soundboard_commands.slots() {
+                    if let Ok(command) = soundboard_commands.pop() {
+                        mixer.command(command);
+                    }
+                }
                 for frame in data.chunks_exact(channels) {
                     let mono =
                         frame.iter().map(|sample| sample.to_f32()).sum::<f32>() / channels as f32;
                     let _ = original_producer.push(mono);
                     pipeline.push(mono, |processed| {
-                        while let Ok(command) = soundboard_commands.pop() {
-                            mixer.command(command);
-                        }
                         let (headphone_sound, virtual_sound) = mixer.next_sample();
                         let processed = gain.process(processed, controls.input_target());
                         let original = original_consumer.pop().unwrap_or(0.0);
