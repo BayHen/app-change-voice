@@ -102,7 +102,7 @@ export function VoiceEffects({ onPresetSelected }: VoiceEffectsProps) {
   }
 
   return (
-    <div className="mx-auto max-w-[1180px]">
+    <div className="mx-auto max-w-[1500px]">
       <AppHeader
         title="Voice Effects"
         description="Validated built-in DSP presets. Effects run locally and are not AI voice conversion."
