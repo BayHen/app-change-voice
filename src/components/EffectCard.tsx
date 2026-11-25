@@ -23,7 +23,10 @@ export function EffectCard({ preset, selected, active, onSelect }: EffectCardPro
       }`}
     >
       <div className="flex items-start justify-between gap-3">
-        <span className="flex items-center gap-2 text-xs text-violet-300"><Waveform size={24} aria-hidden="true" />{preset.category}</span>
+        <span className="flex items-center gap-2 text-xs text-violet-300">
+          <Waveform size={24} aria-hidden="true" />
+          {preset.category}
+        </span>
         {active ? (
           <span className="grid size-6 place-items-center rounded-full bg-cyan-300 text-[#071014]">
             <Check size={13} weight="bold" aria-hidden="true" />
