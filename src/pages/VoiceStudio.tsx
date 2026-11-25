@@ -32,7 +32,7 @@ export function VoiceStudio() {
   return (
     <div className="mx-auto max-w-[1180px]">
       <AppHeader
-        title="Voice Studio"
+        title="Voice Controls"
         description="Realtime pitch and formant processing runs locally in the Rust audio pipeline."
         action={
           <StatusIndicator
