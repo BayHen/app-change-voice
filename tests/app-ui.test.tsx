@@ -459,13 +459,13 @@ describe("desktop navigation", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    expect(screen.getByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Voice Lab" })).toBeInTheDocument();
 
     await user.click(screen.getAllByRole("button", { name: "Voice Effects" })[0]);
     expect(screen.getByRole("heading", { name: "Voice Effects" })).toBeInTheDocument();
 
     await user.click(screen.getAllByRole("button", { name: "Voice Studio" })[0]);
-    expect(screen.getByRole("heading", { name: "Voice Studio" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Voice Controls" })).toBeInTheDocument();
 
     await user.click(screen.getAllByRole("button", { name: "Soundboard" })[0]);
     expect(screen.getByRole("heading", { name: "Soundboard" })).toBeInTheDocument();
@@ -474,7 +474,7 @@ describe("desktop navigation", () => {
     await user.click(screen.getAllByRole("button", { name: "Games & Apps" })[0]);
     expect(screen.getByRole("heading", { name: "Game & App Integration" })).toBeInTheDocument();
 
-    await user.click(screen.getAllByRole("button", { name: "AI Voice" })[0]);
+    await user.click(screen.getAllByRole("button", { name: "AI Voice Studio" })[0]);
     expect(screen.getByRole("heading", { name: "AI Voice Studio" })).toBeInTheDocument();
     expect(await screen.findByText("No trusted ONNX model installed")).toBeInTheDocument();
     expect(screen.getByText("Not verified")).toBeInTheDocument();
@@ -501,10 +501,9 @@ describe("desktop navigation", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Microphone is not connected");
     expect(screen.getByLabelText("Input device")).toBeDisabled();
-    expect(screen.getByRole("meter", { name: "Input level" })).toHaveAttribute(
-      "aria-valuenow",
-      "-60",
-    );
+    const inputMeters = screen.getAllByRole("meter", { name: "Input level" });
+    expect(inputMeters).toHaveLength(2);
+    for (const meter of inputMeters) expect(meter).toHaveAttribute("aria-valuenow", "-60");
     expect(screen.getByRole("button", { name: "Start recording" })).toBeDisabled();
   });
 
