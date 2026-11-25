@@ -3,8 +3,10 @@ import { useAudioRuntime } from "./useAudioRuntime";
 import { useAudioDevices } from "./useAudioDevices";
 import { useRecording } from "./useRecording";
 import { useVirtualRouting } from "./useVirtualRouting";
+import { useAIEngine } from "./useAIEngine";
 
 type Session = {
+  ai: ReturnType<typeof useAIEngine>;
   runtime: ReturnType<typeof useAudioRuntime>;
   devices: ReturnType<typeof useAudioDevices>;
   recording: ReturnType<typeof useRecording>;
@@ -16,8 +18,11 @@ export function AudioSessionProvider({ children }: { children: ReactNode }) {
   const devices = useAudioDevices();
   const recording = useRecording();
   const routing = useVirtualRouting();
+  const ai = useAIEngine();
   return (
-    <Context.Provider value={{ runtime, devices, recording, routing }}>{children}</Context.Provider>
+    <Context.Provider value={{ runtime, devices, recording, routing, ai }}>
+      {children}
+    </Context.Provider>
   );
 }
 // The provider and its consumer intentionally share this typed context module.

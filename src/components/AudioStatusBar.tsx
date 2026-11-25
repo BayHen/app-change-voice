@@ -4,7 +4,11 @@ import { Button, Badge } from "./ui";
 import { ToggleSwitch } from "./ToggleSwitch";
 
 export function AudioStatusBar({ onSettings }: { onSettings: () => void }) {
-  const { runtime, devices, recording, routing } = useAudioSession();
+  const { runtime, devices, recording, routing, ai } = useAudioSession();
+  const aiSelected = ai.status?.mode === "wOkada";
+  const classicFallback = aiSelected && ai.status?.classicFallbackActive;
+  const aiMuted =
+    aiSelected && !classicFallback && !["ready", "converting"].includes(ai.status?.state ?? "");
   const live = runtime.status.state === "running";
   const metrics = runtime.status.metrics;
   // Matches Rust diagnostics: processing time is measured per frame, not per buffer.
@@ -22,11 +26,23 @@ export function AudioStatusBar({ onSettings }: { onSettings: () => void }) {
           {devices.error
             ? "Desktop bridge offline"
             : live
-              ? "Audio engine running"
+              ? classicFallback
+                ? "Classic DSP fallback active"
+                : aiMuted
+                  ? "AI voice muted"
+                  : aiSelected
+                    ? "AI voice selected"
+                    : "Audio engine running"
               : "Audio engine idle"}
         </strong>
         <span className="vm-status-detail">
-          {metrics ? `${metrics.estimatedLatencyMs.toFixed(1)} ms latency` : "Latency —"}
+          {aiSelected
+            ? ai.status?.roundTripMs == null
+              ? "AI latency —"
+              : `${ai.status.roundTripMs.toFixed(1)} ms AI round trip`
+            : metrics
+              ? `${metrics.estimatedLatencyMs.toFixed(1)} ms latency`
+              : "Latency —"}
         </span>
         <span className="vm-status-detail">
           {cpu === null ? "DSP CPU —" : `DSP CPU ${cpu.toFixed(1)}%`}

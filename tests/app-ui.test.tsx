@@ -72,6 +72,11 @@ const updaterMocks = vi.hoisted(() => ({
   relaunch: vi.fn(),
 }));
 const aiMocks = vi.hoisted(() => ({
+  engine: vi.fn(),
+  startConversion: vi.fn(),
+  stopConversion: vi.fn(),
+  classic: vi.fn(),
+  saveConfig: vi.fn(),
   models: vi.fn(),
   status: vi.fn(),
   add: vi.fn(),
@@ -222,6 +227,14 @@ vi.mock("../src/services/tauri", () => ({
   exportAllPresets: vi.fn(),
   importAllPresets: vi.fn(),
   getAIModels: aiMocks.models,
+  getAIEngineStatus: aiMocks.engine,
+  startAIConversion: aiMocks.startConversion,
+  stopAIConversion: aiMocks.stopConversion,
+  selectClassicVoice: aiMocks.classic,
+  setAIEngineConfig: aiMocks.saveConfig,
+  installAIRuntime: vi.fn(),
+  cancelAIRuntimeInstall: vi.fn(),
+  rollbackAIRuntime: vi.fn(),
   getAIProviderStatus: aiMocks.status,
   addAIModel: aiMocks.add,
   removeAIModel: aiMocks.remove,
@@ -229,7 +242,77 @@ vi.mock("../src/services/tauri", () => ({
 }));
 
 describe("desktop navigation", () => {
+  it("keeps AI opt-in, blocks loading without runtime and saves explicit failure policy", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "AI Voice Studio" }));
+    const compute = await screen.findByLabelText("AI compute preference");
+    expect(screen.getByRole("button", { name: "Load & start AI" })).toBeDisabled();
+    expect(aiMocks.startConversion).not.toHaveBeenCalled();
+    await user.selectOptions(compute, "cpu");
+    await user.click(screen.getByRole("button", { name: "Apply AI settings" }));
+    expect(aiMocks.saveConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: "cpu", failurePolicy: "mute", allowCpuFallback: false }),
+    );
+    await user.click(screen.getByRole("button", { name: "Use Classic DSP" }));
+    expect(aiMocks.classic).toHaveBeenCalledOnce();
+  });
+  it("requires voice rights acknowledgement before opening model files", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "AI Voice Studio" }));
+    await user.click(screen.getByRole("button", { name: "Import ONNX model" }));
+    expect(screen.getByRole("button", { name: "Choose manifest & ONNX" })).toBeDisabled();
+    expect(aiMocks.add).not.toHaveBeenCalled();
+  });
   beforeEach(() => {
+    const engine = {
+      state: "notInstalled",
+      mode: "classicDsp",
+      classicFallbackActive: false,
+      runtimeInstalled: false,
+      modelId: null,
+      provider: null,
+      upstreamCommit: "test-fixture",
+      loadingMs: null,
+      conversionMs: null,
+      roundTripMs: null,
+      queuedInputSamples: 0,
+      queuedOutputSamples: 0,
+      droppedInputSamples: 0,
+      droppedOutputSamples: 0,
+      missingOutputSamples: 0,
+      completedChunks: 0,
+      restarts: 0,
+      message: null,
+      config: {
+        provider: "auto",
+        allowCpuFallback: false,
+        failurePolicy: "mute",
+        pitchSemitones: 0,
+        f0Method: "dio",
+        chunkFrames: 4096,
+        crossfadeFrames: 1024,
+        extraContextFrames: 4096,
+        noiseThreshold: 0.00001,
+        cpuThreads: 4,
+      },
+      install: {
+        installed: false,
+        installing: false,
+        copiedFiles: 0,
+        totalFiles: 0,
+        version: null,
+        message: null,
+      },
+    };
+    aiMocks.engine.mockReset().mockResolvedValue(engine);
+    aiMocks.startConversion.mockReset();
+    aiMocks.stopConversion
+      .mockReset()
+      .mockResolvedValue({ ...engine, mode: "wOkada", state: "stopped" });
+    aiMocks.classic.mockReset().mockResolvedValue(engine);
+    aiMocks.saveConfig.mockReset().mockImplementation(async (config) => ({ ...engine, config }));
     updaterMocks.configuration.mockReset().mockResolvedValue({
       configured: false,
       endpoint: "https://github.com/BayHen/app-change-voice/releases/latest/download/latest.json",

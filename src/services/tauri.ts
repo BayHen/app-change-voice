@@ -14,6 +14,7 @@ import type { EffectDescriptor, PluginStatus, SoundEntry } from "../types/soundb
 import type { ApplicationProfile } from "../types/profiles";
 import type { BackupPreview, RestoreMode, SyncStatus } from "../types/backup";
 import type { AIModelStatus, AIProviderStatus } from "../types/ai";
+import type { AIEngineConfig, AIEngineStatus } from "../types/ai";
 import type {
   AudioDevice,
   AudioDiagnosticsReport,
@@ -215,8 +216,22 @@ export const importAllPresets = (path: string, mode: RestoreMode) =>
 export const getSyncStatus = () => invoke<SyncStatus>("get_sync_status");
 export const getAIModels = () => invoke<AIModelStatus[]>("get_ai_models");
 export const getAIProviderStatus = () => invoke<AIProviderStatus>("get_ai_provider_status");
-export const addAIModel = (manifestPath: string, modelPath: string) =>
-  invoke<AIModelStatus>("add_ai_model", { manifestPath, modelPath });
+export const addAIModel = (manifestPath: string, modelPath: string, rightsConfirmed = false) =>
+  invoke<AIModelStatus>("add_ai_model", { manifestPath, modelPath, rightsConfirmed });
 export const removeAIModel = (id: string) => invoke<void>("remove_ai_model", { id });
 export const setAIModelEnabled = (id: string, enabled: boolean) =>
   invoke<AIProviderStatus>("set_ai_model_enabled", { id, enabled });
+export const getAIEngineStatus = () => invoke<AIEngineStatus>("get_ai_engine_status");
+export const setAIEngineConfig = (config: AIEngineConfig) =>
+  invoke<AIEngineStatus>("set_ai_engine_config", { config });
+export const startAIConversion = (modelId: string) =>
+  invoke<AIEngineStatus>("start_ai_conversion", { modelId });
+export const stopAIConversion = () => invoke<AIEngineStatus>("stop_ai_conversion");
+export const selectClassicVoice = () => invoke<AIEngineStatus>("select_classic_voice");
+export const installAIRuntime = (
+  source: string,
+  expectedSha256: string,
+  publisherConfirmed: boolean,
+) => invoke<AIEngineStatus>("install_ai_runtime", { source, expectedSha256, publisherConfirmed });
+export const cancelAIRuntimeInstall = () => invoke<void>("cancel_ai_runtime_install");
+export const rollbackAIRuntime = () => invoke<AIEngineStatus>("rollback_ai_runtime");

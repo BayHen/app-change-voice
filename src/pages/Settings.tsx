@@ -87,15 +87,7 @@ export function Settings({
               </div>
             </SettingsSection>
           ) : tab === "Hardware acceleration" ? (
-            <SettingsSection
-              title="Hardware acceleration"
-              description="Provider selection requires a compatible native inference runtime."
-            >
-              <p className="vm-hint">
-                GPU acceleration is not verified in this build. The DSP path runs on the CPU; no GPU
-                usage is estimated.
-              </p>
-            </SettingsSection>
+            <AIVoiceStudio />
           ) : tab === "About" ? (
             <SettingsSection
               title="VoiceMorph Studio"

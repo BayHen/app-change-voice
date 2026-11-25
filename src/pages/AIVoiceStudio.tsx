@@ -1,242 +1,426 @@
-import { AppHeader } from "../components/AppHeader";
-import { Badge, Button, Card, EmptyState } from "../components/ui";
 import { useEffect, useState } from "react";
-import { Cpu, FileArrowUp, ShieldCheck, Sparkle, Trash } from "../components/icons";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
-  addAIModel,
-  getAIModels,
-  getAIProviderStatus,
-  removeAIModel,
-  setAIModelEnabled,
-} from "../services/tauri";
-import type { AIModelStatus, AIProviderStatus } from "../types/ai";
+  BrainCircuit,
+  FileUp,
+  FolderOpen,
+  Play,
+  Square,
+  ShieldCheck,
+  Trash2,
+  RefreshCw,
+  Cpu,
+} from "lucide-react";
+import { AppHeader } from "../components/AppHeader";
+import { Badge, Button, Card, EmptyState, Slider, StudioDialog } from "../components/ui";
+import { ToggleSwitch } from "../components/ToggleSwitch";
+import { useAudioSession } from "../hooks/AudioSession";
+import { addAIModel, getAIModels, removeAIModel } from "../services/tauri";
+import type { AIEngineConfig, AIModelStatus } from "../types/ai";
 
-const initialStatus: AIProviderStatus = {
-  offlineOnly: true,
-  inferenceBackend: "Loading…",
-  gpuVerified: false,
-  activeModelId: null,
-  fallbackActive: true,
-  message: "Reading local AI provider status.",
-};
-
+const time = (value: number | null | undefined) =>
+  value == null ? "Unavailable" : `${value.toFixed(1)} ms`;
 export function AIVoiceStudio() {
-  const [models, setModels] = useState<AIModelStatus[]>([]);
-  const [provider, setProvider] = useState(initialStatus);
-  const [busy, setBusy] = useState(true);
-  const [message, setMessage] = useState<string | null>(null);
-
-  async function refresh() {
-    setBusy(true);
-    try {
-      const [nextModels, nextProvider] = await Promise.all([getAIModels(), getAIProviderStatus()]);
-      setModels(nextModels);
-      setProvider(nextProvider);
-    } catch (error) {
-      setMessage(String(error));
-    } finally {
-      setBusy(false);
-    }
-  }
+  const { ai } = useAudioSession();
+  const status = ai.status;
+  const [models, setModels] = useState<AIModelStatus[]>([]),
+    [selectedId, setSelectedId] = useState("");
+  const [localDraft, setDraft] = useState<AIEngineConfig | null>(null),
+    [dirty, setDirty] = useState(false);
+  const draft = localDraft ?? status?.config ?? null;
+  const [busy, setBusy] = useState(false),
+    [message, setMessage] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false),
+    [rights, setRights] = useState(false);
+  const [runtimeOpen, setRuntimeOpen] = useState(false),
+    [runtimePath, setRuntimePath] = useState("");
+  const [digest, setDigest] = useState(""),
+    [trusted, setTrusted] = useState(false);
+  const active = !!status && ["starting", "ready", "converting"].includes(status.state);
+  const selected = models.find((model) => model.id === selectedId);
+  const compatible =
+    selected?.backend === "w-okada-rvc" && selected.integrityVerified && selected.consentConfirmed;
   useEffect(() => {
-    let active = true;
-    void Promise.all([getAIModels(), getAIProviderStatus()])
-      .then(([nextModels, nextProvider]) => {
-        if (!active) return;
-        setModels(nextModels);
-        setProvider(nextProvider);
+    let mounted = true;
+    void getAIModels()
+      .then((value) => {
+        if (mounted) {
+          setModels(value);
+          setSelectedId(value.find((m) => m.backend === "w-okada-rvc")?.id ?? "");
+        }
       })
-      .catch((error: unknown) => {
-        if (active) setMessage(String(error));
-      })
-      .finally(() => {
-        if (active) setBusy(false);
+      .catch((error) => {
+        if (mounted) setMessage(String(error));
       });
     return () => {
-      active = false;
+      mounted = false;
     };
   }, []);
-
+  async function refresh() {
+    try {
+      setModels(await getAIModels());
+      await ai.refresh();
+    } catch (error) {
+      setMessage(String(error));
+    }
+  }
+  function update<K extends keyof AIEngineConfig>(key: K, value: AIEngineConfig[K]) {
+    if (draft) {
+      setDraft({ ...draft, [key]: value });
+      setDirty(true);
+    }
+  }
   async function importModel() {
-    const manifestPath = await open({
-      multiple: false,
-      filters: [{ name: "AI model manifest", extensions: ["json"] }],
-    });
-    if (!manifestPath) return;
-    const modelPath = await open({
-      multiple: false,
-      filters: [{ name: "ONNX model", extensions: ["onnx"] }],
-    });
-    if (!modelPath) return;
     setBusy(true);
+    setMessage(null);
     try {
-      await addAIModel(manifestPath, modelPath);
-      setMessage("Model imported and its SHA-256 was verified.");
+      const manifest = await open({
+        multiple: false,
+        filters: [{ name: "Voice model manifest", extensions: ["json"] }],
+      });
+      if (typeof manifest !== "string") return;
+      const model = await open({
+        multiple: false,
+        filters: [{ name: "RVC ONNX model", extensions: ["onnx"] }],
+      });
+      if (typeof model !== "string") return;
+      const imported = await addAIModel(manifest, model, rights);
       await refresh();
-    } catch (error) {
-      setMessage(`Import failed: ${String(error)}`);
-      setBusy(false);
-    }
-  }
-
-  async function remove(id: string) {
-    setBusy(true);
-    try {
-      await removeAIModel(id);
-      setMessage("Local model files removed.");
-      await refresh();
-    } catch (error) {
-      setMessage(`Remove failed: ${String(error)}`);
-      setBusy(false);
-    }
-  }
-
-  async function enable(id: string) {
-    setBusy(true);
-    try {
-      setProvider(await setAIModelEnabled(id, true));
+      setSelectedId(imported.id);
+      setImportOpen(false);
+      setMessage(
+        "Model imported; checksum and declared license validated. Runtime compatibility is checked on load.",
+      );
     } catch (error) {
       setMessage(String(error));
     } finally {
       setBusy(false);
     }
   }
-
+  async function install() {
+    const result = await ai.install(runtimePath, digest.trim(), trusted);
+    if (result) {
+      setRuntimeOpen(false);
+      setMessage("Verified runtime installed. Classic DSP remains available offline.");
+      await refresh();
+    }
+  }
+  async function save() {
+    if (!draft) return;
+    const result = await ai.save(draft);
+    if (result) {
+      setDraft(result.config);
+      setDirty(false);
+      setMessage("AI preferences saved. Load a model to apply them.");
+    }
+  }
   return (
     <section className="vm-page" aria-label="AI Voice Studio">
       <AppHeader
         title="AI Voice Studio"
-        description="Explore a new voice. Keep your identity."
+        description="A local AI voice, inside your existing studio."
         action={
           <Button
             variant="primary"
             disabled={busy}
-            onClick={() => void importModel().catch((error) => setMessage(String(error)))}
+            onClick={() => {
+              setRights(false);
+              setImportOpen(true);
+            }}
           >
-            <FileArrowUp size={16} />
+            <FileUp size={16} />
             Import ONNX model
           </Button>
         }
       />
       <div className="vm-ai-banner">
         <span className="vm-empty-icon">
-          <Sparkle size={25} />
+          <BrainCircuit size={26} />
         </span>
         <div>
-          <h2>Your next voice, powered locally.</h2>
-          <p>Manage trusted models and check runtime compatibility before conversion.</p>
+          <h2>
+            {!status
+              ? "Voice engine status unavailable"
+              : status.mode === "wOkada"
+                ? status.state === "converting"
+                  ? "AI conversion active"
+                  : status.classicFallbackActive
+                    ? "Classic DSP fallback active"
+                    : "AI selected. Your voice stays muted until ready."
+                : "Classic DSP is your current voice."}
+          </h2>
+          <p>Capture, monitoring, soundboard mixing and virtual output stay in VoiceMorph.</p>
         </div>
-        <Badge tone="warning">{busy ? "Checking engine" : "Native inference unavailable"}</Badge>
+        <Badge
+          tone={
+            status?.state === "faulted"
+              ? "warning"
+              : status?.state === "converting"
+                ? "success"
+                : "neutral"
+          }
+        >
+          {status ? status.state : "Desktop bridge unavailable"}
+        </Badge>
       </div>
       <div className="vm-lab-grid">
         <div className="vm-lab-main">
           <Card>
             <div className="vm-section-heading">
               <div>
-                <h2>Voice model library</h2>
-                <p>Verified models, ready for a compatible runtime.</p>
+                <h2>Voice mode</h2>
+                <p>Switching to Classic DSP makes your Classic voice audible again.</p>
               </div>
-              <Badge>{models.length} installed</Badge>
             </div>
-            {busy && !models.length ? (
-              <p aria-busy="true" className="vm-hint">
-                Loading local models…
-              </p>
-            ) : !models.length ? (
+            <div className="vm-actions">
+              <Button
+                aria-pressed={status?.mode === "classicDsp"}
+                disabled={!status || (ai.busy && status.mode === "classicDsp")}
+                onClick={() => void ai.classic()}
+              >
+                Use Classic DSP
+              </Button>
+              <Button
+                variant="danger"
+                disabled={!status || status.mode !== "wOkada"}
+                onClick={() => void ai.stop()}
+              >
+                <Square size={14} />
+                Stop AI, keep voice muted
+              </Button>
+            </div>
+          </Card>
+          <Card>
+            <div className="vm-section-heading">
+              <div>
+                <h2>Voice model library</h2>
+                <p>RVC ONNX models with acknowledged voice rights.</p>
+              </div>
+              <Button variant="ghost" aria-label="Refresh AI models" onClick={() => void refresh()}>
+                <RefreshCw size={16} />
+              </Button>
+            </div>
+            {models.length === 0 ? (
               <EmptyState
-                title="A new voice starts with a model"
-                description="Import a licensed ONNX model and its manifest. The app verifies its checksum before adding it to your library."
-                action={
-                  <Button
-                    disabled={busy}
-                    onClick={() => void importModel().catch((error) => setMessage(String(error)))}
-                  >
-                    <FileArrowUp size={16} />
-                    Import model
-                  </Button>
-                }
+                title="Choose a voice you have permission to use"
+                description="Import an RVC ONNX model with its licensed manifest. Voice checkpoints, archives and unverified downloads are not loaded."
               />
             ) : (
               <div className="vm-ai-model-grid">
                 {models.map((model) => (
-                  <article className="vm-card" key={model.id}>
-                    <span className="vm-preset-art art-violet">
-                      <Sparkle size={32} />
-                    </span>
-                    <div className="vm-section-heading">
-                      <h3>{model.name}</h3>
-                      <Badge tone={model.integrityVerified ? "success" : "warning"}>
-                        {model.integrityVerified ? "Verified" : "Invalid"}
-                      </Badge>
-                    </div>
-                    <p className="vm-hint">{model.description}</p>
+                  <article key={model.id} className="vm-card">
+                    <button
+                      className="vm-ai-model-choice"
+                      type="button"
+                      aria-pressed={selectedId === model.id}
+                      onClick={() => setSelectedId(model.id)}
+                    >
+                      <span className="vm-preset-art">
+                        <BrainCircuit size={32} />
+                      </span>
+                      <strong>{model.name}</strong>
+                    </button>
                     <p className="vm-hint">
-                      {model.architecture} · {model.inputSampleRate / 1000} kHz · {model.license}
+                      {model.architecture} · {model.license} · {model.inputSampleRate / 1000} kHz
+                      transport
                     </p>
-                    <p className="vm-hint">{model.statusMessage}</p>
-                    <div className="vm-actions">
-                      <Button
-                        disabled={busy || !model.runtimeAvailable || !model.integrityVerified}
-                        onClick={() => void enable(model.id)}
-                      >
-                        Enable
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        aria-label={`Remove ${model.name}`}
-                        disabled={busy}
-                        onClick={() => {
-                          if (window.confirm(`Remove ${model.name} and its local model files?`))
-                            void remove(model.id);
-                        }}
-                      >
-                        <Trash size={16} />
-                      </Button>
-                    </div>
+                    <Badge tone={model.integrityVerified ? "success" : "warning"}>
+                      {model.integrityVerified ? "Checksum verified" : "Integrity failure"}
+                    </Badge>
+                    <p className="vm-hint">
+                      {model.backend === "w-okada-rvc"
+                        ? model.statusMessage
+                        : "Storage only: this model is not an RVC provider model."}
+                    </p>
+                    <Button
+                      variant="ghost"
+                      disabled={busy || (status?.modelId === model.id && active)}
+                      aria-label={`Remove ${model.name}`}
+                      onClick={() => {
+                        if (!confirm(`Delete ${model.name} and its local model files?`)) return;
+                        setBusy(true);
+                        void removeAIModel(model.id)
+                          .then(refresh)
+                          .catch((error) => setMessage(String(error)))
+                          .finally(() => setBusy(false));
+                      }}
+                    >
+                      <Trash2 size={15} />
+                      Remove model
+                    </Button>
                   </article>
                 ))}
               </div>
             )}
+            <div className="vm-toolbar">
+              <label className="vm-field">
+                Selected voice
+                <select
+                  aria-label="Selected AI voice"
+                  value={selectedId}
+                  disabled={active || models.length === 0}
+                  onChange={(e) => setSelectedId(e.target.value)}
+                >
+                  <option value="">Choose RVC ONNX model</option>
+                  {models.map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <Button
+                variant="primary"
+                disabled={!compatible || !status?.runtimeInstalled || ai.busy || active || dirty}
+                onClick={() => void ai.start(selectedId)}
+              >
+                <Play size={15} />
+                Load & start AI
+              </Button>
+            </div>
+            {dirty && <p className="vm-hint">Apply your settings before loading the model.</p>}
           </Card>
           <Card>
             <div className="vm-section-heading">
-              <h2>Inference controls</h2>
-              <Badge>Runtime required</Badge>
+              <h2>Voice conversion settings</h2>
+              <Badge>{active ? "Stop AI to edit" : "Saved locally"}</Badge>
             </div>
-            <p className="vm-hint">
-              Native conversion is not implemented in this build. Model management works in the
-              desktop app; the existing DSP path remains available.
-            </p>
-            <fieldset disabled className="vm-ai-controls">
-              <label className="vm-field">
-                Compute provider
-                <select aria-label="Compute provider">
-                  <option>Unavailable — runtime required</option>
-                </select>
-              </label>
-              <label className="vm-field">
-                Pitch shift
-                <input type="number" aria-label="AI pitch shift" value={0} readOnly />
-              </label>
-              <label className="vm-field">
-                F0 method
-                <select aria-label="F0 method">
-                  <option>Unavailable</option>
-                </select>
-              </label>
-            </fieldset>
-            <details className="vm-advanced">
-              <summary>Advanced inference settings</summary>
+            {draft ? (
+              <fieldset disabled={active || ai.busy || !status}>
+                <div className="vm-ai-controls">
+                  <label className="vm-field">
+                    Compute preference
+                    <select
+                      aria-label="AI compute preference"
+                      value={draft.provider}
+                      onChange={(e) =>
+                        update("provider", e.target.value as AIEngineConfig["provider"])
+                      }
+                    >
+                      <option value="auto">Auto: compatible CUDA or CPU</option>
+                      <option value="cpu">CPU</option>
+                      <option value="cuda">NVIDIA CUDA</option>
+                    </select>
+                  </label>
+                  <label className="vm-field">
+                    F0 estimation
+                    <select
+                      aria-label="F0 estimation"
+                      value={draft.f0Method}
+                      onChange={(e) =>
+                        update("f0Method", e.target.value as AIEngineConfig["f0Method"])
+                      }
+                    >
+                      <option value="dio">DIO</option>
+                      <option value="harvest">Harvest</option>
+                      <option value="rmvpe_onnx">RMVPE ONNX (runtime asset required)</option>
+                    </select>
+                  </label>
+                  <label className="vm-field">
+                    Chunk size
+                    <select
+                      aria-label="AI chunk size"
+                      value={draft.chunkFrames}
+                      onChange={(e) => {
+                        const frames = Number(e.target.value);
+                        setDraft({
+                          ...draft,
+                          chunkFrames: frames,
+                          crossfadeFrames: Math.min(frames, draft.crossfadeFrames),
+                        });
+                        setDirty(true);
+                      }}
+                    >
+                      {[2048, 4096, 8192, 16384].map((frames) => (
+                        <option key={frames} value={frames}>
+                          {frames} frames · {(frames / 48).toFixed(1)} ms
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <Slider
+                  label="AI pitch shift"
+                  min={-12}
+                  max={12}
+                  value={draft.pitchSemitones}
+                  unit=" st"
+                  onChange={(v) => update("pitchSemitones", v)}
+                />
+                <details className="vm-advanced">
+                  <summary>Advanced inference & failure policy</summary>
+                  <div className="vm-ai-controls">
+                    <label className="vm-field">
+                      Crossfade frames
+                      <input
+                        aria-label="AI crossfade frames"
+                        type="number"
+                        min={128}
+                        max={Math.min(4096, draft.chunkFrames)}
+                        value={draft.crossfadeFrames}
+                        onChange={(e) => update("crossfadeFrames", Number(e.target.value))}
+                      />
+                    </label>
+                    <label className="vm-field">
+                      Extra context frames
+                      <input
+                        aria-label="AI extra context"
+                        type="number"
+                        min={0}
+                        max={32768}
+                        value={draft.extraContextFrames}
+                        onChange={(e) => update("extraContextFrames", Number(e.target.value))}
+                      />
+                    </label>
+                    <label className="vm-field">
+                      CPU thread limit
+                      <input
+                        aria-label="AI CPU threads"
+                        type="number"
+                        min={1}
+                        max={8}
+                        value={draft.cpuThreads}
+                        onChange={(e) => update("cpuThreads", Number(e.target.value))}
+                      />
+                    </label>
+                    <label className="vm-field">
+                      Silence threshold
+                      <input
+                        aria-label="AI silence threshold"
+                        type="number"
+                        min={0}
+                        max={0.1}
+                        step={0.00001}
+                        value={draft.noiseThreshold}
+                        onChange={(e) => update("noiseThreshold", Number(e.target.value))}
+                      />
+                    </label>
+                  </div>
+                  <ToggleSwitch
+                    label="Allow CPU fallback for unavailable CUDA"
+                    checked={draft.allowCpuFallback}
+                    onChange={(v) => update("allowCpuFallback", v)}
+                  />
+                  <ToggleSwitch
+                    label="Allow Classic DSP on AI failure"
+                    description="Your Classic voice may be heard if AI stops responding. Leave off to keep the voice muted."
+                    checked={draft.failurePolicy === "classicDsp"}
+                    onChange={(v) => update("failurePolicy", v ? "classicDsp" : "mute")}
+                  />
+                  <p className="vm-hint">
+                    Index ratio remains 0 without a validated index. Formant shaping is available in
+                    Classic DSP. Latency/quality presets need measured model benchmarks.
+                  </p>
+                </details>
+                <Button disabled={!dirty} onClick={() => void save()}>
+                  Apply AI settings
+                </Button>
+              </fieldset>
+            ) : (
               <p className="vm-hint">
-                RVC import, F0 extraction, index ratio, chunk size, crossfade, model downloads and
-                CPU/GPU selection require a compatible runtime. No conversion settings are applied
-                in this build.
+                Connect the desktop backend to load editable AI preferences.
               </p>
-            </details>
-            <Button disabled variant="primary">
-              Start AI conversion — unavailable
-            </Button>
+            )}
           </Card>
         </div>
         <aside className="vm-lab-aside">
@@ -244,57 +428,188 @@ export function AIVoiceStudio() {
             <div className="vm-section-heading">
               <h2>
                 <Cpu size={17} />
-                Runtime status
+                Managed AI runtime
               </h2>
+              <Badge tone={status?.runtimeInstalled ? "success" : "warning"}>
+                {!status ? "Unavailable" : status.runtimeInstalled ? "Installed" : "Not installed"}
+              </Badge>
+            </div>
+            <p className="vm-hint">
+              Optional portable runtime. No separate browser, system Python or pip setup is needed
+              after installing a compatible package.
+            </p>
+            <div className="vm-actions">
+              <Button disabled={!status || active || ai.busy} onClick={() => setRuntimeOpen(true)}>
+                <FolderOpen size={15} />
+                Install local package
+              </Button>
+              {status?.runtimeInstalled && (
+                <Button disabled={active || ai.busy} onClick={() => void ai.rollback()}>
+                  Rollback runtime
+                </Button>
+              )}
+            </div>
+            {status?.install.installing && (
+              <div role="status" className="vm-hint">
+                Verified files: {status.install.copiedFiles} / {status.install.totalFiles}
+                <Button onClick={() => void ai.cancelInstall()}>Cancel install</Button>
+              </div>
+            )}
+            <p className="vm-hint">
+              No approved online runtime/model catalog ships with this build. Large assets are never
+              downloaded automatically.
+            </p>
+          </Card>
+          <Card>
+            <div className="vm-section-heading">
+              <h2>Runtime telemetry</h2>
             </div>
             <dl className="vm-runtime-list">
               <div>
-                <dt>Engine</dt>
-                <dd>{busy ? "Checking…" : "Native runtime deferred"}</dd>
+                <dt>Loaded provider</dt>
+                <dd>{status?.provider ?? "Not loaded"}</dd>
               </div>
               <div>
-                <dt>GPU provider</dt>
-                <dd>{provider.gpuVerified ? "Verified" : "Not verified"}</dd>
+                <dt>Model load</dt>
+                <dd>{time(status?.loadingMs)}</dd>
               </div>
               <div>
-                <dt>Active model</dt>
-                <dd>{provider.activeModelId ?? "None"}</dd>
+                <dt>Conversion</dt>
+                <dd>{time(status?.conversionMs)}</dd>
               </div>
               <div>
-                <dt>Inference latency</dt>
-                <dd>Unavailable</dd>
+                <dt>IPC round trip</dt>
+                <dd>{time(status?.roundTripMs)}</dd>
               </div>
               <div>
-                <dt>DSP fallback</dt>
-                <dd>{provider.fallbackActive ? "Available" : "Inactive"}</dd>
+                <dt>Completed chunks</dt>
+                <dd>{status?.completedChunks ?? "—"}</dd>
+              </div>
+              <div>
+                <dt>Input / output queue</dt>
+                <dd>
+                  {status
+                    ? `${status.queuedInputSamples} / ${status.queuedOutputSamples} samples`
+                    : "Unavailable"}
+                </dd>
+              </div>
+              <div>
+                <dt>Dropped input / output</dt>
+                <dd>
+                  {status
+                    ? `${status.droppedInputSamples} / ${status.droppedOutputSamples}`
+                    : "Unavailable"}
+                </dd>
+              </div>
+              <div>
+                <dt>Missing output</dt>
+                <dd>{status ? `${status.missingOutputSamples} samples` : "Unavailable"}</dd>
+              </div>
+              <div>
+                <dt>Restarts</dt>
+                <dd>{status?.restarts ?? "—"}</dd>
               </div>
             </dl>
-            <p className="vm-hint">{provider.message}</p>
+            <p className="vm-hint">
+              Conversion and IPC timings are measured by the active process. They are not full
+              microphone-to-call latency. GPU/VRAM usage is not estimated.
+            </p>
           </Card>
           <Card>
             <div className="vm-section-heading">
               <h2>
                 <ShieldCheck size={17} />
-                Model integrity
+                Private by design
               </h2>
             </div>
             <p className="vm-hint">
-              Versioned manifests, license validation and SHA-256 checks protect your local model
-              library.
+              AI receives PCM through private process pipes. No local web port, remote audio upload,
+              automatic recording or voice-model download is opened.
             </p>
-          </Card>
-          <Card>
-            <h2 className="font-semibold">Formats & compatibility</h2>
-            <p className="vm-hint">ONNX: verified local model storage.</p>
-            <p className="vm-hint">RVC / w-okada: no connected native provider in this build.</p>
           </Card>
         </aside>
       </div>
-      {message && (
+      {(message || ai.error || status?.message || status?.install.message) && (
         <p role="status" className="vm-notice">
-          {message}
+          {ai.error || status?.message || status?.install.message || message}
         </p>
       )}
+      <StudioDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        title="Import a licensed voice model"
+      >
+        <p className="vm-hint">
+          Choose a model manifest and matching ONNX file. Checkpoint/pickle voice models and
+          archives are unsupported.
+        </p>
+        <ToggleSwitch
+          label="I have permission to use this voice and accept its model license"
+          checked={rights}
+          onChange={setRights}
+        />
+        <div className="vm-actions mt-5">
+          <Button variant="primary" disabled={!rights || busy} onClick={() => void importModel()}>
+            <FileUp size={15} />
+            {busy ? "Importing…" : "Choose manifest & ONNX"}
+          </Button>
+        </div>
+      </StudioDialog>
+      <StudioDialog
+        open={runtimeOpen}
+        onOpenChange={setRuntimeOpen}
+        title="Install a trusted runtime package"
+      >
+        <p className="vm-hint">
+          Select an unpacked VoiceMorph runtime package from a publisher you trust. It includes
+          executable Python, libraries and licensed embedding assets. The publisher's manifest hash
+          must come from a trusted source.
+        </p>
+        <label className="vm-field">
+          Package directory
+          <input aria-label="Runtime package directory" readOnly value={runtimePath} />
+        </label>
+        <Button
+          disabled={ai.busy}
+          onClick={() =>
+            void open({ directory: true, multiple: false })
+              .then((path) => {
+                if (typeof path === "string") setRuntimePath(path);
+              })
+              .catch((error) => setMessage(String(error)))
+          }
+        >
+          <FolderOpen size={16} />
+          Choose package
+        </Button>
+        <label className="vm-field mt-4">
+          Publisher manifest SHA-256
+          <input
+            aria-label="Publisher manifest SHA-256"
+            value={digest}
+            onChange={(e) => setDigest(e.target.value)}
+            maxLength={64}
+            spellCheck={false}
+          />
+        </label>
+        <ToggleSwitch
+          label="I trust the runtime publisher and its executable contents"
+          checked={trusted}
+          onChange={setTrusted}
+        />
+        <div className="vm-actions mt-5">
+          <Button
+            variant="primary"
+            disabled={!trusted || !runtimePath || !/^[a-f0-9]{64}$/i.test(digest.trim()) || ai.busy}
+            onClick={() => void install()}
+          >
+            Verify & install
+          </Button>
+          {status?.install.installing && (
+            <Button onClick={() => void ai.cancelInstall()}>Cancel installation</Button>
+          )}
+        </div>
+      </StudioDialog>
     </section>
   );
 }

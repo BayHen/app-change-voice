@@ -705,6 +705,26 @@ button:disabled {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
+.vm-ai-model-choice {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border-radius: 8px;
+  padding: 5px;
+  border: 1px solid transparent;
+}
+.vm-ai-model-choice strong {
+  display: block;
+  margin-top: 12px;
+}
+.vm-ai-model-choice[aria-pressed="true"] {
+  border-color: var(--primary);
+  background: #9360ff12;
+}
+.vm-ai-controls:disabled,
+fieldset:disabled {
+  opacity: 0.65;
+}
 .vm-ai-model-grid .vm-section-heading {
   margin-top: 15px;
 }

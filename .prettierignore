@@ -5,5 +5,7 @@ src-tauri/target
 src-tauri/gen
 package-lock.json
 .agents/
+.references/
+.ai-runtime-build/
 docs/screenshots/redesign/after/layout-report.json
 docs/screenshots/redesign/after/performance.json
