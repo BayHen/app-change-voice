@@ -72,6 +72,9 @@ const updaterMocks = vi.hoisted(() => ({
   relaunch: vi.fn(),
 }));
 const aiMocks = vi.hoisted(() => ({
+  recommended: vi.fn(),
+  official: vi.fn(),
+  cancel: vi.fn(),
   engine: vi.fn(),
   startConversion: vi.fn(),
   stopConversion: vi.fn(),
@@ -228,12 +231,15 @@ vi.mock("../src/services/tauri", () => ({
   importAllPresets: vi.fn(),
   getAIModels: aiMocks.models,
   getAIEngineStatus: aiMocks.engine,
+  detectAIHardware: vi.fn(),
+  installRecommendedAIRuntime: aiMocks.recommended,
+  installOfficialAIVoice: aiMocks.official,
   startAIConversion: aiMocks.startConversion,
   stopAIConversion: aiMocks.stopConversion,
   selectClassicVoice: aiMocks.classic,
   setAIEngineConfig: aiMocks.saveConfig,
   installAIRuntime: vi.fn(),
-  cancelAIRuntimeInstall: vi.fn(),
+  cancelAIRuntimeInstall: aiMocks.cancel,
   rollbackAIRuntime: vi.fn(),
   getAIProviderStatus: aiMocks.status,
   addAIModel: aiMocks.add,
@@ -242,6 +248,57 @@ vi.mock("../src/services/tauri", () => ({
 }));
 
 describe("desktop navigation", () => {
+  it("downloads the runtime only after an explicit user action", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "AI Voice Studio" }));
+    const install = await screen.findByRole("button", { name: "Install recommended runtime" });
+    expect(aiMocks.recommended).not.toHaveBeenCalled();
+    await user.click(install);
+    expect(aiMocks.recommended).toHaveBeenCalledOnce();
+    expect(aiMocks.startConversion).not.toHaveBeenCalled();
+    expect(runtimeMocks.start).not.toHaveBeenCalled();
+  });
+  it("shows real download fields and exposes cancellation", async () => {
+    const status = await aiMocks.engine();
+    aiMocks.engine.mockResolvedValue({
+      ...status,
+      install: { ...status.install, installing: true },
+      download: {
+        phase: "downloading",
+        component: "Official component",
+        completedBytes: 104857600,
+        totalBytes: 209715200,
+        completedComponents: 1,
+        totalComponents: 2,
+      },
+    });
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "AI Voice Studio" }));
+    const progress = await screen.findByRole("progressbar", { name: "AI runtime download" });
+    expect(progress).toHaveAttribute("value", "104857600");
+    expect(progress).toHaveAttribute("max", "209715200");
+    await user.click(screen.getByRole("button", { name: "Cancel install" }));
+    expect(aiMocks.cancel).toHaveBeenCalledOnce();
+  });
+  it("requires original-owner terms before preparing the official voice", async () => {
+    const status = await aiMocks.engine();
+    aiMocks.engine.mockResolvedValue({ ...status, runtimeInstalled: true });
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "AI Voice Studio" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Get official Tsukuyomi-chan voice" }),
+    );
+    const download = screen.getByRole("button", { name: "Download & prepare official voice" });
+    expect(download).toBeDisabled();
+    expect(aiMocks.official).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("checkbox", { name: /I have read the owner/ }));
+    await user.click(download);
+    expect(aiMocks.official).toHaveBeenCalledWith(true);
+    expect(aiMocks.startConversion).not.toHaveBeenCalled();
+  });
   it("keeps AI opt-in, blocks loading without runtime and saves explicit failure policy", async () => {
     const user = userEvent.setup();
     render(<App />);
@@ -270,6 +327,11 @@ describe("desktop navigation", () => {
       state: "notInstalled",
       mode: "classicDsp",
       classicFallbackActive: false,
+      hardware: null,
+      runtimeVersion: null,
+      recommendedRuntimeVersion: "test-recipe",
+      recommendedDownloadBytes: 4184518137,
+      download: null,
       runtimeInstalled: false,
       modelId: null,
       provider: null,
@@ -307,6 +369,13 @@ describe("desktop navigation", () => {
       },
     };
     aiMocks.engine.mockReset().mockResolvedValue(engine);
+    aiMocks.recommended.mockReset().mockResolvedValue({
+      ...engine,
+      runtimeInstalled: true,
+      runtimeVersion: engine.recommendedRuntimeVersion,
+    });
+    aiMocks.official.mockReset().mockResolvedValue({ ...engine, runtimeInstalled: true });
+    aiMocks.cancel.mockReset().mockResolvedValue(undefined);
     aiMocks.startConversion.mockReset();
     aiMocks.stopConversion
       .mockReset()

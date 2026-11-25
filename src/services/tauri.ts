@@ -222,6 +222,11 @@ export const removeAIModel = (id: string) => invoke<void>("remove_ai_model", { i
 export const setAIModelEnabled = (id: string, enabled: boolean) =>
   invoke<AIProviderStatus>("set_ai_model_enabled", { id, enabled });
 export const getAIEngineStatus = () => invoke<AIEngineStatus>("get_ai_engine_status");
+export const detectAIHardware = () => invoke<AIEngineStatus>("detect_ai_hardware");
+export const installRecommendedAIRuntime = () =>
+  invoke<AIEngineStatus>("install_recommended_ai_runtime");
+export const installOfficialAIVoice = (rightsConfirmed: boolean) =>
+  invoke<AIEngineStatus>("install_official_ai_voice", { rightsConfirmed });
 export const setAIEngineConfig = (config: AIEngineConfig) =>
   invoke<AIEngineStatus>("set_ai_engine_config", { config });
 export const startAIConversion = (modelId: string) =>

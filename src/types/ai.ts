@@ -17,6 +17,8 @@ export interface AIModelStatus {
   runtimeAvailable: boolean;
   statusMessage: string;
   consentConfirmed?: boolean;
+  licenseUrl?: string | null;
+  attribution?: string | null;
 }
 
 export interface AIEngineConfig {
@@ -35,6 +37,28 @@ export interface AIEngineStatus {
   state: string;
   mode: "classicDsp" | "wOkada";
   classicFallbackActive: boolean;
+  runtimeVersion: string | null;
+  recommendedRuntimeVersion: string;
+  recommendedDownloadBytes: number;
+  download: {
+    phase: string;
+    component: string;
+    completedBytes: number;
+    totalBytes: number;
+    completedComponents: number;
+    totalComponents: number;
+  } | null;
+  hardware: {
+    pythonVersion: string;
+    torchVersion: string;
+    onnxRuntimeVersion: string;
+    providers: string[];
+    cudaDevices: string[];
+    gpuMemoryBytes: number[];
+    cpuThreads: number;
+    torchCudaAvailable: boolean;
+    torchCudaVersion: string | null;
+  } | null;
   runtimeInstalled: boolean;
   modelId: string | null;
   provider: string | null;

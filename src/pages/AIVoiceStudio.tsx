@@ -32,6 +32,8 @@ export function AIVoiceStudio() {
     [message, setMessage] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false),
     [rights, setRights] = useState(false);
+  const [officialOpen, setOfficialOpen] = useState(false),
+    [officialRights, setOfficialRights] = useState(false);
   const [runtimeOpen, setRuntimeOpen] = useState(false),
     [runtimePath, setRuntimePath] = useState("");
   const [digest, setDigest] = useState(""),
@@ -144,9 +146,11 @@ export function AIVoiceStudio() {
               : status.mode === "wOkada"
                 ? status.state === "converting"
                   ? "AI conversion active"
-                  : status.classicFallbackActive
-                    ? "Classic DSP fallback active"
-                    : "AI selected. Your voice stays muted until ready."
+                  : status.state === "ready"
+                    ? "AI model ready. Waiting for audio."
+                    : status.classicFallbackActive
+                      ? "Classic DSP fallback active"
+                      : "AI selected. Your voice stays muted until ready."
                 : "Classic DSP is your current voice."}
           </h2>
           <p>Capture, monitoring, soundboard mixing and virtual output stay in VoiceMorph.</p>
@@ -200,6 +204,22 @@ export function AIVoiceStudio() {
                 <RefreshCw size={16} />
               </Button>
             </div>
+            <div className="vm-actions">
+              <Button
+                disabled={
+                  !status?.runtimeInstalled ||
+                  ai.busy ||
+                  active ||
+                  models.some((m) => m.id === "tsukuyomi-official-normal1")
+                }
+                onClick={() => {
+                  setOfficialRights(false);
+                  setOfficialOpen(true);
+                }}
+              >
+                Get official Tsukuyomi-chan voice
+              </Button>
+            </div>
             {models.length === 0 ? (
               <EmptyState
                 title="Choose a voice you have permission to use"
@@ -227,6 +247,17 @@ export function AIVoiceStudio() {
                     <Badge tone={model.integrityVerified ? "success" : "warning"}>
                       {model.integrityVerified ? "Checksum verified" : "Integrity failure"}
                     </Badge>
+                    {model.attribution && <p className="vm-hint">{model.attribution}</p>}
+                    {model.licenseUrl && (
+                      <a
+                        className="vm-hint"
+                        href={model.licenseUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Voice/model terms
+                      </a>
+                    )}
                     <p className="vm-hint">
                       {model.backend === "w-okada-rvc"
                         ? model.statusMessage
@@ -435,10 +466,32 @@ export function AIVoiceStudio() {
               </Badge>
             </div>
             <p className="vm-hint">
-              Optional portable runtime. No separate browser, system Python or pip setup is needed
-              after installing a compatible package.
+              Install Python, CUDA-compatible inference dependencies and HuBERT together. No
+              terminal, system Python, driver installation or separate browser is needed.
+            </p>
+            <p className="vm-hint">
+              Download:{" "}
+              {status
+                ? (status.recommendedDownloadBytes / 1024 ** 3).toFixed(2) + " GiB"
+                : "Unavailable"}
+              . Requires 13 GiB free for installation/recovery. Voice models are separate.
+            </p>
+            <p className="vm-hint">
+              This validated compatibility runtime uses Python 3.10, which is end of support. A
+              supported baseline must be qualified before general production redistribution.
             </p>
             <div className="vm-actions">
+              <Button
+                variant="primary"
+                disabled={!status || active || ai.busy || status.install.installing}
+                onClick={() => void ai.installRecommended()}
+              >
+                {status?.runtimeInstalled
+                  ? status.runtimeVersion === status.recommendedRuntimeVersion
+                    ? "Repair recommended runtime"
+                    : "Update recommended runtime"
+                  : "Install recommended runtime"}
+              </Button>
               <Button disabled={!status || active || ai.busy} onClick={() => setRuntimeOpen(true)}>
                 <FolderOpen size={15} />
                 Install local package
@@ -451,13 +504,36 @@ export function AIVoiceStudio() {
             </div>
             {status?.install.installing && (
               <div role="status" className="vm-hint">
-                Verified files: {status.install.copiedFiles} / {status.install.totalFiles}
+                {status.download ? (
+                  <>
+                    <p>
+                      {status.download.phase}: {status.download.component}
+                    </p>
+                    <progress
+                      className="vm-download-progress"
+                      aria-label="AI runtime download"
+                      max={Math.max(1, status.download.totalBytes)}
+                      value={Math.min(status.download.completedBytes, status.download.totalBytes)}
+                    />
+                    <p>
+                      {(status.download.completedBytes / 1024 ** 3).toFixed(2)} /{" "}
+                      {(status.download.totalBytes / 1024 ** 3).toFixed(2)} GiB ·{" "}
+                      {status.download.completedComponents} / {status.download.totalComponents}{" "}
+                      items
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    Verified files: {status.install.copiedFiles} / {status.install.totalFiles}
+                  </>
+                )}
                 <Button onClick={() => void ai.cancelInstall()}>Cancel install</Button>
               </div>
             )}
             <p className="vm-hint">
-              No approved online runtime/model catalog ships with this build. Large assets are never
-              downloaded automatically.
+              {status?.runtimeVersion ? `Installed: ${status.runtimeVersion}. ` : ""}
+              Pinned official sources and SHA-256 verification. Retry resumes cached downloads; an
+              interrupted update keeps your previous runtime. Downloads start only when requested.
             </p>
           </Card>
           <Card>
@@ -518,6 +594,52 @@ export function AIVoiceStudio() {
           <Card>
             <div className="vm-section-heading">
               <h2>
+                <Cpu size={17} /> Hardware & dependencies
+              </h2>
+            </div>
+            <Button
+              disabled={!status?.runtimeInstalled || ai.busy || active}
+              onClick={() => void ai.detectHardware()}
+            >
+              {ai.busy ? "Checking runtime…" : "Detect CPU / GPU"}
+            </Button>
+            {status?.hardware ? (
+              <dl className="vm-runtime-list">
+                <div>
+                  <dt>CPU logical threads</dt>
+                  <dd>{status.hardware.cpuThreads}</dd>
+                </div>
+                <div>
+                  <dt>CUDA devices</dt>
+                  <dd>{status.hardware.cudaDevices.join(", ") || "None detected"}</dd>
+                </div>
+                <div>
+                  <dt>Available providers</dt>
+                  <dd>{status.hardware.providers.join(", ")}</dd>
+                </div>
+                <div>
+                  <dt>Python</dt>
+                  <dd>{status.hardware.pythonVersion}</dd>
+                </div>
+                <div>
+                  <dt>PyTorch</dt>
+                  <dd>{status.hardware.torchVersion}</dd>
+                </div>
+                <div>
+                  <dt>ONNX Runtime</dt>
+                  <dd>{status.hardware.onnxRuntimeVersion}</dd>
+                </div>
+              </dl>
+            ) : (
+              <p className="vm-hint">
+                Install a runtime, then check its actual CPU / GPU support. Detection does not
+                benchmark a voice model.
+              </p>
+            )}
+          </Card>
+          <Card>
+            <div className="vm-section-heading">
+              <h2>
                 <ShieldCheck size={17} />
                 Private by design
               </h2>
@@ -534,6 +656,55 @@ export function AIVoiceStudio() {
           {ai.error || status?.message || status?.install.message || message}
         </p>
       )}
+      <StudioDialog
+        open={officialOpen}
+        onOpenChange={setOfficialOpen}
+        title="Tsukuyomi-chan official voice"
+      >
+        <p className="vm-hint">
+          CV. Rei Yumesaki. Download the original owner's 244 MiB archive, verify it, and convert
+          Normal 1 to ONNX locally. This voice has custom terms, not an MIT model license.
+        </p>
+        <p className="vm-hint">
+          Credit the original input voice and the Tsukuyomi-chan official RVC model when required.
+          The owner restricts political/religious advocacy, attacks on people or organizations, and
+          redistribution/use as reusable voice materials. Read the complete terms for your intended
+          use.
+        </p>
+        <p>
+          <a
+            href="https://tyc.rei-yumesaki.net/work/software/rvc/terms/"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Read the owner's complete model terms
+          </a>
+        </p>
+        <label className="vm-check">
+          <input
+            type="checkbox"
+            checked={officialRights}
+            onChange={(e) => setOfficialRights(e.target.checked)}
+          />{" "}
+          I have read the owner’s terms and will use this voice within those rights.
+        </label>
+        <Button
+          variant="primary"
+          disabled={!officialRights || ai.busy}
+          onClick={() => {
+            setOfficialOpen(false);
+            void ai.installOfficialVoice(officialRights).then(async (result) => {
+              if (result) {
+                setOfficialOpen(false);
+                await refresh();
+                setSelectedId("tsukuyomi-official-normal1");
+              }
+            });
+          }}
+        >
+          Download & prepare official voice
+        </Button>
+      </StudioDialog>
       <StudioDialog
         open={importOpen}
         onOpenChange={setImportOpen}

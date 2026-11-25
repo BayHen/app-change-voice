@@ -47,6 +47,10 @@ export function useAIEngine() {
     busy,
     error: error ?? bridgeError,
     refresh,
+    detectHardware: () => run(api.detectAIHardware),
+    installRecommended: () => run(api.installRecommendedAIRuntime),
+    installOfficialVoice: (rightsConfirmed: boolean) =>
+      run(() => api.installOfficialAIVoice(rightsConfirmed)),
     start: (modelId: string) => run(() => api.startAIConversion(modelId)),
     stop: () => run(api.stopAIConversion),
     classic: () => run(api.selectClassicVoice),

@@ -1002,3 +1002,12 @@ fieldset:disabled {
     transition: none !important;
   }
 }
+.vm-download-progress {
+  width: 100%;
+  height: 8px;
+  accent-color: var(--primary);
+}
+.vm-runtime-list dd,
+.vm-metric-list dd {
+  overflow-wrap: anywhere;
+}
