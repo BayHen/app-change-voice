@@ -6,7 +6,7 @@ const defaults: NoiseSettings = {
   enabled: false,
   bypassed: false,
   suppressionStrength: 0.8,
-  gateEnabled: true,
+  gateEnabled: false,
   gateThresholdDbfs: -52,
   limiterEnabled: true,
   limiterCeilingDbfs: -1,

@@ -10,6 +10,7 @@ export function usePresets() {
   const mounted = useRef(true);
   const [presets, setPresets] = useState<VoicePresetSummary[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [lastCreatedId, setLastCreatedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [applyingId, setApplyingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -94,13 +95,18 @@ export function usePresets() {
   return {
     presets,
     activeId,
+    lastCreatedId,
     loading,
     applyingId,
     error,
     notice,
     apply,
     reset,
-    create: (p: VoicePresetSummary) => mutate(() => api.createUserPreset(p), "Preset created"),
+    create: (p: VoicePresetSummary) =>
+      mutate(async () => {
+        const created = await api.createUserPreset(p);
+        if (mounted.current) setLastCreatedId(created.id);
+      }, "Preset created"),
     update: (p: VoicePresetSummary) => mutate(() => api.updateUserPreset(p), "Preset saved"),
     duplicate: (id: string) => mutate(() => api.duplicatePreset(id), "Preset duplicated"),
     remove: (id: string) => mutate(() => api.deleteUserPreset(id), "Preset deleted"),

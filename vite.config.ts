@@ -2,18 +2,16 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import process from "node:process";
+import { randomUUID } from "node:crypto";
 const host = process.env.TAURI_DEV_HOST;
-const cacheOwner = Buffer.from(
-  [process.env.USERDOMAIN, process.env.USERNAME || process.env.USER || "default"]
-    .join("/")
-    .toLowerCase(),
-).toString("hex");
+const cacheSession = `${process.pid}-${randomUUID()}`;
 
 // https://vite.dev/config/
 export default defineConfig(() => ({
   plugins: [react(), tailwindcss()],
-  // Keep Windows accounts from attempting to replace each other's Vite cache.
-  cacheDir: `.vite-cache/${cacheOwner}`,
+  // Sandboxed processes can inherit another account's USERNAME/USERDOMAIN.
+  // A fresh session avoids deleting cached files owned or locked by another process.
+  cacheDir: `.vite-cache/session-${cacheSession}`,
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //

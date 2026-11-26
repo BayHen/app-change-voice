@@ -1,12 +1,6 @@
 import { useEffect, useState } from "react";
 import { open, save } from "@tauri-apps/plugin-dialog";
-import {
-  ArrowCounterClockwise,
-  CloudSlash,
-  DownloadSimple,
-  UploadSimple,
-  Warning,
-} from "@phosphor-icons/react";
+import { ArrowCounterClockwise, CloudSlash, DownloadSimple, UploadSimple, Warning } from "./icons";
 import * as api from "../services/tauri";
 import type { BackupPreview, RestoreMode, SyncStatus } from "../types/backup";
 
@@ -142,7 +136,7 @@ export function BackupSettings() {
           aria-modal="true"
           className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4"
         >
-          <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#12161b] p-6">
+          <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[var(--surface)] p-6">
             <h3 className="font-semibold">Backup preview</h3>
             <dl className="mt-4 grid grid-cols-3 gap-3 text-center">
               <Count label="Presets" value={preview.presetCount} />

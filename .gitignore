@@ -9,6 +9,8 @@ lerna-debug.log*
 
 node_modules
 .vite-cache/
+.references/
+.ai-runtime-build/
 dist
 dist-ssr
 coverage

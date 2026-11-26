@@ -1,4 +1,4 @@
-import { FloppyDisk, Headphones, Info, ArrowCounterClockwise } from "@phosphor-icons/react";
+import { FloppyDisk, Headphones, Info, ArrowCounterClockwise } from "../components/icons";
 import { AppHeader } from "../components/AppHeader";
 import { StatusIndicator } from "../components/StatusIndicator";
 import { ToggleSwitch } from "../components/ToggleSwitch";
@@ -12,9 +12,9 @@ export function VoiceStudio() {
   const values: VoiceControlValues = {
     pitch: effects.parameters.pitchSemitones,
     formant: effects.parameters.formantSemitones,
-    bass: 0,
-    treble: 0,
-    gain: 0,
+    bass: effects.parameters.bassDb,
+    treble: effects.parameters.trebleDb,
+    gain: effects.parameters.makeupGainDb,
   };
   const processing =
     runtime.status.state === "running" &&
@@ -26,6 +26,9 @@ export function VoiceStudio() {
       ...effects.parameters,
       pitchSemitones: next.pitch,
       formantSemitones: next.formant,
+      bassDb: next.bass,
+      trebleDb: next.treble,
+      makeupGainDb: next.gain,
     });
   };
 
@@ -60,7 +63,7 @@ export function VoiceStudio() {
       ) : null}
 
       <div className="mt-6 grid gap-5 xl:grid-cols-[1fr_300px]">
-        <section className="rounded-2xl border border-white/[0.08] bg-[#0f1216] p-5 sm:p-7">
+        <section className="rounded-2xl border border-white/[0.08] bg-[var(--surface)] p-5 sm:p-7">
           <div className="flex items-start gap-3 border-b border-white/[0.07] pb-5">
             <Info size={18} className="mt-0.5 shrink-0 text-cyan-300" aria-hidden="true" />
             <p className="text-xs leading-5 text-zinc-500">
@@ -73,7 +76,7 @@ export function VoiceStudio() {
           </div>
         </section>
 
-        <aside className="h-fit rounded-2xl border border-white/[0.08] bg-[#0f1216] p-5">
+        <aside className="h-fit rounded-2xl border border-white/[0.08] bg-[var(--surface)] p-5">
           <h2 className="text-sm font-semibold text-zinc-200">Processing</h2>
           <div className="mt-5 space-y-5">
             <ToggleSwitch
@@ -111,7 +114,8 @@ export function VoiceStudio() {
             <ArrowCounterClockwise size={16} aria-hidden="true" /> Reset defaults
           </button>
           <div className="mt-4 flex items-center gap-2 rounded-xl border border-amber-300/10 bg-amber-300/[0.04] p-3 text-xs text-amber-100/60">
-            <Headphones size={16} aria-hidden="true" /> Monitoring is controlled on Dashboard.
+            <Headphones size={16} aria-hidden="true" /> Monitoring is controlled in the audio status
+            bar.
           </div>
           <button
             type="button"

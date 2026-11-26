@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { StudioDialog } from "./ui";
 import { previewPreset } from "../services/tauri";
 import type { PresetCategory, VoicePresetSummary } from "../types/preset";
 
@@ -9,7 +10,7 @@ interface Props {
   onDuplicate: (id: string) => Promise<boolean>;
   onClose: () => void;
 }
-const categories: PresetCategory[] = ["Natural", "Character", "Creative", "Utility"];
+const categories: PresetCategory[] = ["Natural", "Character", "Creative", "Utility", "Female"];
 export function PresetEditor({ preset, mode, onSave, onDuplicate, onClose }: Props) {
   const [draft, setDraft] = useState(preset);
   const [error, setError] = useState<string | null>(null);
@@ -34,18 +35,16 @@ export function PresetEditor({ preset, mode, onSave, onDuplicate, onClose }: Pro
     }
   }
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="preset-editor-title"
-      className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4"
+    <StudioDialog
+      open
+      onOpenChange={(open) => {
+        if (!open && !saving) onClose();
+      }}
+      title={mode === "create" ? "Create custom preset" : "Edit custom preset"}
     >
-      <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-white/10 bg-[#101318] p-6 shadow-2xl">
+      <div>
         <div className="flex items-start justify-between">
           <div>
-            <h2 id="preset-editor-title" className="text-lg font-semibold text-zinc-100">
-              {mode === "create" ? "Create custom preset" : "Edit custom preset"}
-            </h2>
             <p className="mt-1 text-xs text-zinc-500">Schema v2 · local JSON · DSP parameters</p>
           </div>
           <button type="button" onClick={onClose} className="text-sm text-zinc-500">
@@ -229,6 +228,6 @@ export function PresetEditor({ preset, mode, onSave, onDuplicate, onClose }: Pro
           </button>
         </div>
       </div>
-    </div>
+    </StudioDialog>
   );
 }

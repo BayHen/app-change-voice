@@ -1,4 +1,4 @@
-import { Check } from "@phosphor-icons/react";
+import { Check } from "./icons";
 import type { VoicePresetSummary } from "../types/preset";
 
 interface EffectCardProps {
@@ -19,7 +19,7 @@ export function EffectCard({ preset, selected, active, onSelect }: EffectCardPro
           ? "border-cyan-300/45 bg-cyan-300/[0.07]"
           : selected
             ? "border-white/20 bg-white/[0.04]"
-            : "border-white/[0.08] bg-[#101318] hover:border-white/[0.16] hover:bg-[#12161b]"
+            : "border-white/[0.08] bg-[var(--surface)] hover:border-white/[0.16] hover:bg-[var(--surface)]"
       }`}
     >
       <div className="flex items-start justify-between gap-3">

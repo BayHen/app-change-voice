@@ -1,6 +1,51 @@
 @import "tailwindcss";
 
+@theme {
+  --color-zinc-100: #f5f5fa;
+  --color-zinc-200: #e2e3f0;
+  --color-zinc-300: #c5c8df;
+  --color-zinc-400: #b6bad2;
+  --color-zinc-500: #a8adc6;
+  --color-zinc-600: #969dbb;
+  --color-zinc-700: #8990ac;
+  --color-cyan-100: #eee5ff;
+  --color-cyan-200: #d4baff;
+  --color-cyan-300: #a77aff;
+  --color-cyan-400: #b695ff;
+}
+
 :root {
+  --background: #10121f;
+  --sidebar: #121423;
+  --surface: #191d2e;
+  --elevated: #22263b;
+  --control: #30354e;
+  --border: #30354a;
+  --primary: #9360ff;
+  --primary-hover: #a77aff;
+  --foreground: #f5f5fa;
+  --muted: #a8adc6;
+  --success: #22df8c;
+  --warning: #f5b942;
+  --error: #f04455;
+  --info: #22b5ff;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-body: 13px;
+  --text-title: 28px;
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --control-height: 36px;
+  --icon-size: 18px;
+  --radius-control: 7px;
+  --radius-dialog: 14px;
+  --shadow-dialog: 0 22px 100px #0007;
+  --glow-selected: 0 0 18px #8943ff15;
+  --gradient-primary: linear-gradient(110deg, #8550e8, #8f50e9);
+  --radius: 12px;
+  --space: 8px;
+  --motion: 160ms;
   font-family:
     "Segoe UI Variable",
     "Segoe UI",
@@ -13,7 +58,7 @@
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-  background: #080a0d;
+  background: var(--background);
 }
 
 * {
@@ -27,8 +72,8 @@ body,
   margin: 0;
 }
 
-button:focus-visible {
-  outline: 2px solid #67e8f9;
+:focus-visible {
+  outline: 2px solid #b89aff;
   outline-offset: 2px;
 }
 
@@ -47,7 +92,7 @@ button:not(:disabled) {
   appearance: none;
   border-radius: 999px;
   background: rgb(255 255 255 / 8%);
-  accent-color: #67e8f9;
+  accent-color: var(--primary);
 }
 
 .audio-range::-webkit-slider-thumb {

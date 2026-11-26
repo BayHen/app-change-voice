@@ -43,7 +43,7 @@ export interface DefaultDevices {
   outputId: string | null;
 }
 
-export type MonitoringState = "stopped" | "running" | "paused";
+export type MonitoringState = "stopped" | "running" | "paused" | "faulted";
 
 export interface AudioMetrics {
   sampleRate: number;
@@ -53,6 +53,7 @@ export interface AudioMetrics {
   underrunCount: number;
   overflowCount: number;
   streamErrorCount: number;
+  lastStreamError?: string | null;
   averageProcessingMicros: number;
   estimatedLatencyMs: number;
   ringDepthFrames: number;
@@ -66,6 +67,11 @@ export interface AudioMetrics {
   outputClipping: boolean;
   streamFaulted: boolean;
   protectedClipCount: number;
+  captureCallbackMaxMicros?: number;
+  outputCallbackMaxMicros?: number;
+  playbackAlgorithmFrames?: number;
+  driftCorrectionPpm?: number;
+  discardedFrames?: number;
 }
 
 export interface VolumeSettings {
@@ -100,6 +106,9 @@ export interface RecordingStatus {
 }
 
 export interface EffectParameters {
+  voiceIntensity?: number;
+  deEssStrength?: number;
+  compressionRatio?: number;
   pitchSemitones: number;
   formantSemitones: number;
   enabled: boolean;
@@ -126,6 +135,42 @@ export interface AudioRuntimeStatus {
   outputChannels: number | null;
   dspLatencyFrames: number | null;
   metrics: AudioMetrics | null;
+  inputSampleFormat?: string | null;
+  outputSampleFormat?: string | null;
+  diagnosticRecording?: boolean;
+}
+
+export type AudioQualityProfile = "lowLatency" | "balanced" | "highQuality";
+export interface AudioQualitySettings {
+  profile: AudioQualityProfile;
+}
+export type AudioCaptureStage =
+  | "rawInput"
+  | "bypassReference"
+  | "inputGain"
+  | "classicDsp"
+  | "aiInference"
+  | "mixer"
+  | "monitor"
+  | "pcmBridge"
+  | "virtualOutput";
+export interface StageCaptureStatus {
+  running: boolean;
+  folder: string | null;
+  droppedSamples: number;
+  message: string | null;
+  files: Array<{
+    stage: AudioCaptureStage;
+    sampleRate: number;
+    channels: number;
+    sampleFormat: string;
+    frames: number;
+    peak: number;
+    rms: number;
+    clippedSamples: number;
+    nonFiniteSamples: number;
+    file: string;
+  }>;
 }
 
 export interface VirtualOutputDevice extends AudioDevice {

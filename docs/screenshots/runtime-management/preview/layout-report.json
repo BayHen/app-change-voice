@@ -1,0 +1,286 @@
+{
+  "environment": "Edge headless, real browser offline bridge; DPR is browser emulation, not Windows scaling",
+  "report": [
+    {
+      "page": "voice-lab",
+      "width": 900,
+      "height": 600,
+      "scrollWidth": 900,
+      "statusbar": true,
+      "header": "Voice Lab"
+    },
+    {
+      "page": "soundboard",
+      "width": 900,
+      "height": 600,
+      "scrollWidth": 900,
+      "statusbar": true,
+      "header": "Soundboard"
+    },
+    {
+      "page": "ai-studio",
+      "width": 900,
+      "height": 600,
+      "scrollWidth": 900,
+      "statusbar": true,
+      "header": "AI Voice Studio"
+    },
+    {
+      "page": "recordings",
+      "width": 900,
+      "height": 600,
+      "scrollWidth": 900,
+      "statusbar": true,
+      "header": "Recordings"
+    },
+    {
+      "page": "settings",
+      "width": 900,
+      "height": 600,
+      "scrollWidth": 900,
+      "statusbar": true,
+      "header": "Settings"
+    },
+    {
+      "page": "voice-lab",
+      "width": 1280,
+      "height": 720,
+      "scrollWidth": 1280,
+      "statusbar": true,
+      "header": "Voice Lab"
+    },
+    {
+      "page": "soundboard",
+      "width": 1280,
+      "height": 720,
+      "scrollWidth": 1280,
+      "statusbar": true,
+      "header": "Soundboard"
+    },
+    {
+      "page": "ai-studio",
+      "width": 1280,
+      "height": 720,
+      "scrollWidth": 1280,
+      "statusbar": true,
+      "header": "AI Voice Studio"
+    },
+    {
+      "page": "recordings",
+      "width": 1280,
+      "height": 720,
+      "scrollWidth": 1280,
+      "statusbar": true,
+      "header": "Recordings"
+    },
+    {
+      "page": "settings",
+      "width": 1280,
+      "height": 720,
+      "scrollWidth": 1280,
+      "statusbar": true,
+      "header": "Settings"
+    },
+    {
+      "page": "voice-lab",
+      "width": 1366,
+      "height": 768,
+      "scrollWidth": 1366,
+      "statusbar": true,
+      "header": "Voice Lab"
+    },
+    {
+      "page": "soundboard",
+      "width": 1366,
+      "height": 768,
+      "scrollWidth": 1366,
+      "statusbar": true,
+      "header": "Soundboard"
+    },
+    {
+      "page": "ai-studio",
+      "width": 1366,
+      "height": 768,
+      "scrollWidth": 1366,
+      "statusbar": true,
+      "header": "AI Voice Studio"
+    },
+    {
+      "page": "recordings",
+      "width": 1366,
+      "height": 768,
+      "scrollWidth": 1366,
+      "statusbar": true,
+      "header": "Recordings"
+    },
+    {
+      "page": "settings",
+      "width": 1366,
+      "height": 768,
+      "scrollWidth": 1366,
+      "statusbar": true,
+      "header": "Settings"
+    },
+    {
+      "page": "voice-lab",
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "statusbar": true,
+      "header": "Voice Lab"
+    },
+    {
+      "page": "soundboard",
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "statusbar": true,
+      "header": "Soundboard"
+    },
+    {
+      "page": "ai-studio",
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "statusbar": true,
+      "header": "AI Voice Studio"
+    },
+    {
+      "page": "recordings",
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "statusbar": true,
+      "header": "Recordings"
+    },
+    {
+      "page": "settings",
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "statusbar": true,
+      "header": "Settings"
+    },
+    {
+      "page": "voice-lab",
+      "width": 1600,
+      "height": 900,
+      "scrollWidth": 1600,
+      "statusbar": true,
+      "header": "Voice Lab"
+    },
+    {
+      "page": "soundboard",
+      "width": 1600,
+      "height": 900,
+      "scrollWidth": 1600,
+      "statusbar": true,
+      "header": "Soundboard"
+    },
+    {
+      "page": "ai-studio",
+      "width": 1600,
+      "height": 900,
+      "scrollWidth": 1600,
+      "statusbar": true,
+      "header": "AI Voice Studio"
+    },
+    {
+      "page": "recordings",
+      "width": 1600,
+      "height": 900,
+      "scrollWidth": 1600,
+      "statusbar": true,
+      "header": "Recordings"
+    },
+    {
+      "page": "settings",
+      "width": 1600,
+      "height": 900,
+      "scrollWidth": 1600,
+      "statusbar": true,
+      "header": "Settings"
+    },
+    {
+      "page": "voice-lab",
+      "width": 1920,
+      "height": 1080,
+      "scrollWidth": 1920,
+      "statusbar": true,
+      "header": "Voice Lab"
+    },
+    {
+      "page": "soundboard",
+      "width": 1920,
+      "height": 1080,
+      "scrollWidth": 1920,
+      "statusbar": true,
+      "header": "Soundboard"
+    },
+    {
+      "page": "ai-studio",
+      "width": 1920,
+      "height": 1080,
+      "scrollWidth": 1920,
+      "statusbar": true,
+      "header": "AI Voice Studio"
+    },
+    {
+      "page": "recordings",
+      "width": 1920,
+      "height": 1080,
+      "scrollWidth": 1920,
+      "statusbar": true,
+      "header": "Recordings"
+    },
+    {
+      "page": "settings",
+      "width": 1920,
+      "height": 1080,
+      "scrollWidth": 1920,
+      "statusbar": true,
+      "header": "Settings"
+    },
+    {
+      "page": "voice-lab",
+      "width": 2560,
+      "height": 1440,
+      "scrollWidth": 2560,
+      "statusbar": true,
+      "header": "Voice Lab"
+    },
+    {
+      "page": "soundboard",
+      "width": 2560,
+      "height": 1440,
+      "scrollWidth": 2560,
+      "statusbar": true,
+      "header": "Soundboard"
+    },
+    {
+      "page": "ai-studio",
+      "width": 2560,
+      "height": 1440,
+      "scrollWidth": 2560,
+      "statusbar": true,
+      "header": "AI Voice Studio"
+    },
+    {
+      "page": "recordings",
+      "width": 2560,
+      "height": 1440,
+      "scrollWidth": 2560,
+      "statusbar": true,
+      "header": "Recordings"
+    },
+    {
+      "page": "settings",
+      "width": 2560,
+      "height": 1440,
+      "scrollWidth": 2560,
+      "statusbar": true,
+      "header": "Settings"
+    }
+  ],
+  "errors": []
+}

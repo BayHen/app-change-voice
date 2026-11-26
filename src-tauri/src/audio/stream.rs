@@ -893,41 +893,33 @@ fn build_output(
     playback_consumer: Consumer<f32>,
     recording_shared: std::sync::Arc<crate::audio::recording::Shared>,
     sound_consumer: Consumer<f32>,
+    ai_shared: std::sync::Arc<crate::ai::transport::SharedTransport>,
+    quality: super::quality::QualityProfile,
+    monitor_tap: super::capture::Tap,
 ) -> Result<Stream, AudioDeviceError> {
+    macro_rules! build {
+        ($ty:ty) => {
+            build_output_typed::<$ty>(
+                device,
+                config,
+                consumer,
+                metrics,
+                controls,
+                noise_controls,
+                playback_consumer,
+                recording_shared,
+                sound_consumer,
+                ai_shared,
+                quality,
+                monitor_tap,
+            )
+        };
+    }
     match format {
-        SampleFormat::F32 => build_output_typed::<f32>(
-            device,
-            config,
-            consumer,
-            metrics,
-            controls,
-            noise_controls,
-            playback_consumer,
-            recording_shared,
-            sound_consumer,
-        ),
-        SampleFormat::I16 => build_output_typed::<i16>(
-            device,
-            config,
-            consumer,
-            metrics,
-            controls,
-            noise_controls,
-            playback_consumer,
-            recording_shared,
-            sound_consumer,
-        ),
-        SampleFormat::U16 => build_output_typed::<u16>(
-            device,
-            config,
-            consumer,
-            metrics,
-            controls,
-            noise_controls,
-            playback_consumer,
-            recording_shared,
-            sound_consumer,
-        ),
+        SampleFormat::F32 => build!(f32),
+        SampleFormat::I32 => build!(i32),
+        SampleFormat::I16 => build!(i16),
+        SampleFormat::U16 => build!(u16),
         _ => Err(AudioDeviceError::backend(format!(
             "Unsupported output sample format: {format}"
         ))),
@@ -938,18 +930,40 @@ fn build_output(
 fn build_output_typed<T: RealtimeSample>(
     device: &Device,
     config: StreamConfig,
-    mut consumer: Consumer<f32>,
+    consumer: Consumer<f32>,
     metrics: SharedAudioMetrics,
     controls: SharedGainControls,
     noise_controls: SharedNoiseSettings,
     mut playback_consumer: Consumer<f32>,
     recording_shared: std::sync::Arc<crate::audio::recording::Shared>,
-    mut sound_consumer: Consumer<f32>,
+    sound_consumer: Consumer<f32>,
+    ai_shared: std::sync::Arc<crate::ai::transport::SharedTransport>,
+    quality: super::quality::QualityProfile,
+    mut monitor_tap: super::capture::Tap,
 ) -> Result<Stream, AudioDeviceError> {
     let channels = usize::from(config.channels);
+    let sample_rate = config.sample_rate;
     let error_metrics = metrics.clone();
     let mut gain = SmoothedGain::new(controls.output_target(), config.sample_rate);
     let mut limiter = OutputLimiter::new(config.sample_rate);
+    let mut privacy = crate::ai::transport::OutputPrivacyGate::new(ai_shared);
+    let mut reader = super::resample::ClockedReader::new(
+        consumer,
+        config.sample_rate,
+        config.sample_rate,
+        quality.negotiated_startup_ms(config.sample_rate, config.buffer_size),
+        quality.taps(),
+    )
+    .map_err(AudioDeviceError::backend)?;
+    let mut sound_reader = super::resample::ClockedReader::new(
+        sound_consumer,
+        config.sample_rate,
+        config.sample_rate,
+        quality.negotiated_startup_ms(config.sample_rate, config.buffer_size),
+        quality.taps(),
+    )
+    .map_err(AudioDeviceError::backend)?;
+    metrics.set_playback_algorithm_frames(reader.delay_frames() + limiter.latency_frames());
     device
         .build_output_stream(
             config,

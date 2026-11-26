@@ -1,4 +1,4 @@
-import { Info, Warning, X } from "@phosphor-icons/react";
+import { Info, Warning, X } from "./icons";
 import { useEffect } from "react";
 import type { ToastMessage } from "../types/ui";
 
@@ -22,7 +22,7 @@ export function NotificationToast({ toast, onDismiss }: NotificationToastProps) 
     <div
       role="status"
       aria-live="polite"
-      className="fixed bottom-20 right-4 z-40 flex w-[min(360px,calc(100vw-2rem))] items-start gap-3 rounded-2xl border border-white/10 bg-[#15191f] p-4 shadow-[0_18px_50px_rgba(2,8,12,0.5)] md:bottom-5"
+      className="fixed bottom-20 right-4 z-40 flex w-[min(360px,calc(100vw-2rem))] items-start gap-3 rounded-2xl border border-white/10 bg-[var(--surface)] p-4 shadow-[0_18px_50px_rgba(2,8,12,0.5)]"
     >
       <ToneIcon size={19} className="mt-0.5 shrink-0 text-cyan-300" aria-hidden="true" />
       <div className="min-w-0 flex-1">

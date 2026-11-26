@@ -1,0 +1,50 @@
+{
+  "cases": [
+    {
+      "case": "neutral",
+      "clippedSamples": 0,
+      "dspLatencyFrames": 2784,
+      "frames": 48000,
+      "nonFinite": 0,
+      "peak": 0.20000004768371582,
+      "rms": 0.14142135702797284,
+      "thdnDb": -129.05250593363172,
+      "wallSeconds": 0.5189943
+    },
+    {
+      "case": "bypass",
+      "clippedSamples": 0,
+      "dspLatencyFrames": 2784,
+      "frames": 48000,
+      "nonFinite": 0,
+      "peak": 0.20000000298023224,
+      "rms": 0.1414213585515038,
+      "thdnDb": -136.46826406081482,
+      "wallSeconds": 0.5128496
+    },
+    {
+      "case": "boost-six-db",
+      "clippedSamples": 17786,
+      "dspLatencyFrames": 2784,
+      "frames": 48000,
+      "nonFinite": 0,
+      "peak": 1.0,
+      "rms": 0.782355433992784,
+      "thdnDb": -22.748627616032827,
+      "wallSeconds": 0.5089382
+    },
+    {
+      "case": "18kHz-downsample-48-to-16-alias",
+      "stats": {
+        "clippedSamples": 0,
+        "frames": 16000,
+        "nonFinite": 0,
+        "peak": 0.20000000298023224,
+        "rms": 0.14142136055117033,
+        "thdnDb": -134.1834708984776
+      }
+    }
+  ],
+  "label": "before",
+  "scope": "Deterministic synthetic, compiled test profile; wall time is not whole-process CPU or hardware latency"
+}

@@ -1,0 +1,19 @@
+{
+  "kind": "Observed real Rust-to-private-sidecar transport test; no microphone or audio devices",
+  "test": "ai::engine::tests::real_transport_recovers_from_cuda_child_exit_to_opted_in_cpu",
+  "runtimeManifestSha256": "69c600bd252be1fd47f5bf9246294c976c32e27dfb4796b1712e92312d6504f7",
+  "cudaAudibleSamples": 83825,
+  "cpuAudibleSamples": 99462,
+  "restarts": 1,
+  "completedChunksAtRecoverySnapshot": 29,
+  "testWallSeconds": 85.42,
+  "assertions": [
+    "Actual converted CUDA samples",
+    "Executable identity checked before terminating owned child",
+    "Explicitly opted-in CPU recovery",
+    "Stop emits zeros",
+    "Restart retains original realtime endpoint",
+    "Classic selection is explicit"
+  ],
+  "limits": "Audible means absolute sample >0.0001, not a listening assessment. This proves bounded transport/recovery and does not qualify CPU realtime throughput. First run hit a Windows access-denied fixture replacement; a unique test-owned config path resolved it without changing ACL/security."
+}

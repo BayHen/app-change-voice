@@ -1,13 +1,11 @@
-import { ArrowClockwise, Broadcast, DiscordLogo, Warning } from "@phosphor-icons/react";
-import { useAudioRuntime } from "../hooks/useAudioRuntime";
-import { useVirtualRouting } from "../hooks/useVirtualRouting";
+import { ArrowClockwise, Broadcast, DiscordLogo, Warning } from "./icons";
+import { useAudioSession } from "../hooks/AudioSession";
 import { AudioMeter } from "./AudioMeter";
 import { DeviceSelector } from "./DeviceSelector";
 import { StatusIndicator } from "./StatusIndicator";
 
 export function DiscordIntegration() {
-  const routing = useVirtualRouting();
-  const runtime = useAudioRuntime();
+  const { routing, runtime } = useAudioSession();
   const active = routing.status.state === "active";
   const signalDetected = active && routing.status.outputPeakDbfs > -55;
   const candidates = [...routing.devices].sort(
@@ -17,7 +15,7 @@ export function DiscordIntegration() {
     id: device.id,
     name: device.name,
     kind: "output" as const,
-    available: true,
+    available: device.likelyVirtual,
     isDefault: device.isDefault,
   }));
   if (!options.length)
@@ -101,7 +99,10 @@ export function DiscordIntegration() {
           <div className="mt-4 flex gap-2">
             <button
               type="button"
-              disabled={routing.busy || selected === "none" || runtime.status.state !== "running"}
+              disabled={
+                routing.busy ||
+                (!active && (!selectedDevice?.likelyVirtual || runtime.status.state !== "running"))
+              }
               onClick={() => void (active ? routing.stop() : routing.start())}
               className="inline-flex items-center gap-2 rounded-xl bg-indigo-300 px-4 py-2.5 text-sm font-medium text-indigo-950 disabled:bg-zinc-800 disabled:text-zinc-600"
             >
@@ -118,7 +119,8 @@ export function DiscordIntegration() {
           </div>
           {runtime.status.state !== "running" ? (
             <p className="mt-3 text-xs text-amber-200/70">
-              Start Monitoring on Dashboard first. Routing reuses that processed pipeline.
+              Select CABLE Input first, then enable Monitor in the bottom bar and click Start
+              routing. Changing the cable stops Monitor; enable it again before routing.
             </p>
           ) : null}
         </div>

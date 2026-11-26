@@ -1,0 +1,88 @@
+{
+  "url": "http://127.0.0.1:1422",
+  "environment": "Production browser preview, offline Tauri bridge, Edge headless. Automation-to-paint timings include Playwright overhead; no live audio performance claim.",
+  "timings": [
+    {
+      "page": "voice-lab",
+      "ms": 42.15
+    },
+    {
+      "page": "soundboard",
+      "ms": 24.63
+    },
+    {
+      "page": "ai-studio",
+      "ms": 25.08
+    },
+    {
+      "page": "recordings",
+      "ms": 25.35
+    },
+    {
+      "page": "settings",
+      "ms": 28.71
+    },
+    {
+      "page": "voice-lab",
+      "ms": 29.35
+    },
+    {
+      "page": "soundboard",
+      "ms": 20.67
+    },
+    {
+      "page": "ai-studio",
+      "ms": 20.72
+    },
+    {
+      "page": "recordings",
+      "ms": 20.91
+    },
+    {
+      "page": "settings",
+      "ms": 29.43
+    },
+    {
+      "page": "voice-lab",
+      "ms": 29.1
+    },
+    {
+      "page": "soundboard",
+      "ms": 20.6
+    },
+    {
+      "page": "ai-studio",
+      "ms": 29.56
+    },
+    {
+      "page": "recordings",
+      "ms": 20.65
+    },
+    {
+      "page": "settings",
+      "ms": 29.14
+    }
+  ],
+  "metrics": [
+    {
+      "name": "Nodes",
+      "value": 13881
+    },
+    {
+      "name": "ScriptDuration",
+      "value": 0
+    },
+    {
+      "name": "TaskDuration",
+      "value": 0.000023
+    },
+    {
+      "name": "JSHeapUsedSize",
+      "value": 9958248
+    },
+    {
+      "name": "JSHeapTotalSize",
+      "value": 16584704
+    }
+  ]
+}

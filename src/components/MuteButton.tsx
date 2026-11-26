@@ -1,4 +1,4 @@
-import { SpeakerHigh, SpeakerSlash } from "@phosphor-icons/react";
+import { SpeakerHigh, SpeakerSlash } from "./icons";
 
 interface MuteButtonProps {
   label: string;

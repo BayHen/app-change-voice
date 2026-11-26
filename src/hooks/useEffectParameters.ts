@@ -56,6 +56,12 @@ export function useEffectParameters() {
     }
   }, []);
 
+  const refresh = useCallback(async () => {
+    const value = await getEffectParameters();
+    if (mounted.current) setLocalParameters(value);
+    return value;
+  }, []);
+
   const reset = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -69,5 +75,5 @@ export function useEffectParameters() {
     }
   }, []);
 
-  return { parameters, loading, error, update, reset };
+  return { parameters, loading, error, update, reset, refresh };
 }

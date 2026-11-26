@@ -1,0 +1,84 @@
+{
+  "cases": [
+    {
+      "case": "neutral",
+      "dspLatencyFrames": 3264,
+      "exactRailSamples": 0,
+      "frames": 48000,
+      "fullScaleSamples": 0,
+      "nonFinite": 0,
+      "peak": 0.20000003278255463,
+      "rms": 0.1414213550690797,
+      "thdnDb": -136.30533452515428,
+      "wallSeconds": 0.2910769
+    },
+    {
+      "case": "neutral-final-limiter",
+      "exactRailSamples": 0,
+      "frames": 38400,
+      "fullScaleSamples": 0,
+      "nonFinite": 0,
+      "peak": 0.20000003278255463,
+      "rms": 0.14142950329704893,
+      "thdnDb": -136.34354432008197
+    },
+    {
+      "case": "bypass",
+      "dspLatencyFrames": 3264,
+      "exactRailSamples": 0,
+      "frames": 48000,
+      "fullScaleSamples": 0,
+      "nonFinite": 0,
+      "peak": 0.20000000298023224,
+      "rms": 0.14142135855150392,
+      "thdnDb": -150.08739178050132,
+      "wallSeconds": 0.2945542
+    },
+    {
+      "case": "bypass-final-limiter",
+      "exactRailSamples": 0,
+      "frames": 38400,
+      "fullScaleSamples": 0,
+      "nonFinite": 0,
+      "peak": 0.20000000298023224,
+      "rms": 0.14142950679040872,
+      "thdnDb": -150.07536627919708
+    },
+    {
+      "case": "boost-six-db",
+      "dspLatencyFrames": 3264,
+      "exactRailSamples": 0,
+      "frames": 48000,
+      "fullScaleSamples": 17786,
+      "nonFinite": 0,
+      "peak": 1.19707190990448,
+      "rms": 0.8464574721901843,
+      "thdnDb": -134.3205753515788,
+      "wallSeconds": 0.2948159
+    },
+    {
+      "case": "boost-six-db-final-limiter",
+      "exactRailSamples": 0,
+      "frames": 38400,
+      "fullScaleSamples": 0,
+      "nonFinite": 0,
+      "peak": 0.8912509083747864,
+      "rms": 0.630306842283995,
+      "thdnDb": -85.33293541450782
+    },
+    {
+      "case": "18kHz-downsample-48-to-16-alias",
+      "stats": {
+        "exactRailSamples": 0,
+        "frames": 15978,
+        "fullScaleSamples": 0,
+        "nonFinite": 0,
+        "peak": 0.006146151572465897,
+        "rms": 0.00005708931232022297,
+        "thdnDb": 43.304028813228605
+      }
+    }
+  ],
+  "label": "female-regression",
+  "scope": "Deterministic synthetic, compiled test profile; wall time is not whole-process CPU or hardware latency"
+}

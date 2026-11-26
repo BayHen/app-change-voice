@@ -1,4 +1,4 @@
-import { CaretDown } from "@phosphor-icons/react";
+import { CaretDown } from "./icons";
 import type { DeviceOption } from "../types/audio";
 
 interface DeviceSelectorProps {
@@ -31,7 +31,7 @@ export function DeviceSelector({
           value={value}
           disabled={disabled}
           onChange={(event) => onChange(event.target.value)}
-          className="h-11 w-full appearance-none rounded-xl border border-white/[0.09] bg-[#111419] px-3 pr-10 text-sm text-zinc-200 outline-none transition-colors focus:border-cyan-400/70 disabled:cursor-not-allowed disabled:text-zinc-600"
+          className="h-11 w-full appearance-none rounded-xl border border-white/[0.09] bg-[var(--surface)] px-3 pr-10 text-sm text-zinc-200 outline-none transition-colors focus:border-cyan-400/70 disabled:cursor-not-allowed disabled:text-zinc-600"
         >
           {devices.map((device) => (
             <option key={device.id} value={device.id} disabled={!device.available}>

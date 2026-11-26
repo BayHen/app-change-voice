@@ -1,0 +1,69 @@
+{
+  "method": "1-second steady 997 Hz sine; two-parameter least-squares fit; residual includes harmonics/noise; not perceptual speech quality or hardware latency",
+  "cases": {
+    "before": {
+      "boost-six-db": {
+        "rate": 48000,
+        "frames": 48000,
+        "peak": 1.0,
+        "rms": 0.7823554339927757,
+        "exactRailSamples": 17786,
+        "overFullScaleFloatSamples": 0,
+        "thdnDb": -22.748627616054115,
+        "nonFinite": 0
+      },
+      "bypass": {
+        "rate": 48000,
+        "frames": 48000,
+        "peak": 0.20000000298023224,
+        "rms": 0.14142135855150129,
+        "exactRailSamples": 0,
+        "overFullScaleFloatSamples": 0,
+        "thdnDb": -150.08739205343488,
+        "nonFinite": 0
+      },
+      "neutral": {
+        "rate": 48000,
+        "frames": 48000,
+        "peak": 0.20000004768371582,
+        "rms": 0.14142135702796982,
+        "exactRailSamples": 0,
+        "overFullScaleFloatSamples": 0,
+        "thdnDb": -130.5552886356113,
+        "nonFinite": 0
+      }
+    },
+    "after": {
+      "boost-six-db": {
+        "rate": 48000,
+        "frames": 48000,
+        "peak": 1.19707190990448,
+        "rms": 0.84645747219016,
+        "exactRailSamples": 0,
+        "overFullScaleFloatSamples": 17786,
+        "thdnDb": -134.3205753515892,
+        "nonFinite": 0
+      },
+      "bypass": {
+        "rate": 48000,
+        "frames": 48000,
+        "peak": 0.20000000298023224,
+        "rms": 0.14142135855150129,
+        "exactRailSamples": 0,
+        "overFullScaleFloatSamples": 0,
+        "thdnDb": -150.0873917805397,
+        "nonFinite": 0
+      },
+      "neutral": {
+        "rate": 48000,
+        "frames": 48000,
+        "peak": 0.20000003278255463,
+        "rms": 0.1414213550690767,
+        "exactRailSamples": 0,
+        "overFullScaleFloatSamples": 0,
+        "thdnDb": -136.30533452522616,
+        "nonFinite": 0
+      }
+    }
+  }
+}

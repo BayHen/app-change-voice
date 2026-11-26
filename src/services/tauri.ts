@@ -1,4 +1,12 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke as tauriInvoke, isTauri } from "@tauri-apps/api/core";
+
+function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  if (!isTauri())
+    return Promise.reject(
+      new Error("Desktop audio bridge unavailable. Open VoiceMorph Studio in the desktop app."),
+    );
+  return tauriInvoke<T>(command, args);
+}
 import type { AppStatus, UpdateConfiguration } from "../types/app";
 import type { VoicePresetSummary } from "../types/preset";
 import type { HotkeyConfiguration } from "../types/hotkeys";
@@ -6,6 +14,7 @@ import type { EffectDescriptor, PluginStatus, SoundEntry } from "../types/soundb
 import type { ApplicationProfile } from "../types/profiles";
 import type { BackupPreview, RestoreMode, SyncStatus } from "../types/backup";
 import type { AIModelStatus, AIProviderStatus } from "../types/ai";
+import type { AIEngineConfig, AIEngineStatus } from "../types/ai";
 import type {
   AudioDevice,
   AudioDiagnosticsReport,
@@ -116,6 +125,29 @@ export interface AppliedPreset {
   preset: VoicePresetSummary;
   parameters: EffectParameters;
 }
+export interface VoicePreview {
+  wav: number[];
+  peak: number;
+  rms: number;
+  fullScaleSamples: number;
+  frames: number;
+  sampleRate: number;
+  processingMs: number;
+}
+export const renderVoicePreview = (
+  presetId: string,
+  sourcePath: string,
+  consentConfirmed: boolean,
+  parameters?: EffectParameters,
+) =>
+  invoke<VoicePreview>("render_voice_preview", {
+    presetId,
+    sourcePath,
+    consentConfirmed,
+    parameters,
+  });
+export const renderAIVoicePreview = (sourcePath: string, consentConfirmed: boolean) =>
+  invoke<VoicePreview>("render_ai_voice_preview", { sourcePath, consentConfirmed });
 
 export function getBuiltinPresets(): Promise<VoicePresetSummary[]> {
   return invoke<VoicePresetSummary[]>("get_builtin_presets");
@@ -207,8 +239,45 @@ export const importAllPresets = (path: string, mode: RestoreMode) =>
 export const getSyncStatus = () => invoke<SyncStatus>("get_sync_status");
 export const getAIModels = () => invoke<AIModelStatus[]>("get_ai_models");
 export const getAIProviderStatus = () => invoke<AIProviderStatus>("get_ai_provider_status");
-export const addAIModel = (manifestPath: string, modelPath: string) =>
-  invoke<AIModelStatus>("add_ai_model", { manifestPath, modelPath });
+export const addAIModel = (manifestPath: string, modelPath: string, rightsConfirmed = false) =>
+  invoke<AIModelStatus>("add_ai_model", { manifestPath, modelPath, rightsConfirmed });
 export const removeAIModel = (id: string) => invoke<void>("remove_ai_model", { id });
 export const setAIModelEnabled = (id: string, enabled: boolean) =>
   invoke<AIProviderStatus>("set_ai_model_enabled", { id, enabled });
+export const getAIEngineStatus = () => invoke<AIEngineStatus>("get_ai_engine_status");
+export const detectAIHardware = () => invoke<AIEngineStatus>("detect_ai_hardware");
+export const installRecommendedAIRuntime = () =>
+  invoke<AIEngineStatus>("install_recommended_ai_runtime");
+export const installOfficialAIVoice = (rightsConfirmed: boolean) =>
+  invoke<AIEngineStatus>("install_official_ai_voice", { rightsConfirmed });
+export const setAIEngineConfig = (config: AIEngineConfig) =>
+  invoke<AIEngineStatus>("set_ai_engine_config", { config });
+export const startAIConversion = (modelId: string) =>
+  invoke<AIEngineStatus>("start_ai_conversion", { modelId });
+export const stopAIConversion = () => invoke<AIEngineStatus>("stop_ai_conversion");
+export const getAudioQuality = () =>
+  invoke<import("../types/audio").AudioQualitySettings>("get_audio_quality");
+export const setAudioQuality = (settings: import("../types/audio").AudioQualitySettings) =>
+  invoke<import("../types/audio").AudioQualitySettings>("set_audio_quality", { settings });
+export const getStageCaptureStatus = () =>
+  invoke<import("../types/audio").StageCaptureStatus>("get_stage_capture_status");
+export const startStageCapture = (
+  stages: import("../types/audio").AudioCaptureStage[],
+  seconds: number,
+  consentConfirmed: boolean,
+) =>
+  invoke<import("../types/audio").StageCaptureStatus>("start_stage_capture", {
+    stages,
+    seconds,
+    consentConfirmed,
+  });
+export const stopStageCapture = () =>
+  invoke<import("../types/audio").StageCaptureStatus>("stop_stage_capture");
+export const selectClassicVoice = () => invoke<AIEngineStatus>("select_classic_voice");
+export const installAIRuntime = (
+  source: string,
+  expectedSha256: string,
+  publisherConfirmed: boolean,
+) => invoke<AIEngineStatus>("install_ai_runtime", { source, expectedSha256, publisherConfirmed });
+export const cancelAIRuntimeInstall = () => invoke<void>("cancel_ai_runtime_install");
+export const rollbackAIRuntime = () => invoke<AIEngineStatus>("rollback_ai_runtime");

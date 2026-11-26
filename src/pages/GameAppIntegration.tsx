@@ -1,13 +1,11 @@
 import { useEffect, useState } from "react";
-import { Broadcast, Plus, Trash, Warning } from "@phosphor-icons/react";
+import { Broadcast, Plus, Trash, Warning } from "../components/icons";
 import { AppHeader } from "../components/AppHeader";
 import { AudioMeter } from "../components/AudioMeter";
 import { DeviceSelector } from "../components/DeviceSelector";
 import { StatusIndicator } from "../components/StatusIndicator";
-import { useAudioDevices } from "../hooks/useAudioDevices";
-import { useAudioRuntime } from "../hooks/useAudioRuntime";
+import { useAudioSession } from "../hooks/AudioSession";
 import { usePresets } from "../hooks/usePresets";
-import { useVirtualRouting } from "../hooks/useVirtualRouting";
 import {
   applyApplicationProfile,
   deleteApplicationProfile,
@@ -29,10 +27,8 @@ const blank = (presetId = "natural"): ApplicationProfile => ({
   clarityPriority: true,
 });
 export function GameAppIntegration() {
-  const devices = useAudioDevices(),
-    runtime = useAudioRuntime(),
-    routing = useVirtualRouting(),
-    presets = usePresets();
+  const { devices, runtime, routing } = useAudioSession();
+  const presets = usePresets();
   const [profiles, setProfiles] = useState<ApplicationProfile[]>([]),
     [selected, setSelected] = useState(""),
     [editing, setEditing] = useState<ApplicationProfile | null>(null),
@@ -60,6 +56,7 @@ export function GameAppIntegration() {
     isDefault: d.isDefault,
   }));
   const virtualOptions = [...routing.devices]
+    .filter((device) => device.likelyVirtual)
     .sort((a, b) => Number(b.likelyVirtual) - Number(a.likelyVirtual))
     .map((d) => ({
       id: d.id,
@@ -123,7 +120,7 @@ export function GameAppIntegration() {
         </p>
       )}
       <div className="mt-5 grid gap-5 lg:grid-cols-2">
-        <section className="rounded-2xl border border-white/[.08] bg-[#0f1216] p-5">
+        <section className="rounded-2xl border border-white/[.08] bg-[var(--surface)] p-5">
           <h2 className="text-sm font-semibold">Audio routing</h2>
           <div className="mt-4 space-y-4">
             <DeviceSelector
@@ -146,8 +143,12 @@ export function GameAppIntegration() {
             <button
               disabled={
                 routing.busy ||
-                runtime.status.state !== "running" ||
-                !routing.configuration.outputDeviceId
+                (!active &&
+                  (runtime.status.state !== "running" ||
+                    !routing.devices.some(
+                      (device) =>
+                        device.id === routing.configuration.outputDeviceId && device.likelyVirtual,
+                    )))
               }
               onClick={() => void (active ? routing.stop() : routing.start())}
               className="flex items-center gap-2 rounded-xl bg-cyan-300 px-4 py-2.5 text-sm font-medium text-slate-950 disabled:bg-zinc-800 disabled:text-zinc-600"
@@ -157,7 +158,7 @@ export function GameAppIntegration() {
             </button>
           </div>
         </section>
-        <section className="rounded-2xl border border-white/[.08] bg-[#0f1216] p-5">
+        <section className="rounded-2xl border border-white/[.08] bg-[var(--surface)] p-5">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold">Application profiles</h2>
             <button
@@ -172,7 +173,7 @@ export function GameAppIntegration() {
             aria-label="Application profile"
             value={selected}
             onChange={(e) => setSelected(e.target.value)}
-            className="mt-4 w-full rounded-xl border border-white/10 bg-[#090c10] p-3 text-sm"
+            className="mt-4 w-full rounded-xl border border-white/10 bg-[var(--surface)] p-3 text-sm"
           >
             {profiles.map((p) => (
               <option key={p.id} value={p.id}>
@@ -218,7 +219,7 @@ export function GameAppIntegration() {
           )}
         </section>
       </div>
-      <section className="mt-5 rounded-2xl border border-white/[.08] bg-[#0f1216] p-5">
+      <section className="mt-5 rounded-2xl border border-white/[.08] bg-[var(--surface)] p-5">
         <h2 className="text-sm font-semibold">Connection guide</h2>
         <div className="mt-4 grid gap-3 text-xs text-zinc-500 sm:grid-cols-2 xl:grid-cols-4">
           {[
@@ -274,7 +275,7 @@ function ProfileEditor({
       aria-modal="true"
       className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4"
     >
-      <div className="w-full max-w-xl rounded-2xl border border-white/10 bg-[#12161b] p-6">
+      <div className="w-full max-w-xl rounded-2xl border border-white/10 bg-[var(--surface)] p-6">
         <h2 className="font-semibold">Application profile</h2>
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           <label className="text-xs text-zinc-500">

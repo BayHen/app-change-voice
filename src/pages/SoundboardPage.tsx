@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
+import { useAudioSession } from "../hooks/AudioSession";
+import { errorMessage } from "../services/errors";
+import { AppHeader } from "../components/AppHeader";
+import { Button, Card, EmptyState, SearchInput, Badge } from "../components/ui";
 import { open } from "@tauri-apps/plugin-dialog";
-import { Plus, MagnifyingGlass, Warning } from "@phosphor-icons/react";
+import { Plus, Warning } from "../components/icons";
 import { AddSoundDialog } from "../components/AddSoundDialog";
 import { SoundCard } from "../components/SoundCard";
 import { PluginManager } from "../components/PluginManager";
@@ -18,6 +22,10 @@ import {
   updateSound,
 } from "../services/tauri";
 export function SoundboardPage() {
+  const { runtime, devices } = useAudioSession();
+  const live = runtime.status.state === "running";
+  const input = devices.snapshot?.inputSelection.selectedId,
+    output = devices.snapshot?.outputSelection.selectedId;
   const [sounds, setSounds] = useState<SoundEntry[]>([]),
     [plugins, setPlugins] = useState<PluginStatus[]>([]),
     [effects, setEffects] = useState<EffectDescriptor[]>([]),
@@ -27,6 +35,7 @@ export function SoundboardPage() {
     [name, setName] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const [category, setCategory] = useState("All sounds");
   const refresh = async () => {
     const [s, p, e] = await Promise.all([
       getSoundboardSounds(),
@@ -44,12 +53,17 @@ export function SoundboardPage() {
         setPlugins(p);
         setEffects(e);
       })
-      .catch((e) => setError(String(e)));
+      .catch((e) => setError(errorMessage(e)));
   }, []);
   const filtered = useMemo(
     () =>
-      sounds.filter((s) => `${s.name} ${s.category}`.toLowerCase().includes(query.toLowerCase())),
-    [sounds, query],
+      sounds.filter(
+        (s) =>
+          `${s.name} ${s.category}`.toLowerCase().includes(query.toLowerCase()) &&
+          (category === "All sounds" ||
+            (category === "Favorites" ? s.favorite : s.category === category)),
+      ),
+    [sounds, query, category],
   );
   async function mutate(task: () => Promise<unknown>) {
     setBusy(true);
@@ -57,46 +71,71 @@ export function SoundboardPage() {
     try {
       await task();
       await refresh();
+      return true;
     } catch (e) {
-      setError(String(e));
+      setError(errorMessage(e));
+      return false;
     } finally {
       setBusy(false);
     }
   }
   return (
-    <div className="mx-auto max-w-6xl">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-xs uppercase tracking-[.2em] text-cyan-300">Local audio launcher</p>
-          <h1 className="mt-2 text-3xl font-semibold">Soundboard</h1>
-          <p className="mt-2 text-sm text-zinc-500">
-            Mix WAV clips into headphones, the virtual microphone, or both.
-          </p>
-        </div>
-        <button
-          onClick={() => setDialog(true)}
-          className="flex items-center gap-2 rounded-xl bg-cyan-300 px-4 py-2.5 text-sm font-semibold text-slate-950"
-        >
-          <Plus />
-          Add sound
-        </button>
-      </header>
-      <div className="mt-7 flex items-center gap-2 rounded-xl border border-white/[.08] bg-white/[.025] px-3">
-        <MagnifyingGlass className="text-zinc-600" />
-        <input
-          aria-label="Search sounds"
-          className="w-full bg-transparent py-3 text-sm outline-none"
-          placeholder="Search sounds or categories"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
+    <div className="vm-page vm-soundboard">
+      <AppHeader
+        title="Soundboard"
+        description="The perfect sound. Right on cue."
+        action={
+          <Button variant="primary" onClick={() => setDialog(true)}>
+            <Plus size={16} />
+            Import audio
+          </Button>
+        }
+      />
+      <div className="vm-toolbar">
+        <SearchInput label="Search sounds" value={query} onChange={setQuery} />
+        <Badge>{sounds.length} clips · WAV library</Badge>
       </div>
-      {error && (
+      <div className="vm-settings-tabs" role="group" aria-label="Sound categories">
+        {[
+          "All sounds",
+          "Favorites",
+          ...new Set(
+            sounds.map((s) => s.category).filter((c) => c !== "All sounds" && c !== "Favorites"),
+          ),
+        ].map((c) => (
+          <button
+            type="button"
+            key={c}
+            aria-pressed={category === c}
+            onClick={() => setCategory(c)}
+          >
+            {c}
+          </button>
+        ))}
+      </div>
+      {!live && (
+        <Card>
+          <h2>Start audio processing to play sounds</h2>
+          <p className="vm-hint">
+            Soundboard uses the audio engine. Starting it opens your selected microphone and output
+            device. Virtual-microphone clips also need Start routing in Settings.
+          </p>
+          <Button
+            disabled={busy || runtime.busy || !!devices.error || !input || !output}
+            onClick={() => {
+              if (input && output) void runtime.start(input, output);
+            }}
+          >
+            Start audio engine
+          </Button>
+        </Card>
+      )}
+      {(error || runtime.error) && (
         <p
           role="alert"
           className="mt-4 flex gap-2 rounded-xl bg-rose-400/10 p-3 text-sm text-rose-200"
         >
-          <Warning /> {error}
+          <Warning /> {error || runtime.error}
         </p>
       )}
       <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -105,6 +144,7 @@ export function SoundboardPage() {
             key={sound.id}
             sound={sound}
             busy={busy}
+            playbackDisabled={!live || runtime.busy}
             onPlay={() => void mutate(() => playSound(sound.id))}
             onStop={() => void mutate(() => stopSound(sound.id))}
             onDelete={() => {
@@ -116,7 +156,22 @@ export function SoundboardPage() {
         ))}
       </div>
       {!filtered.length && (
-        <p className="mt-10 text-center text-sm text-zinc-600">No sounds in this view.</p>
+        <Card>
+          <EmptyState
+            title={
+              query || category !== "All sounds"
+                ? "No sounds in this view"
+                : "Give your stream a soundtrack"
+            }
+            description="Import a WAV clip, assign a shortcut and send it to your headphones, virtual microphone, or both."
+            action={
+              <Button onClick={() => setDialog(true)}>
+                <Plus size={15} />
+                Import your first sound
+              </Button>
+            }
+          />
+        </Card>
       )}
       <div className="mt-10 grid gap-6 border-t border-white/[.07] pt-7 lg:grid-cols-2">
         <PluginManager
@@ -135,21 +190,24 @@ export function SoundboardPage() {
             void open({
               multiple: false,
               filters: [{ name: "WAV audio", extensions: ["wav"] }],
-            }).then((v) => {
-              if (typeof v === "string") {
-                setPath(v);
-                setName(
-                  v
-                    .split(/[\\/]/)
-                    .pop()
-                    ?.replace(/\.wav$/i, "") ?? "",
-                );
-              }
             })
+              .then((v) => {
+                if (typeof v === "string") {
+                  setPath(v);
+                  setName(
+                    v
+                      .split(/[\\/]/)
+                      .pop()
+                      ?.replace(/\.wav$/i, "") ?? "",
+                  );
+                }
+              })
+              .catch((e) => setError(errorMessage(e)))
           }
           onCancel={() => setDialog(false)}
           onAdd={() =>
-            void mutate(() => addSound(path, name)).then(() => {
+            void mutate(() => addSound(path, name)).then((success) => {
+              if (!success) return;
               setDialog(false);
               setPath("");
               setName("");

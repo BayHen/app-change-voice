@@ -1,4 +1,5 @@
 export type NavigationItem =
+  | "recordings"
   | "dashboard"
   | "effects"
   | "studio"
