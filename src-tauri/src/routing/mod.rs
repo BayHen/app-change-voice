@@ -61,6 +61,7 @@ pub trait VirtualOutputSink {
 
 #[derive(Default)]
 pub(crate) struct SharedRoutingMetrics {
+    pub route_generation: AtomicU64,
     pub voice_guard: Arc<crate::ai::transport::SharedTransport>,
     pub active: AtomicBool,
     pub faulted: AtomicBool,
@@ -136,6 +137,17 @@ pub fn likely_virtual_device(name: &str) -> bool {
     .any(|marker| value.contains(marker))
 }
 
+pub fn validate_virtual_output(name: &str) -> Result<(), errors::RoutingError> {
+    if likely_virtual_device(name) {
+        Ok(())
+    } else {
+        Err(errors::RoutingError::new(
+            "notVirtualOutput",
+            "Select a virtual cable playback endpoint such as CABLE Input. Headphones and speakers do not create a microphone.",
+        ))
+    }
+}
+
 pub fn amplitude_to_dbfs(value: f32) -> f32 {
     if value <= 0.000_015_849 {
         -96.0
@@ -184,6 +196,8 @@ mod tests {
     use super::*;
     #[test]
     fn recognizes_common_virtual_endpoint_names_without_requiring_one_vendor() {
+        assert!(validate_virtual_output("CABLE Input (VB-Audio Virtual Cable)").is_ok());
+        assert!(validate_virtual_output("Headphones (High Definition Audio Device)").is_err());
         assert!(likely_virtual_device(
             "CABLE Input (VB-Audio Virtual Cable)"
         ));

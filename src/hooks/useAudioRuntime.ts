@@ -19,17 +19,6 @@ const stoppedStatus: AudioRuntimeStatus = {
   metrics: null,
 };
 
-function applyRuntimeStatus(
-  next: AudioRuntimeStatus,
-  setStatus: (status: AudioRuntimeStatus) => void,
-  setError: (error: string | null) => void,
-) {
-  setStatus(next);
-  if (next.metrics?.streamFaulted) {
-    setError("The audio driver reported a stream failure. Stop monitoring and refresh devices.");
-  }
-}
-
 function message(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (typeof error === "object" && error && "message" in error) return String(error.message);
@@ -47,7 +36,7 @@ export function useAudioRuntime() {
     setError(null);
     try {
       const next = await operation();
-      if (mounted.current) applyRuntimeStatus(next, setStatus, setError);
+      if (mounted.current) setStatus(next);
       return next;
     } catch (reason) {
       if (mounted.current) setError(message(reason));
@@ -60,11 +49,11 @@ export function useAudioRuntime() {
   useEffect(() => {
     mounted.current = true;
     void getAudioRuntimeStatus()
-      .then((next) => mounted.current && applyRuntimeStatus(next, setStatus, setError))
+      .then((next) => mounted.current && setStatus(next))
       .catch((reason) => mounted.current && setError(message(reason)));
     const interval = window.setInterval(() => {
       void getAudioRuntimeStatus()
-        .then((next) => mounted.current && applyRuntimeStatus(next, setStatus, setError))
+        .then((next) => mounted.current && setStatus(next))
         .catch((reason) => mounted.current && setError(message(reason)));
     }, 100);
     return () => {
@@ -76,7 +65,9 @@ export function useAudioRuntime() {
   return {
     status,
     busy,
-    error,
+    error: status.metrics?.streamFaulted
+      ? `${status.metrics.lastStreamError ?? "The audio driver reported a stream failure."} Monitoring stopped. Refresh devices, then enable Monitor to retry.`
+      : error,
     start: (inputId: string, outputId: string) => run(() => startMonitoring(inputId, outputId)),
     stop: () => run(stopMonitoring),
     pause: () => run(pauseMonitoring),

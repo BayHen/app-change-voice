@@ -21,6 +21,8 @@ pub struct SharedTransport {
     pub completed_chunks: AtomicU64,
     pub round_trip_micros: AtomicU64,
     pub conversion_micros: AtomicU64,
+    pub output_prefill_frames: AtomicU64,
+    pub startup_wait_samples: AtomicU64,
 }
 #[derive(Clone, Copy)]
 pub struct TaggedSample {
@@ -31,8 +33,15 @@ pub struct RealtimePort {
     input: Producer<TaggedSample>,
     output: Consumer<TaggedSample>,
     shared: Arc<SharedTransport>,
+    generation: u64,
+    primed: bool,
+    ever_primed: bool,
+    last: f32,
+    fade: f32,
+    fade_step: f32,
 }
 pub struct WorkerPort {
+    pub diagnostics: Option<crate::audio::capture::Tap>,
     pub input: Consumer<TaggedSample>,
     pub output: Producer<TaggedSample>,
     pub sample_rate: u32,
@@ -48,8 +57,15 @@ pub fn ports(sample_rate: u32, shared: Arc<SharedTransport>) -> (RealtimePort, W
             input,
             output,
             shared,
+            generation: 0,
+            primed: false,
+            ever_primed: false,
+            last: 0.0,
+            fade: 0.0,
+            fade_step: 1.0 / (sample_rate as f32 * 0.005).max(1.0),
         },
         WorkerPort {
+            diagnostics: None,
             input: input_rx,
             output: output_tx,
             sample_rate,
@@ -68,6 +84,13 @@ impl RealtimePort {
             return None;
         }
         let generation = self.shared.generation.load(Ordering::Acquire);
+        if generation != self.generation {
+            self.generation = generation;
+            self.primed = false;
+            self.ever_primed = false;
+            self.last = 0.0;
+            self.fade = 0.0;
+        }
         let ready = self.shared.ready.load(Ordering::Acquire);
         if ready
             && self
@@ -86,6 +109,29 @@ impl RealtimePort {
                 .dropped_input_samples
                 .fetch_add(1, Ordering::Relaxed);
         }
+        if !ready {
+            self.primed = false;
+            self.ever_primed = false;
+            self.last = 0.0;
+            self.fade = 0.0;
+            return Some(0.0);
+        }
+        let threshold = (self.shared.output_prefill_frames.load(Ordering::Relaxed) as usize)
+            .min(self.output.buffer().capacity() * 3 / 4);
+        if ready && !self.primed && self.output.slots() < threshold {
+            if self.ever_primed {
+                self.shared
+                    .missing_output_samples
+                    .fetch_add(1, Ordering::Relaxed);
+            } else {
+                self.shared
+                    .startup_wait_samples
+                    .fetch_add(1, Ordering::Relaxed);
+            }
+            self.last *= 1.0 - self.fade_step;
+            return Some(self.last);
+        }
+        self.primed = true;
         let sample = self
             .output
             .pop()
@@ -96,44 +142,30 @@ impl RealtimePort {
             self.shared
                 .missing_output_samples
                 .fetch_add(1, Ordering::Relaxed);
+            self.primed = false;
+            self.fade = 0.0;
+            self.last *= 1.0 - self.fade_step;
+            return Some(self.last);
         }
-        Some(sample.unwrap_or(0.0))
+        self.ever_primed = true;
+        self.fade = (self.fade + self.fade_step).min(1.0);
+        self.last = sample.unwrap_or(0.0) * self.fade;
+        Some(self.last)
     }
 }
 
 /// Streaming linear interpolation is used only at the non-realtime IPC boundary.
 /// 48 kHz is exact passthrough. Other rates need listening/aliasing acceptance tests.
-pub struct Resampler {
-    source: u32,
-    target: u32,
-    phase: u64,
-    previous: f32,
-}
+pub struct Resampler(crate::audio::resample::StreamResampler);
 impl Resampler {
     pub fn new(source: u32, target: u32) -> Result<Self, String> {
         if !(8000..=96000).contains(&source) || !(8000..=96000).contains(&target) {
             return Err("AI transport supports 8–96 kHz mono input/output".into());
         }
-        Ok(Self {
-            source,
-            target,
-            phase: 0,
-            previous: 0.0,
-        })
+        crate::audio::resample::StreamResampler::new(source, target).map(Self)
     }
     pub fn push(&mut self, sample: f32, output: &mut Vec<f32>) {
-        let sample = if sample.is_finite() {
-            sample.clamp(-1.0, 1.0)
-        } else {
-            0.0
-        };
-        self.phase += u64::from(self.target);
-        while self.phase >= u64::from(self.source) {
-            self.phase -= u64::from(self.source);
-            let weight = 1.0 - self.phase as f32 / self.target as f32;
-            output.push(self.previous + (sample - self.previous) * weight);
-        }
-        self.previous = sample;
+        self.0.push(sample, output);
     }
 }
 pub fn to_pcm16(value: f32) -> i16 {
@@ -252,7 +284,10 @@ mod tests {
             for _ in 0..source {
                 r.push(0.5, &mut out);
             }
-            assert_eq!(out.len(), target as usize);
+            assert!(
+                out.len().abs_diff(target as usize) < 1024,
+                "Streaming tail is retained, not reset/flushed per chunk"
+            );
             assert!(out.iter().all(|v| v.is_finite() && v.abs() <= 1.0));
         }
     }

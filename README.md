@@ -1,13 +1,22 @@
 # VoiceMorph Studio
 
-Ứng dụng desktop Windows để xây dựng trải nghiệm biến đổi giọng nói. Task 01 tạo nền móng
-Tauri 2 + React + TypeScript; Task 02 hoàn thiện desktop UI và navigation; Task 03 tích hợp quản lý
-thiết bị WASAPI qua CPAL; Task 04 bổ sung pipeline monitoring realtime float32 với passthrough;
-Task 05 bổ sung gain, mute và peak/RMS meter dBFS. Task 06 tích hợp pitch shifting và formant
-processing realtime bằng Signalsmith Stretch. Task 07 bổ sung registry JSON versioned với tám preset
-built-in và DSP Robot/Radio/Cartoon; preset editor và import/export chưa được triển khai.
-Task 08 bổ sung RNNoise/noise gate/limiter; Task 09 bổ sung recording, A/B playback và WAV export local.
-Task 10 bổ sung custom preset schema v2, repository local an toàn, editor, favorite và import/export JSON.
+[Bản sửa Soundboard: Play khi engine idle và lỗi hiển thị](docs/SOUNDBOARD_PLAYBACK_FIX.md).
+
+[Female Voice Collection: tính năng, model hợp lệ và giới hạn kiểm thử](docs/FEMALE_VOICE_COLLECTION_REPORT.md).
+
+[Audio quality audit, measurements and current limits](docs/AUDIO_QUALITY_REPORT.md).
+
+**Hướng dẫn sử dụng app và cấu hình mic ảo cho Discord:**
+[Mở hướng dẫn tiếng Việt](docs/HUONG_DAN_SU_DUNG.md).
+
+Ứng dụng desktop Windows xử lý giọng nói local: preset DSP, pitch/formant, EQ, noise suppression,
+soundboard WAV, ghi âm và xuất WAV. Mic ảo dùng cáp audio Windows đã cài như VB-CABLE để gửi
+giọng đã xử lý sang Discord/ứng dụng khác. AI Voice Studio hỗ trợ runtime w-okada tùy chọn;
+Classic DSP không cần Python hoặc model AI. Trạng thái triển khai và giới hạn kiểm thử được ghi
+trong [docs/TASK_PROGRESS.md](docs/TASK_PROGRESS.md).
+
+Người dùng bản EXE/bộ cài không cần Node.js hoặc Rust. Các yêu cầu và lệnh bên dưới dành cho
+việc chạy source/build ứng dụng; hướng dẫn dùng app ở liên kết đầu trang.
 
 ## Công nghệ
 

@@ -1,0 +1,49 @@
+{
+  "timestampUtc": "2026-11-26T06:03:33.008Z",
+  "originalRoute": {
+    "outputDeviceId": "wasapi:{0.0.0.00000000}.{20165859-4fc4-4912-8f92-598d5254ac32}",
+    "outputDeviceFingerprint": "cable input (vb-audio virtual cable)|Output|48000|2|f32"
+  },
+  "selectedCable": {
+    "id": "wasapi:{0.0.0.00000000}.{20165859-4fc4-4912-8f92-598d5254ac32}",
+    "name": "CABLE Input (VB-Audio Virtual Cable)",
+    "kind": "output",
+    "isDefault": false,
+    "sampleRate": 48000,
+    "channels": 2,
+    "sampleFormat": "f32",
+    "bufferCapability": {
+      "minimumFrames": 480,
+      "maximumFrames": 480
+    },
+    "fingerprint": "cable input (vb-audio virtual cable)|Output|48000|2|f32",
+    "likelyVirtual": true
+  },
+  "rejectedPhysical": {
+    "log": [],
+    "name": "Error"
+  },
+  "active": {
+    "state": "active",
+    "outputDeviceId": "wasapi:{0.0.0.00000000}.{20165859-4fc4-4912-8f92-598d5254ac32}",
+    "outputDeviceName": "CABLE Input (VB-Audio Virtual Cable)",
+    "sampleRate": 48000,
+    "channels": 2,
+    "underrunCount": 2,
+    "overflowCount": 0,
+    "outputPeakDbfs": -96,
+    "endpointVerified": true,
+    "message": "Playback endpoint is open. Verify its paired capture endpoint in the target app."
+  },
+  "stopped": {
+    "state": "stopped",
+    "inputDeviceId": null,
+    "outputDeviceId": null,
+    "sampleRate": null,
+    "inputChannels": null,
+    "outputChannels": null,
+    "dspLatencyFrames": null,
+    "metrics": null
+  },
+  "scope": "Real production UI/commands. Input and headphone output muted throughout; no recording/call. Paired-capture signal proof is in loopback-report.json. Correct CABLE Input remains selected; volume restored after test."
+}

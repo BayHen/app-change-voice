@@ -6,6 +6,7 @@ import { HotkeySettings } from "../components/HotkeySettings";
 import { DiscordIntegration } from "../components/DiscordIntegration";
 import { BackupSettings } from "../components/BackupSettings";
 import { AudioDiagnostics } from "../components/AudioDiagnostics";
+import { AudioQualityLab } from "../components/AudioQualityLab";
 import { UpdateSettings } from "../components/UpdateSettings";
 import { useAppStatus } from "../hooks/useAppStatus";
 import { AIVoiceStudio } from "./AIVoiceStudio";
@@ -34,6 +35,7 @@ export function Settings({
     "AI runtime",
     "Hardware acceleration",
     "Performance",
+    "Audio Quality Lab",
     "Keyboard shortcuts",
     "Storage",
     "Updates",
@@ -69,6 +71,8 @@ export function Settings({
             <AIVoiceStudio />
           ) : tab === "Performance" ? (
             <AudioDiagnostics />
+          ) : tab === "Audio Quality Lab" ? (
+            <AudioQualityLab />
           ) : tab === "Keyboard shortcuts" ? (
             <HotkeySettings />
           ) : tab === "Storage" ? (

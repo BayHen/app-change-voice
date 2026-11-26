@@ -1322,6 +1322,7 @@ fn select_virtual_output_device(
                 )
             })?
     };
+    routing::validate_virtual_output(&device.name)?;
     let configuration = RoutingConfiguration {
         output_device_id: Some(device.id),
         output_device_fingerprint: Some(device.fingerprint),
@@ -1506,7 +1507,154 @@ fn delete_recording(
 fn get_audio_runtime_status(
     state: State<'_, AudioRuntimeState>,
 ) -> Result<AudioRuntimeStatus, AudioDeviceError> {
-    with_audio_runtime(state, |runtime| Ok(runtime.status()))
+    with_audio_runtime(state, |runtime| Ok(runtime.refresh_status()))
+}
+
+#[tauri::command]
+async fn render_voice_preview(
+    preset_id: String,
+    source_path: PathBuf,
+    consent_confirmed: bool,
+    parameters: Option<EffectParameters>,
+    app: AppHandle,
+) -> Result<presets::preview::Preview, String> {
+    let preset = app.state::<PresetRegistry>().get(&preset_id)?.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        presets::preview::render_with_parameters(
+            &preset,
+            &source_path,
+            consent_confirmed,
+            parameters,
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn render_ai_voice_preview(
+    source_path: PathBuf,
+    consent_confirmed: bool,
+    app: AppHandle,
+) -> Result<presets::preview::Preview, String> {
+    if !consent_confirmed {
+        return Err("Confirm permission to use the selected WAV".into());
+    }
+    let (root, config) = {
+        let state = app.state::<AudioRuntimeState>();
+        let audio = state.lock().map_err(|_| "Audio lock")?;
+        if matches!(
+            audio.ai.status().state.as_str(),
+            "starting" | "ready" | "converting"
+        ) {
+            return Err("Stop live AI before rendering a file preview".into());
+        }
+        (audio.ai.runtime_root(), audio.ai.status().config)
+    };
+    let (model, path) = app
+        .state::<AIModelState>()
+        .lock()
+        .map_err(|_| "Model lock")?
+        .resolve(ai::catalog::VOICE_ID)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        use ai::provider::{VoiceConversionBackend, WOkadaBackend};
+        let (rate, input) = presets::preview::read_source(&source_path, true)?;
+        if rate != 48000 {
+            return Err(
+                "AI preview currently requires a 48 kHz WAV; Classic preview supports other rates"
+                    .into(),
+            );
+        }
+        let start = std::time::Instant::now();
+        let runtime = ai::runtime::discover(&root)?;
+        let staged = presets::preview::PreviewModel::new(&root, &path, &model)?;
+        let (mut backend, _) = WOkadaBackend::load(
+            &runtime,
+            &staged.path,
+            &model,
+            &config,
+            &root.join(format!("preview-{}.log", ai::process::now_ms())),
+            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        )?;
+        let silence = vec![0; config.chunk_frames];
+        let mut primed = false;
+        for _ in 0..6 {
+            if !backend.convert(&silence)?.warming_up {
+                primed = true;
+                break;
+            }
+        }
+        if !primed {
+            return Err("AI preview warmup did not finish".into());
+        }
+        let pcm: Vec<_> = input.into_iter().map(ai::transport::to_pcm16).collect();
+        let mut output = Vec::new();
+        for chunk in pcm.chunks(config.chunk_frames) {
+            let mut block = silence.clone();
+            block[..chunk.len()].copy_from_slice(chunk);
+            let result = backend.convert(&block)?;
+            if result.warming_up {
+                return Err("Unexpected AI warmup during preview".into());
+            }
+            output.extend(result.samples.into_iter().map(|v| f32::from(v) / 32768.0));
+        }
+        for _ in 0..2 {
+            output.extend(
+                backend
+                    .convert(&silence)?
+                    .samples
+                    .into_iter()
+                    .map(|v| f32::from(v) / 32768.0),
+            );
+        }
+        presets::preview::encode(48000, output, start.elapsed().as_secs_f64() * 1000.0)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn get_audio_quality(
+    state: State<'_, AudioRuntimeState>,
+) -> Result<audio::quality::QualitySettings, String> {
+    Ok(state.lock().map_err(|_| "Audio state lock")?.quality())
+}
+#[tauri::command]
+fn set_audio_quality(
+    settings: audio::quality::QualitySettings,
+    state: State<'_, AudioRuntimeState>,
+) -> Result<audio::quality::QualitySettings, String> {
+    state
+        .lock()
+        .map_err(|_| "Audio state lock")?
+        .set_quality(settings)
+}
+#[tauri::command]
+fn get_stage_capture_status(
+    state: State<'_, AudioRuntimeState>,
+) -> Result<audio::capture::CaptureStatus, String> {
+    Ok(state
+        .lock()
+        .map_err(|_| "Audio state lock")?
+        .capture_status())
+}
+#[tauri::command]
+fn start_stage_capture(
+    stages: Vec<audio::capture::Stage>,
+    seconds: u64,
+    consent_confirmed: bool,
+    state: State<'_, AudioRuntimeState>,
+) -> Result<audio::capture::CaptureStatus, String> {
+    state
+        .lock()
+        .map_err(|_| "Audio state lock")?
+        .start_capture(stages, seconds, consent_confirmed)
+}
+#[tauri::command]
+fn stop_stage_capture(
+    state: State<'_, AudioRuntimeState>,
+) -> Result<audio::capture::CaptureStatus, String> {
+    Ok(state.lock().map_err(|_| "Audio state lock")?.stop_capture())
 }
 
 #[tauri::command]
@@ -1915,6 +2063,7 @@ pub fn run() {
                 app.path().app_data_dir()?.join("ai-runtime"),
                 app.path().app_config_dir()?.join("ai-engine.json"),
             );
+            runtime.configure_quality(app.path().app_config_dir()?.join("audio-quality.json"));
             let soundboard_repository =
                 SoundboardRepository::load(soundboard_path).map_err(std::io::Error::other)?;
             runtime.set_soundboard_entries(soundboard_repository.list());
@@ -2015,6 +2164,13 @@ pub fn run() {
             export_recording,
             delete_recording,
             get_audio_runtime_status,
+            render_voice_preview,
+            render_ai_voice_preview,
+            get_audio_quality,
+            set_audio_quality,
+            get_stage_capture_status,
+            start_stage_capture,
+            stop_stage_capture,
             get_volume_settings,
             set_volume_settings,
             preview_volume_settings,

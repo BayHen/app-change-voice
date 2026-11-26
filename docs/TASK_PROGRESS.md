@@ -502,3 +502,60 @@ cài Windows x64 đã được xác nhận trong quality gate ngày 22/10/2026.
   review, CPU real-time/quality/long-session validation, physical virtual-cable and
   Discord/Zoom/OBS testing, signed native virtual-microphone driver. Existing VB-Audio
   endpoints were enumerated only. Full [execution/licensing/evidence report](AI_RUNTIME_EXECUTION_REPORT.md).
+
+# Monitoring stream error correction — 2026-11-26
+
+- Corrected CPAL callback classification: recoverable Xrun/route/scheduling notifications
+  no longer latch a terminal error; virtual output follows the same classification.
+- Actual input/output driver details are retained. Terminal monitoring failures release
+  streams on the control thread and display `faulted`; explicit retry clears the banner.
+  No automatic microphone restart or device switch.
+- Verified 104 Rust tests, 20 frontend tests and an explicitly run muted 3-second hardware
+  diagnostic, including injected device-unavailable notification and stream cleanup.
+  See [monitoring correction](AUDIO_STREAM_FAILURE_FIX.md) for limits and build evidence.
+
+# Discord / virtual microphone usability review — 2026-11-26
+
+- Found saved virtual route pointing to physical headphones; corrected it to CABLE Input
+  via native UI/commands. Original volume/mute restored; test audio/routing stopped.
+- Added physical-route validation, explicit select → Monitor → Start routing guidance
+  and shared session state across virtual/Discord/game settings.
+- Verified 104 Rust / 21 frontend tests, explicit paired-capture synthetic-tone loopback,
+  production native UI and optimized EXE/NSIS build. Discord call/Mic Test remains manual.
+- Delivered [Vietnamese user guide](HUONG_DAN_SU_DUNG.md) and
+  [review/evidence/limits](VIRTUAL_MIC_REVIEW.md).
+
+# Audio quality / realtime engine review — 2026-11-26
+
+- Removed premature float clipping, separated capture and DSP worker, added persistent sinc conversion,
+  bounded clock correction, adaptive prefill, final lookahead limiter and symmetric PCM/i32 support.
+- Fixed optional noise gate/mix alignment and fresh-frame warmup; guarded upstream AI int16 conversion.
+- Added native Audio Quality Lab, three negotiated profiles, actual telemetry and consent-only local stage WAVs.
+- Verified 112 Rust / 22 frontend / 6 Python tests, real CUDA model inference, owned-child recovery,
+  three VB-Cable profiles and a 120-second Balanced synthetic loopback with zero virtual route underruns/overflows.
+  One capture overrun notification remains in the measured runs; no blanket zero-dropout claim.
+- Built optimized EXE/NSIS. MSI blocked by local Windows Installer/WiX ICE error; no system security changes.
+- Full data, source/runtime/model terms, artifact hashes and remaining CPU/EOL/listening/long-run limits:
+  [Audio Quality Report](AUDIO_QUALITY_REPORT.md). Changes remain uncommitted on `feature/new-version`.
+
+# Female Voice Collection — 2026-11-26
+
+- Added 20 distinct DSP configurations to the registry and one reviewed original-owner RVC identity
+  in Voice Lab → Female collection. AI and DSP are explicitly labeled; no TikTok audio was used.
+- Implemented smoothed intensity, split-band de-essing and RMS compression, backward-compatible parameters,
+  local consented WAV previews (including real AI inference/private numeric model slot), favorites/search/recent.
+- Fixed cumulative editing/reset behavior and prevented delayed preview playback after leaving/changing voice.
+- Verified 115 Rust / 25 frontend / 6 Python tests, 20 unique licensed-speech WAV renders, CPU/GPU inference
+  benchmarks and unchanged neutral/alias regression metrics. Native evidence and optimized EXE/NSIS hashes:
+  [Female collection report](FEMALE_VOICE_COLLECTION_REPORT.md).
+- Vietnamese/regional pronunciation, actual male-input naturalness, listening evaluations and live conferencing
+  remain unqualified. Build-load VB-Cable test recorded one virtual underrun and one capture overrun;
+  the measured counters are retained rather than described as perfect audio.
+
+# Soundboard idle playback correction — 2026-11-26
+
+- Render structured native error messages, block idle playback and offer explicit audio-engine start.
+- Check stopped state before clip lookup; stopping an idle mixer is idempotent.
+- Verified 116 Rust / 27 frontend tests, optimized EXE/NSIS and native Play/Stop with the existing
+  whoosh clip, input/output muted and no microphone recording/library changes.
+- Latest artifact hashes and screenshots: [Soundboard correction](SOUNDBOARD_PLAYBACK_FIX.md).

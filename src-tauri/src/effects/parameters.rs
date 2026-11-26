@@ -27,6 +27,12 @@ pub struct EffectParameters {
     pub tremolo_depth: f32,
     pub bass_db: f32,
     pub treble_db: f32,
+    #[serde(default = "one")]
+    pub voice_intensity: f32,
+    #[serde(default)]
+    pub de_ess_strength: f32,
+    #[serde(default = "one")]
+    pub compression_ratio: f32,
 }
 
 impl Default for EffectParameters {
@@ -47,6 +53,9 @@ impl Default for EffectParameters {
             tremolo_depth: 0.0,
             bass_db: 0.0,
             treble_db: 0.0,
+            voice_intensity: 1.0,
+            de_ess_strength: 0.0,
+            compression_ratio: 1.0,
         }
     }
 }
@@ -79,6 +88,9 @@ impl EffectParameters {
             tremolo_depth: finite_clamp(self.tremolo_depth, 0.0, 0.8, 0.0),
             bass_db: finite_clamp(self.bass_db, -12.0, 12.0, 0.0),
             treble_db: finite_clamp(self.treble_db, -12.0, 12.0, 0.0),
+            voice_intensity: finite_clamp(self.voice_intensity, 0.0, 1.0, 1.0),
+            de_ess_strength: finite_clamp(self.de_ess_strength, 0.0, 1.0, 0.0),
+            compression_ratio: finite_clamp(self.compression_ratio, 1.0, 4.0, 1.0),
         }
     }
 }
@@ -89,6 +101,9 @@ fn finite_clamp(value: f32, min: f32, max: f32, fallback: f32) -> f32 {
     } else {
         fallback
     }
+}
+fn one() -> f32 {
+    1.0
 }
 
 #[derive(Clone)]
@@ -110,6 +125,9 @@ struct EffectParameterAtoms {
     tremolo_depth: AtomicU32,
     bass_db: AtomicU32,
     treble_db: AtomicU32,
+    voice_intensity: AtomicU32,
+    de_ess_strength: AtomicU32,
+    compression_ratio: AtomicU32,
 }
 
 impl SharedEffectParameters {
@@ -131,6 +149,9 @@ impl SharedEffectParameters {
             tremolo_depth: atom(p.tremolo_depth),
             bass_db: atom(p.bass_db),
             treble_db: atom(p.treble_db),
+            voice_intensity: atom(p.voice_intensity),
+            de_ess_strength: atom(p.de_ess_strength),
+            compression_ratio: atom(p.compression_ratio),
         }))
     }
 
@@ -150,6 +171,9 @@ impl SharedEffectParameters {
             (&self.0.tremolo_depth, p.tremolo_depth),
             (&self.0.bass_db, p.bass_db),
             (&self.0.treble_db, p.treble_db),
+            (&self.0.voice_intensity, p.voice_intensity),
+            (&self.0.de_ess_strength, p.de_ess_strength),
+            (&self.0.compression_ratio, p.compression_ratio),
         ] {
             target.store(value.to_bits(), Ordering::Relaxed);
         }
@@ -175,6 +199,9 @@ impl SharedEffectParameters {
             tremolo_depth: load(&self.0.tremolo_depth),
             bass_db: load(&self.0.bass_db),
             treble_db: load(&self.0.treble_db),
+            voice_intensity: load(&self.0.voice_intensity),
+            de_ess_strength: load(&self.0.de_ess_strength),
+            compression_ratio: load(&self.0.compression_ratio),
         }
     }
 }

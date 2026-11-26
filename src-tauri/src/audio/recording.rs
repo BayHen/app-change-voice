@@ -388,7 +388,7 @@ fn write_wav(path: &Path, rate: u32, data: &[f32]) -> Result<(), String> {
     let mut writer = hound::WavWriter::create(path, spec).map_err(|e| e.to_string())?;
     for &sample in data {
         writer
-            .write_sample((sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16)
+            .write_sample(crate::ai::transport::to_pcm16(sample))
             .map_err(|e| e.to_string())?
     }
     writer.finalize().map_err(|e| e.to_string())
@@ -397,10 +397,7 @@ fn read_wav(path: &Path) -> Result<Vec<f32>, String> {
     let mut reader = hound::WavReader::open(path).map_err(|e| e.to_string())?;
     reader
         .samples::<i16>()
-        .map(|s| {
-            s.map(|v| v as f32 / i16::MAX as f32)
-                .map_err(|e| e.to_string())
-        })
+        .map(|s| s.map(|v| v as f32 / 32768.0).map_err(|e| e.to_string()))
         .collect()
 }
 

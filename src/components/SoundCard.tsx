@@ -5,12 +5,21 @@ import { HotkeyAssignment } from "./HotkeyAssignment";
 interface Props {
   sound: SoundEntry;
   busy: boolean;
+  playbackDisabled?: boolean;
   onPlay: () => void;
   onStop: () => void;
   onDelete: () => void;
   onUpdate: (sound: SoundEntry) => void;
 }
-export function SoundCard({ sound, busy, onPlay, onStop, onDelete, onUpdate }: Props) {
+export function SoundCard({
+  sound,
+  busy,
+  playbackDisabled = false,
+  onPlay,
+  onStop,
+  onDelete,
+  onUpdate,
+}: Props) {
   return (
     <article className="vm-card vm-sound-card">
       <div className="flex items-start gap-3">
@@ -42,7 +51,7 @@ export function SoundCard({ sound, busy, onPlay, onStop, onDelete, onUpdate }: P
       </div>
       <div className="mt-4 grid grid-cols-2 gap-2">
         <button
-          disabled={busy || sound.missing}
+          disabled={busy || playbackDisabled || sound.missing}
           onClick={onPlay}
           className="flex items-center justify-center gap-2 rounded-lg bg-cyan-300 px-3 py-2 text-sm font-medium text-slate-950 disabled:opacity-40"
         >
@@ -50,7 +59,7 @@ export function SoundCard({ sound, busy, onPlay, onStop, onDelete, onUpdate }: P
           Play
         </button>
         <button
-          disabled={busy}
+          disabled={busy || playbackDisabled}
           onClick={onStop}
           className="flex items-center justify-center gap-2 rounded-lg bg-white/5 px-3 py-2 text-sm"
         >

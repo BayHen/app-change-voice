@@ -1,6 +1,7 @@
 //! Các thuật toán DSP độc lập hệ điều hành.
 
 pub mod chain;
+pub mod dynamics;
 pub mod formant;
 pub mod gain;
 pub mod limiter;

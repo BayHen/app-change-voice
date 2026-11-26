@@ -1,8 +1,15 @@
 # VoiceMorph managed AI runtime — real execution report
 
+Current audio-engine and guarded-runtime measurements: [Audio Quality Report](AUDIO_QUALITY_REPORT.md).
+The hashes below describe a historical checkpoint; use that report for the current build.
+
 Branch: `feature/new-version`. Work performed 2026-11-25/26, Asia/Saigon, following the
 user's explicit runtime installation/execution authorization. This supersedes the
 unavailable-assets checkpoint in `AI_ENGINE_IMPLEMENTATION.md` and `AI_ENGINE_VERIFICATION.md`.
+
+> This report's native evidence and hashes identify the AI-validation build at that
+> checkpoint. The later [monitoring stream correction](AUDIO_STREAM_FAILURE_FIX.md)
+> rebuilds the same local artifact filenames; its verification is recorded separately.
 
 ## Implemented behavior
 

@@ -16,6 +16,7 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 import { AppHeader } from "../components/AppHeader";
+import { FemaleVoiceCollection } from "../components/FemaleVoiceCollection";
 import { Button, Card, Badge, Slider, StudioDialog } from "../components/ui";
 import { InputLevelMeter } from "../components/InputLevelMeter";
 import { Waveform } from "../components/Waveform";
@@ -104,6 +105,14 @@ const templates = [
 ];
 
 export function VoiceLab() {
+  const [collection, setCollection] = useState(false);
+  return collection ? (
+    <FemaleVoiceCollection onBack={() => setCollection(false)} />
+  ) : (
+    <VoiceLabWorkspace onCollection={() => setCollection(true)} />
+  );
+}
+function VoiceLabWorkspace({ onCollection }: { onCollection: () => void }) {
   const { runtime, devices, routing } = useAudioSession();
   const effects = useEffectParameters(),
     noise = useNoiseSettings(),
@@ -165,6 +174,9 @@ export function VoiceLab() {
       limiterEnabled: noise.settings.limiterEnabled,
       limiterCeilingDbfs: noise.settings.limiterCeilingDbfs,
       effectBypassed: parameters.bypassed,
+      voiceIntensity: parameters.voiceIntensity ?? 1,
+      deEssStrength: parameters.deEssStrength ?? 0,
+      compressionRatio: parameters.compressionRatio ?? 1,
     };
     preset.effects = [
       {
@@ -231,7 +243,10 @@ export function VoiceLab() {
                 <h2>Voice presets</h2>
                 <p>Find your sound. Make it yours.</p>
               </div>
-              <Badge>Realtime DSP</Badge>
+              <div className="vm-actions">
+                <Badge>Realtime DSP</Badge>
+                <Button onClick={onCollection}>Female collection</Button>
+              </div>
             </div>
             <div className="vm-preset-grid">
               {templates.map((template) => {

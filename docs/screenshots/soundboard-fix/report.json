@@ -1,0 +1,50 @@
+{
+  "timestampUtc": "2026-11-26T13:07:07.205Z",
+  "executableSha256": "b2d212cdef29117773209e908bfd5e591dc4ca477099de3ed072434e087a7b96",
+  "soundId": "sound-1795697893199551400",
+  "stoppedError": {
+    "code": "backend_error",
+    "message": "Start audio processing before playing a sound"
+  },
+  "live": {
+    "state": "running",
+    "inputDeviceId": "wasapi:{0.0.1.00000000}.{749bf111-47d4-4afe-a6bf-6515ebde525a}",
+    "outputDeviceId": "wasapi:{0.0.0.00000000}.{2d17917b-22ca-4421-ada5-fd84547a4b9e}",
+    "sampleRate": 48000,
+    "inputChannels": 2,
+    "outputChannels": 2,
+    "dspLatencyFrames": 3264,
+    "metrics": {
+      "sampleRate": 48000,
+      "inputBufferFrames": 480,
+      "outputBufferFrames": 480,
+      "dspLatencyFrames": 3264,
+      "underrunCount": 0,
+      "overflowCount": 0,
+      "streamErrorCount": 0,
+      "lastStreamError": null,
+      "averageProcessingMicros": 0.292625,
+      "estimatedLatencyMs": 126.97916666666667,
+      "ringDepthFrames": 1759,
+      "inputLevel": 0,
+      "outputLevel": 0,
+      "inputPeakDbfs": -96,
+      "inputRmsDbfs": -96,
+      "outputPeakDbfs": -96,
+      "outputRmsDbfs": -96,
+      "inputClipping": false,
+      "outputClipping": false,
+      "streamFaulted": false,
+      "protectedClipCount": 0,
+      "outputCallbackMaxMicros": 80.9,
+      "driftCorrectionPpm": 2.6669333333333336,
+      "discardedFrames": 0,
+      "captureCallbackMaxMicros": 10.1,
+      "playbackAlgorithmFrames": 112
+    },
+    "inputSampleFormat": "f32",
+    "outputSampleFormat": "f32",
+    "diagnosticRecording": false
+  },
+  "scope": "Actual native bridge with existing clip, microphone/output muted; no routing started, no recording or file/library changes, no audible listening assessment."
+}

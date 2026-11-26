@@ -43,6 +43,9 @@ pub struct EngineStatus {
     pub dropped_output_samples: u64,
     pub missing_output_samples: u64,
     pub completed_chunks: u64,
+    pub missed_deadlines: u64,
+    pub startup_wait_samples: u64,
+    pub inference_budget_ms: Option<f64>,
     pub restarts: u32,
     pub message: Option<String>,
     pub config: EngineConfig,
@@ -79,6 +82,9 @@ impl Default for EngineStatus {
             dropped_output_samples: 0,
             missing_output_samples: 0,
             completed_chunks: 0,
+            missed_deadlines: 0,
+            startup_wait_samples: 0,
+            inference_budget_ms: None,
             restarts: 0,
             message: None,
             config: EngineConfig::default(),
@@ -131,6 +137,7 @@ impl AIEngine {
         );
         let manifest = super::runtime::installed_manifest(&self.runtime_root).ok();
         let installed = manifest.is_some();
+        let needs_adapter_update = !installed && self.runtime_root.join("current.json").exists();
         let config = self.config.clone();
         self.update(|s| {
             s.config = config;
@@ -139,6 +146,7 @@ impl AIEngine {
             s.install.installed = installed;
             s.install.version = s.runtime_version.clone();
             s.state = if installed { "stopped" } else { "notInstalled" }.into();
+            if needs_adapter_update {s.message=Some("Installed AI adapter needs an update for PCM safety. Install the recommended runtime; verified artifact cache is reused.".into());}
         });
     }
     pub fn runtime_root(&self) -> PathBuf {
@@ -167,6 +175,11 @@ impl AIEngine {
         status.dropped_output_samples = s.dropped_output_samples.load(Ordering::Relaxed);
         status.missing_output_samples = s.missing_output_samples.load(Ordering::Relaxed);
         status.completed_chunks = s.completed_chunks.load(Ordering::Relaxed);
+        status.startup_wait_samples = s.startup_wait_samples.load(Ordering::Relaxed);
+        status.inference_budget_ms = status
+            .model_id
+            .as_ref()
+            .map(|_| status.config.chunk_frames as f64 * 1000.0 / f64::from(AI_SAMPLE_RATE));
         if status.completed_chunks > 0
             && status.state == "converting"
             && s.ready.load(Ordering::Acquire)
@@ -179,7 +192,15 @@ impl AIEngine {
         status
     }
     pub fn attach(&self, sample_rate: u32) -> RealtimePort {
-        let (rt, worker) = transport::ports(sample_rate, self.shared.clone());
+        self.attach_with_diagnostics(sample_rate, None)
+    }
+    pub fn attach_with_diagnostics(
+        &self,
+        sample_rate: u32,
+        diagnostics: Option<crate::audio::capture::Tap>,
+    ) -> RealtimePort {
+        let (rt, mut worker) = transport::ports(sample_rate, self.shared.clone());
+        worker.diagnostics = diagnostics;
         if let Ok(mut pending) = self.attachment.lock() {
             *pending = Some(worker);
         }
@@ -331,6 +352,10 @@ impl AIEngine {
                     if stop.load(Ordering::Acquire) {
                         break;
                     }
+                    let budget_failure = result
+                        .as_ref()
+                        .err()
+                        .is_some_and(|message| message.starts_with("Real-time budget:"));
                     if let Err(message) = result {
                         shared.faulted.store(true, Ordering::Release);
                         if let Ok(mut state) = snapshot.lock() {
@@ -339,7 +364,7 @@ impl AIEngine {
                             state.restarts = attempt;
                         }
                     }
-                    if attempt == 2 {
+                    if attempt == 2 || budget_failure {
                         break;
                     }
                     thread::sleep(Duration::from_millis(200));
@@ -444,12 +469,17 @@ fn run_worker(
         .as_ref()
         .map(|p| p.sample_rate)
         .unwrap_or(AI_SAMPLE_RATE);
+    shared.output_prefill_frames.store(
+        (config.chunk_frames as u64 * 2 * u64::from(native_rate)) / u64::from(AI_SAMPLE_RATE),
+        Ordering::Release,
+    );
     let mut input_resampler = Resampler::new(native_rate, AI_SAMPLE_RATE)?;
     let mut output_resampler = Resampler::new(AI_SAMPLE_RATE, native_rate)?;
     let mut pending = Vec::<f32>::with_capacity(config.chunk_frames + 16);
     let mut output = Vec::<f32>::with_capacity(config.chunk_frames * 2);
     let mut health = Instant::now();
     let mut sent = 0;
+    let mut consecutive_over_budget = 0_u32;
     while !stop.load(Ordering::Acquire) {
         if let Some(next) = attachment
             .lock()
@@ -457,6 +487,11 @@ fn run_worker(
             .take()
         {
             input_resampler = Resampler::new(next.sample_rate, AI_SAMPLE_RATE)?;
+            shared.output_prefill_frames.store(
+                (config.chunk_frames as u64 * 2 * u64::from(next.sample_rate))
+                    / u64::from(AI_SAMPLE_RATE),
+                Ordering::Release,
+            );
             output_resampler = Resampler::new(AI_SAMPLE_RATE, next.sample_rate)?;
             pending.clear();
             *port = Some(next);
@@ -524,10 +559,42 @@ fn run_worker(
             .conversion_micros
             .store((conversion * 1000.0) as u64, Ordering::Relaxed);
         output.clear();
+        if !response.warming_up {
+            let over = started.elapsed().as_secs_f64()
+                > config.chunk_frames as f64 / f64::from(AI_SAMPLE_RATE);
+            consecutive_over_budget = if over { consecutive_over_budget + 1 } else { 0 };
+            if over {
+                if let Ok(mut state) = snapshot.lock() {
+                    state.missed_deadlines += 1;
+                    if consecutive_over_budget >= 4 {
+                        state.message=Some("AI inference exceeds its real-time budget. Increase chunk size, use CUDA or select Classic DSP.".into());
+                    }
+                }
+            }
+            if consecutive_over_budget >= 16
+                && port.input.slots() > port.input.buffer().capacity() / 2
+            {
+                return Err("Real-time budget: AI cannot keep up with audio input. Voice follows the explicit failure policy; choose a larger chunk/CUDA or Classic DSP.".into());
+            }
+        }
         for sample in response.samples {
+            if let Some(tap) = port.diagnostics.as_mut() {
+                tap.push(
+                    crate::audio::capture::Stage::AiInference,
+                    AI_SAMPLE_RATE,
+                    f32::from(sample) / 32768.0,
+                );
+            }
             output_resampler.push(f32::from(sample) / 32768.0, &mut output);
         }
         for value in output.iter().copied() {
+            if let Some(tap) = port.diagnostics.as_mut() {
+                tap.push(
+                    crate::audio::capture::Stage::PcmBridge,
+                    port.sample_rate,
+                    value,
+                );
+            }
             if port
                 .output
                 .push(TaggedSample { generation, value })
@@ -656,7 +723,15 @@ mod tests {
                 .map(|s| f32::from(s.unwrap()) / 32768.0)
                 .collect();
         let mut engine = AIEngine::default();
-        engine.configure(root.clone(), root.join("transport-test-config.json"));
+        // A fresh fixture avoids replacing a config owned by another Windows test identity.
+        engine.configure(
+            root.clone(),
+            root.join(format!(
+                "transport-test-{}-{}.json",
+                std::process::id(),
+                super::super::process::now_ms()
+            )),
+        );
         engine
             .save_config(EngineConfig {
                 provider: "cuda".into(),

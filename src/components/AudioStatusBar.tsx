@@ -10,7 +10,7 @@ export function AudioStatusBar({ onSettings }: { onSettings: () => void }) {
   const aiMuted =
     aiSelected && !classicFallback && !["ready", "converting"].includes(ai.status?.state ?? "");
   const live = runtime.status.state === "running";
-  const metrics = runtime.status.metrics;
+  const metrics = live ? runtime.status.metrics : null;
   // Matches Rust diagnostics: processing time is measured per frame, not per buffer.
   const cpu =
     metrics && metrics.sampleRate > 0
@@ -33,7 +33,9 @@ export function AudioStatusBar({ onSettings }: { onSettings: () => void }) {
                   : aiSelected
                     ? "AI voice selected"
                     : "Audio engine running"
-              : "Audio engine idle"}
+              : runtime.status.state === "faulted"
+                ? "Audio engine stopped after error"
+                : "Audio engine idle"}
         </strong>
         <span className="vm-status-detail">
           {aiSelected
@@ -49,6 +51,9 @@ export function AudioStatusBar({ onSettings }: { onSettings: () => void }) {
         </span>
       </div>
       <div className="vm-status-actions">
+        {runtime.status.diagnosticRecording && (
+          <Badge tone="warning">Local diagnostic recording</Badge>
+        )}
         <Headphones size={17} />
         <ToggleSwitch
           label="Monitor"

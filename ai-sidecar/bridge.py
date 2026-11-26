@@ -21,6 +21,29 @@ MAX_MESSAGE = 256 * 1024
 MAX_CHUNK = 16384
 
 
+def install_pcm_guards(model, np, torch):
+    """Protect upstream's direct int16 casts; do not add another overlap/crossfade."""
+    counters = {"modelSaturatedSamples": 0, "resampledSaturatedSamples": 0}
+    infer = model.pipeline.inferencer.infer
+    def bounded_infer(*args, **kwargs):
+        output = infer(*args, **kwargs).float()
+        if not bool(torch.isfinite(output).all()):
+            raise ValueError("Non-finite model output before upstream PCM conversion")
+        low, high = -32768.0 / 32767.5, 32767.0 / 32767.5
+        counters["modelSaturatedSamples"] += int(((output < low) | (output > high)).sum().item())
+        return output.clamp(low, high)
+    model.pipeline.inferencer.infer = bounded_infer
+    inference = model.inference
+    def bounded_inference(*args, **kwargs):
+        output = inference(*args, **kwargs)
+        if not np.isfinite(output).all():
+            raise ValueError("Non-finite resampled model output")
+        counters["resampledSaturatedSamples"] += int(np.count_nonzero((output < -32768) | (output > 32767)))
+        return np.clip(output, -32768, 32767)
+    model.inference = bounded_inference
+    return counters
+
+
 def contained(root: Path, relative: str) -> Path:
     if not relative or "\\" in relative or ":" in relative or any(
         part in ("", ".", "..") for part in relative.split("/")
@@ -208,6 +231,7 @@ class WOkadaEngine:
             model.settings.indexRatio = 0  # No unvalidated FAISS archive/index is loaded.
             model.settings.extraConvertSize = config["extraContextFrames"]
             model.settings.silentThreshold = config["noiseThreshold"]
+            self.pcm_guard_counters = install_pcm_guards(model, np, torch)
             vc = VoiceChangerV2(params)
             vc.setModel(model)
             vc.setInputSampleRate(48000)
@@ -240,7 +264,8 @@ class WOkadaEngine:
                 "cudaAllocatedBytes": torch.cuda.memory_allocated() if self.provider == "cuda" else None,
                 "cudaReservedBytes": torch.cuda.memory_reserved() if self.provider == "cuda" else None,
                 "cudaPeakAllocatedBytes": torch.cuda.max_memory_allocated() if self.provider == "cuda" else None,
-                "cudaPeakReservedBytes": torch.cuda.max_memory_reserved() if self.provider == "cuda" else None}
+                "cudaPeakReservedBytes": torch.cuda.max_memory_reserved() if self.provider == "cuda" else None,
+                "pcmGuardCounters": getattr(self, "pcm_guard_counters", {})}
 
     def convert_approved_voice(self, request):
         if self.vc is not None or self.model is not None:
@@ -310,7 +335,7 @@ class WOkadaEngine:
         if not self.np.isfinite(output).all():
             raise RuntimeError("w-okada returned non-finite samples")
         self.warmup_chunks = 0
-        return {"samples": output.astype(self.np.int16).tolist(), "inferenceMs": elapsed,
+        return {"samples": self.np.clip(output, -32768, 32767).astype(self.np.int16).tolist(), "inferenceMs": elapsed,
                 "upstreamPerformanceSeconds": performance, "warmingUp": False}
 
 

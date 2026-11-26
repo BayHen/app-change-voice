@@ -30,9 +30,20 @@ mod tests {
     use crate::presets::{loader::load_json, validation};
 
     #[test]
-    fn all_eight_builtins_load_and_validate() {
+    fn all_builtins_and_twenty_distinct_female_presets_load_and_validate() {
         let registry = PresetRegistry::built_in().unwrap();
-        assert_eq!(registry.all().len(), 8);
+        assert_eq!(registry.all().len(), 28);
+        let female: Vec<_> = registry
+            .all()
+            .iter()
+            .filter(|p| p.category == super::super::models::PresetCategory::Female)
+            .collect();
+        assert_eq!(female.len(), 20);
+        for (i, a) in female.iter().enumerate() {
+            for b in female.iter().skip(i + 1) {
+                assert_ne!(a.effect_parameters(), b.effect_parameters());
+            }
+        }
         assert_eq!(registry.get("natural").unwrap().name, "Natural Voice");
         assert!(registry.all().iter().all(|preset| preset.built_in));
     }

@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { useAudioSession } from "../hooks/AudioSession";
+import { errorMessage } from "../services/errors";
 import { AppHeader } from "../components/AppHeader";
 import { Button, Card, EmptyState, SearchInput, Badge } from "../components/ui";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -20,6 +22,10 @@ import {
   updateSound,
 } from "../services/tauri";
 export function SoundboardPage() {
+  const { runtime, devices } = useAudioSession();
+  const live = runtime.status.state === "running";
+  const input = devices.snapshot?.inputSelection.selectedId,
+    output = devices.snapshot?.outputSelection.selectedId;
   const [sounds, setSounds] = useState<SoundEntry[]>([]),
     [plugins, setPlugins] = useState<PluginStatus[]>([]),
     [effects, setEffects] = useState<EffectDescriptor[]>([]),
@@ -47,7 +53,7 @@ export function SoundboardPage() {
         setPlugins(p);
         setEffects(e);
       })
-      .catch((e) => setError(String(e)));
+      .catch((e) => setError(errorMessage(e)));
   }, []);
   const filtered = useMemo(
     () =>
@@ -67,7 +73,7 @@ export function SoundboardPage() {
       await refresh();
       return true;
     } catch (e) {
-      setError(String(e));
+      setError(errorMessage(e));
       return false;
     } finally {
       setBusy(false);
@@ -107,12 +113,29 @@ export function SoundboardPage() {
           </button>
         ))}
       </div>
-      {error && (
+      {!live && (
+        <Card>
+          <h2>Start audio processing to play sounds</h2>
+          <p className="vm-hint">
+            Soundboard uses the audio engine. Starting it opens your selected microphone and output
+            device. Virtual-microphone clips also need Start routing in Settings.
+          </p>
+          <Button
+            disabled={busy || runtime.busy || !!devices.error || !input || !output}
+            onClick={() => {
+              if (input && output) void runtime.start(input, output);
+            }}
+          >
+            Start audio engine
+          </Button>
+        </Card>
+      )}
+      {(error || runtime.error) && (
         <p
           role="alert"
           className="mt-4 flex gap-2 rounded-xl bg-rose-400/10 p-3 text-sm text-rose-200"
         >
-          <Warning /> {error}
+          <Warning /> {error || runtime.error}
         </p>
       )}
       <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -121,6 +144,7 @@ export function SoundboardPage() {
             key={sound.id}
             sound={sound}
             busy={busy}
+            playbackDisabled={!live || runtime.busy}
             onPlay={() => void mutate(() => playSound(sound.id))}
             onStop={() => void mutate(() => stopSound(sound.id))}
             onDelete={() => {
@@ -178,7 +202,7 @@ export function SoundboardPage() {
                   );
                 }
               })
-              .catch((e) => setError(String(e)))
+              .catch((e) => setError(errorMessage(e)))
           }
           onCancel={() => setDialog(false)}
           onAdd={() =>

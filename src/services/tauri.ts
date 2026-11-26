@@ -125,6 +125,29 @@ export interface AppliedPreset {
   preset: VoicePresetSummary;
   parameters: EffectParameters;
 }
+export interface VoicePreview {
+  wav: number[];
+  peak: number;
+  rms: number;
+  fullScaleSamples: number;
+  frames: number;
+  sampleRate: number;
+  processingMs: number;
+}
+export const renderVoicePreview = (
+  presetId: string,
+  sourcePath: string,
+  consentConfirmed: boolean,
+  parameters?: EffectParameters,
+) =>
+  invoke<VoicePreview>("render_voice_preview", {
+    presetId,
+    sourcePath,
+    consentConfirmed,
+    parameters,
+  });
+export const renderAIVoicePreview = (sourcePath: string, consentConfirmed: boolean) =>
+  invoke<VoicePreview>("render_ai_voice_preview", { sourcePath, consentConfirmed });
 
 export function getBuiltinPresets(): Promise<VoicePresetSummary[]> {
   return invoke<VoicePresetSummary[]>("get_builtin_presets");
@@ -232,6 +255,24 @@ export const setAIEngineConfig = (config: AIEngineConfig) =>
 export const startAIConversion = (modelId: string) =>
   invoke<AIEngineStatus>("start_ai_conversion", { modelId });
 export const stopAIConversion = () => invoke<AIEngineStatus>("stop_ai_conversion");
+export const getAudioQuality = () =>
+  invoke<import("../types/audio").AudioQualitySettings>("get_audio_quality");
+export const setAudioQuality = (settings: import("../types/audio").AudioQualitySettings) =>
+  invoke<import("../types/audio").AudioQualitySettings>("set_audio_quality", { settings });
+export const getStageCaptureStatus = () =>
+  invoke<import("../types/audio").StageCaptureStatus>("get_stage_capture_status");
+export const startStageCapture = (
+  stages: import("../types/audio").AudioCaptureStage[],
+  seconds: number,
+  consentConfirmed: boolean,
+) =>
+  invoke<import("../types/audio").StageCaptureStatus>("start_stage_capture", {
+    stages,
+    seconds,
+    consentConfirmed,
+  });
+export const stopStageCapture = () =>
+  invoke<import("../types/audio").StageCaptureStatus>("stop_stage_capture");
 export const selectClassicVoice = () => invoke<AIEngineStatus>("select_classic_voice");
 export const installAIRuntime = (
   source: string,

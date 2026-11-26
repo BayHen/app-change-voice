@@ -9,12 +9,10 @@ import { AppHeader } from "../components/AppHeader";
 import { AudioMeter } from "../components/AudioMeter";
 import { DeviceSelector } from "../components/DeviceSelector";
 import { StatusIndicator } from "../components/StatusIndicator";
-import { useAudioRuntime } from "../hooks/useAudioRuntime";
-import { useVirtualRouting } from "../hooks/useVirtualRouting";
+import { useAudioSession } from "../hooks/AudioSession";
 
 export function VirtualMicrophone() {
-  const routing = useVirtualRouting();
-  const runtime = useAudioRuntime();
+  const { routing, runtime } = useAudioSession();
   const hasLikelyVirtualDevice = routing.devices.some((device) => device.likelyVirtual);
   const candidates = [...routing.devices].sort(
     (left, right) => Number(right.likelyVirtual) - Number(left.likelyVirtual),
@@ -23,7 +21,7 @@ export function VirtualMicrophone() {
     id: device.id,
     name: device.name,
     kind: "output" as const,
-    available: true,
+    available: device.likelyVirtual,
     isDefault: device.isDefault,
   }));
   if (options.length === 0)
@@ -93,6 +91,12 @@ export function VirtualMicrophone() {
           {routing.error}
         </p>
       ) : null}
+      {selectedDevice && !selectedDevice.likelyVirtual && (
+        <p role="alert" className="vm-notice">
+          The saved route points to headphones or speakers. Select CABLE Input below; Discord must
+          use CABLE Output.
+        </p>
+      )}
       {!routing.loading && !hasLikelyVirtualDevice ? (
         <p
           role="alert"
@@ -132,7 +136,7 @@ export function VirtualMicrophone() {
               onChange={(id) => void routing.select(id)}
               helperText={
                 selectedDevice && !selectedDevice.likelyVirtual
-                  ? "This endpoint was not recognized as a virtual cable. Confirm that it exposes a paired capture endpoint."
+                  ? "This saved endpoint is not a virtual cable. Select CABLE Input instead."
                   : "Changing this endpoint stops the current audio session so streams can be rebuilt safely."
               }
             />
@@ -140,7 +144,10 @@ export function VirtualMicrophone() {
           <div className="mt-6 flex flex-wrap gap-3">
             <button
               type="button"
-              disabled={routing.busy || selected === "none" || runtime.status.state !== "running"}
+              disabled={
+                routing.busy ||
+                (!active && (!selectedDevice?.likelyVirtual || runtime.status.state !== "running"))
+              }
               onClick={() => void (active ? routing.stop() : routing.start())}
               className="inline-flex h-10 items-center gap-2 rounded-xl bg-cyan-300 px-4 text-sm font-medium text-[#071014] disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-600"
             >
@@ -158,8 +165,8 @@ export function VirtualMicrophone() {
           </div>
           {runtime.status.state !== "running" ? (
             <p className="mt-3 text-xs text-amber-200/70">
-              Start monitoring/audio processing on Dashboard first. Hear Myself may remain off; the
-              same DSP pipeline feeds this sink.
+              Select CABLE Input first, then enable Monitor in the bottom bar and click Start
+              routing. Changing the cable stops Monitor; enable it again before routing.
             </p>
           ) : null}
         </section>

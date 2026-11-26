@@ -50,6 +50,19 @@ pub fn validate_preset(preset: &VoicePreset) -> Result<(), String> {
     finite_range("bassDb", preset.parameters.bass_db, -12.0, 12.0)?;
     finite_range("trebleDb", preset.parameters.treble_db, -12.0, 12.0)?;
     finite_range(
+        "voiceIntensity",
+        preset.parameters.voice_intensity,
+        0.0,
+        1.0,
+    )?;
+    finite_range("deEssStrength", preset.parameters.de_ess_strength, 0.0, 1.0)?;
+    finite_range(
+        "compressionRatio",
+        preset.parameters.compression_ratio,
+        1.0,
+        4.0,
+    )?;
+    finite_range(
         "suppressionStrength",
         preset.parameters.suppression_strength,
         0.0,

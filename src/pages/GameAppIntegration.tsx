@@ -4,10 +4,8 @@ import { AppHeader } from "../components/AppHeader";
 import { AudioMeter } from "../components/AudioMeter";
 import { DeviceSelector } from "../components/DeviceSelector";
 import { StatusIndicator } from "../components/StatusIndicator";
-import { useAudioDevices } from "../hooks/useAudioDevices";
-import { useAudioRuntime } from "../hooks/useAudioRuntime";
+import { useAudioSession } from "../hooks/AudioSession";
 import { usePresets } from "../hooks/usePresets";
-import { useVirtualRouting } from "../hooks/useVirtualRouting";
 import {
   applyApplicationProfile,
   deleteApplicationProfile,
@@ -29,10 +27,8 @@ const blank = (presetId = "natural"): ApplicationProfile => ({
   clarityPriority: true,
 });
 export function GameAppIntegration() {
-  const devices = useAudioDevices(),
-    runtime = useAudioRuntime(),
-    routing = useVirtualRouting(),
-    presets = usePresets();
+  const { devices, runtime, routing } = useAudioSession();
+  const presets = usePresets();
   const [profiles, setProfiles] = useState<ApplicationProfile[]>([]),
     [selected, setSelected] = useState(""),
     [editing, setEditing] = useState<ApplicationProfile | null>(null),
@@ -60,6 +56,7 @@ export function GameAppIntegration() {
     isDefault: d.isDefault,
   }));
   const virtualOptions = [...routing.devices]
+    .filter((device) => device.likelyVirtual)
     .sort((a, b) => Number(b.likelyVirtual) - Number(a.likelyVirtual))
     .map((d) => ({
       id: d.id,
@@ -146,8 +143,12 @@ export function GameAppIntegration() {
             <button
               disabled={
                 routing.busy ||
-                runtime.status.state !== "running" ||
-                !routing.configuration.outputDeviceId
+                (!active &&
+                  (runtime.status.state !== "running" ||
+                    !routing.devices.some(
+                      (device) =>
+                        device.id === routing.configuration.outputDeviceId && device.likelyVirtual,
+                    )))
               }
               onClick={() => void (active ? routing.stop() : routing.start())}
               className="flex items-center gap-2 rounded-xl bg-cyan-300 px-4 py-2.5 text-sm font-medium text-slate-950 disabled:bg-zinc-800 disabled:text-zinc-600"

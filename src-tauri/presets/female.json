@@ -1,0 +1,602 @@
+[
+  {
+    "schemaVersion": 2,
+    "id": "female-natural-female",
+    "name": "Natural Female",
+    "description": "Balanced resonance with restrained lift. Classic DSP approximation; result depends on the input voice.",
+    "category": "Female",
+    "pitchSemitones": 2.0,
+    "formantSemitones": 1.2,
+    "gain": {
+      "makeupDb": 0
+    },
+    "effects": [],
+    "builtIn": true,
+    "parameters": {
+      "inputGainPercent": 100,
+      "outputGainPercent": 100,
+      "bassDb": -0.5,
+      "trebleDb": 0.2,
+      "noiseSuppression": false,
+      "suppressionStrength": 0.5,
+      "noiseGate": false,
+      "gateThresholdDbfs": -52,
+      "limiterEnabled": true,
+      "limiterCeilingDbfs": -1,
+      "effectBypassed": false,
+      "voiceIntensity": 1,
+      "deEssStrength": 0.15,
+      "compressionRatio": 1.15
+    }
+  },
+  {
+    "schemaVersion": 2,
+    "id": "female-soft-female",
+    "name": "Soft Female",
+    "description": "Warm lower mids and softened sibilants. Classic DSP approximation; result depends on the input voice.",
+    "category": "Female",
+    "pitchSemitones": 1.4,
+    "formantSemitones": 1.0,
+    "gain": {
+      "makeupDb": 0
+    },
+    "effects": [],
+    "builtIn": true,
+    "parameters": {
+      "inputGainPercent": 100,
+      "outputGainPercent": 100,
+      "bassDb": 0.8,
+      "trebleDb": -1.8,
+      "noiseSuppression": false,
+      "suppressionStrength": 0.5,
+      "noiseGate": false,
+      "gateThresholdDbfs": -52,
+      "limiterEnabled": true,
+      "limiterCeilingDbfs": -1,
+      "effectBypassed": false,
+      "voiceIntensity": 1,
+      "deEssStrength": 0.35,
+      "compressionRatio": 1.4
+    }
+  },
+  {
+    "schemaVersion": 2,
+    "id": "female-sweet-female",
+    "name": "Sweet Female",
+    "description": "Light resonance and gentle presence. Classic DSP approximation; result depends on the input voice.",
+    "category": "Female",
+    "pitchSemitones": 3.0,
+    "formantSemitones": 1.8,
+    "gain": {
+      "makeupDb": 0
+    },
+    "effects": [],
+    "builtIn": true,
+    "parameters": {
+      "inputGainPercent": 100,
+      "outputGainPercent": 100,
+      "bassDb": -0.8,
+      "trebleDb": 0.7,
+      "noiseSuppression": false,
+      "suppressionStrength": 0.5,
+      "noiseGate": false,
+      "gateThresholdDbfs": -52,
+      "limiterEnabled": true,
+      "limiterCeilingDbfs": -1,
+      "effectBypassed": false,
+      "voiceIntensity": 1,
+      "deEssStrength": 0.25,
+      "compressionRatio": 1.3
+    }
+  },
+  {
+    "schemaVersion": 2,
+    "id": "female-cute-girl",
+    "name": "Cute Girl",
+    "description": "Stylized higher register; not a natural-voice claim. Classic DSP approximation; result depends on the input voice.",
+    "category": "Female",
+    "pitchSemitones": 4.5,
+    "formantSemitones": 2.4,
+    "gain": {
+      "makeupDb": 0
+    },
+    "effects": [],
+    "builtIn": true,
+    "parameters": {
+      "inputGainPercent": 100,
+      "outputGainPercent": 100,
+      "bassDb": -1.8,
+      "trebleDb": 0.9,
+      "noiseSuppression": false,
+      "suppressionStrength": 0.5,
+      "noiseGate": false,
+      "gateThresholdDbfs": -52,
+      "limiterEnabled": true,
+      "limiterCeilingDbfs": -1,
+      "effectBypassed": false,
+      "voiceIntensity": 1,
+      "deEssStrength": 0.3,
+      "compressionRatio": 1.25
+    }
+  },
+  {
+    "schemaVersion": 2,
+    "id": "female-young-woman",
+    "name": "Young Woman",
+    "description": "Moderate lift with open upper mids. Classic DSP approximation; result depends on the input voice.",
+    "category": "Female",
+    "pitchSemitones": 2.6,
+    "formantSemitones": 1.5,
+    "gain": {
+      "makeupDb": 0
+    },
+    "effects": [],
+    "builtIn": true,
+    "parameters": {
+      "inputGainPercent": 100,
+      "outputGainPercent": 100,
+      "bassDb": -0.6,
+      "trebleDb": 0.4,
+      "noiseSuppression": false,
+      "suppressionStrength": 0.5,
+      "noiseGate": false,
+      "gateThresholdDbfs": -52,
+      "limiterEnabled": true,
+      "limiterCeilingDbfs": -1,
+      "effectBypassed": false,
+      "voiceIntensity": 1,
+      "deEssStrength": 0.2,
+      "compressionRatio": 1.2
+    }
+  },
+  {
+    "schemaVersion": 2,
+    "id": "female-mature-female",
+    "name": "Mature Female",
+    "description": "Lower register, weight and controlled dynamics. Classic DSP approximation; result depends on the input voice.",
+    "category": "Female",
+    "pitchSemitones": 0.8,
+    "formantSemitones": 0.5,
+    "gain": {
+      "makeupDb": 0
+    },
+    "effects": [],
+    "builtIn": true,
+    "parameters": {
+      "inputGainPercent": 100,
+      "outputGainPercent": 100,
+      "bassDb": 1.2,
+      "trebleDb": -0.4,
+      "noiseSuppression": false,
+      "suppressionStrength": 0.5,
+      "noiseGate": false,
+      "gateThresholdDbfs": -52,
+      "limiterEnabled": true,
+      "limiterCeilingDbfs": -1,
+      "effectBypassed": false,
+      "voiceIntensity": 1,
+      "deEssStrength": 0.2,
+      "compressionRatio": 1.6
+    }
+  },
+  {
+    "schemaVersion": 2,
+    "id": "female-deep-female",
+    "name": "Deep Female",
+    "description": "Low pitch with independently lifted resonance. Classic DSP approximation; result depends on the input voice.",
+    "category": "Female",
+    "pitchSemitones": -1.0,
+    "formantSemitones": 0.4,
+    "gain": {
+      "makeupDb": 0
+    },
+    "effects": [],
+    "builtIn": true,
+    "parameters": {
+      "inputGainPercent": 100,
+      "outputGainPercent": 100,
+      "bassDb": 2.0,
+      "trebleDb": -0.8,
+      "noiseSuppression": false,
+      "suppressionStrength": 0.5,
+      "noiseGate": false,
+      "gateThresholdDbfs": -52,
+      "limiterEnabled": true,
+      "limiterCeilingDbfs": -1,
+      "effectBypassed": false,
+      "voiceIntensity": 1,
+      "deEssStrength": 0.15,
+      "compressionRatio": 1.45
+    }
+  },
+  {
+    "schemaVersion": 2,
+    "id": "female-elegant-female",
+    "name": "Elegant Female",
+    "description": "Restrained pitch, clear resonance, light leveling. Classic DSP approximation; result depends on the input voice.",
+    "category": "Female",
+    "pitchSemitones": 1.6,
+    "formantSemitones": 1.3,
+    "gain": {
+      "makeupDb": 0
+    },
+    "effects": [],
+    "builtIn": true,
+    "parameters": {
+      "inputGainPercent": 100,
+      "outputGainPercent": 100,
+      "bassDb": 0.4,
+      "trebleDb": 0.3,
+      "noiseSuppression": false,
+      "suppressionStrength": 0.5,
+      "noiseGate": false,
+      "gateThresholdDbfs": -52,
+      "limiterEnabled": true,
+      "limiterCeilingDbfs": -1,
+      "effectBypassed": false,
+      "voiceIntensity": 1,
+      "deEssStrength": 0.3,
+      "compressionRatio": 1.35
+    }
+  },
+  {
+    "schemaVersion": 2,
+    "id": "female-gentle-female",
+    "name": "Gentle Female",
+    "description": "Subtle lift and soft high frequencies. Classic DSP approximation; result depends on the input voice.",
+    "category": "Female",
+    "pitchSemitones": 1.2,
+    "formantSemitones": 0.8,
+    "gain": {
+      "makeupDb": 0
+    },
+    "effects": [],
+    "builtIn": true,
+    "parameters": {
+      "inputGainPercent": 100,
+      "outputGainPercent": 100,
+      "bassDb": 1.0,
+      "trebleDb": -1.0,
+      "noiseSuppression": false,
+      "suppressionStrength": 0.5,
+      "noiseGate": false,
+      "gateThresholdDbfs": -52,
+      "limiterEnabled": true,
+      "limiterCeilingDbfs": -1,
+      "effectBypassed": false,
+      "voiceIntensity": 1,
+      "deEssStrength": 0.4,
+      "compressionRatio": 1.25
+    }
+  },
+  {
+    "schemaVersion": 2,
+    "id": "female-bright-female",
+    "name": "Bright Female",
+    "description": "Presence lift with sibilant control. Classic DSP approximation; result depends on the input voice.",
+    "category": "Female",
+    "pitchSemitones": 2.8,
+    "formantSemitones": 1.7,
+    "gain": {
+      "makeupDb": 0
+    },
+    "effects": [],
+    "builtIn": true,
+    "parameters": {
+      "inputGainPercent": 100,
+      "outputGainPercent": 100,
+      "bassDb": -1.0,
+      "trebleDb": 1.6,
+      "noiseSuppression": false,
+      "suppressionStrength": 0.5,
+      "noiseGate": false,
+      "gateThresholdDbfs": -52,
+      "limiterEnabled": true,
+      "limiterCeilingDbfs": -1,
+      "effectBypassed": false,
+      "voiceIntensity": 1,
+      "deEssStrength": 0.45,
+      "compressionRatio": 1.3
+    }
+  },
+  {
+    "schemaVersion": 2,
+    "id": "female-anime-girl",
+    "name": "Anime Girl",
+    "description": "Expressive character register; intentionally stylized. Classic DSP approximation; result depends on the input voice.",
+    "category": "Female",
+    "pitchSemitones": 5.0,
+    "formantSemitones": 2.8,
+    "gain": {
+      "makeupDb": 0
+    },
+    "effects": [],
+    "builtIn": true,
+    "parameters": {
+      "inputGainPercent": 100,
+      "outputGainPercent": 100,
+      "bassDb": -2.0,
+      "trebleDb": 1.2,
+      "noiseSuppression": false,
+      "suppressionStrength": 0.5,
+      "noiseGate": false,
+      "gateThresholdDbfs": -52,
+      "limiterEnabled": true,
+      "limiterCeilingDbfs": -1,
+      "effectBypassed": false,
+      "voiceIntensity": 1,
+      "deEssStrength": 0.35,
+      "compressionRatio": 1.4
+    }
+  },
+  {
+    "schemaVersion": 2,
+    "id": "female-kawaii-voice",
+    "name": "Kawaii Voice",
+    "description": "Small bright character resonance; intentionally stylized. Classic DSP approximation; result depends on the input voice.",
+    "category": "Female",
+    "pitchSemitones": 5.7,
+    "formantSemitones": 3.2,
+    "gain": {
+      "makeupDb": 0
+    },
+    "effects": [],
+    "builtIn": true,
+    "parameters": {
+      "inputGainPercent": 100,
+      "outputGainPercent": 100,
+      "bassDb": -2.5,
+      "trebleDb": 0.5,
+      "noiseSuppression": false,
+      "suppressionStrength": 0.5,
+      "noiseGate": false,
+      "gateThresholdDbfs": -52,
+      "limiterEnabled": true,
+      "limiterCeilingDbfs": -1,
+      "effectBypassed": false,
+      "voiceIntensity": 1,
+      "deEssStrength": 0.45,
+      "compressionRatio": 1.35
+    }
+  },
+  {
+    "schemaVersion": 2,
+    "id": "female-korean-style",
+    "name": "Korean Style",
+    "description": "Smooth pop-style tone only; does not change accent or language. Classic DSP approximation; result depends on the input voice.",
+    "category": "Female",
+    "pitchSemitones": 2.1,
+    "formantSemitones": 1.1,
+    "gain": {
+      "makeupDb": 0
+    },
+    "effects": [],
+    "builtIn": true,
+    "parameters": {
+      "inputGainPercent": 100,
+      "outputGainPercent": 100,
+      "bassDb": 0.2,
+      "trebleDb": 0.8,
+      "noiseSuppression": false,
+      "suppressionStrength": 0.5,
+      "noiseGate": false,
+      "gateThresholdDbfs": -52,
+      "limiterEnabled": true,
+      "limiterCeilingDbfs": -1,
+      "effectBypassed": false,
+      "voiceIntensity": 1,
+      "deEssStrength": 0.35,
+      "compressionRatio": 1.5
+    }
+  },
+  {
+    "schemaVersion": 2,
+    "id": "female-japanese-style",
+    "name": "Japanese Style",
+    "description": "Light character tone only; accent is not generated. Classic DSP approximation; result depends on the input voice.",
+    "category": "Female",
+    "pitchSemitones": 3.2,
+    "formantSemitones": 2.0,
+    "gain": {
+      "makeupDb": 0
+    },
+    "effects": [],
+    "builtIn": true,
+    "parameters": {
+      "inputGainPercent": 100,
+      "outputGainPercent": 100,
+      "bassDb": -0.7,
+      "trebleDb": 0.3,
+      "noiseSuppression": false,
+      "suppressionStrength": 0.5,
+      "noiseGate": false,
+      "gateThresholdDbfs": -52,
+      "limiterEnabled": true,
+      "limiterCeilingDbfs": -1,
+      "effectBypassed": false,
+      "voiceIntensity": 1,
+      "deEssStrength": 0.3,
+      "compressionRatio": 1.3
+    }
+  },
+  {
+    "schemaVersion": 2,
+    "id": "female-vietnamese-female",
+    "name": "Vietnamese Female",
+    "description": "Conservative tonal starting point; Vietnamese tones and accents are untested. Classic DSP approximation; result depends on the input voice.",
+    "category": "Female",
+    "pitchSemitones": 1.0,
+    "formantSemitones": 0.6,
+    "gain": {
+      "makeupDb": 0
+    },
+    "effects": [],
+    "builtIn": true,
+    "parameters": {
+      "inputGainPercent": 100,
+      "outputGainPercent": 100,
+      "bassDb": 0.0,
+      "trebleDb": 0.0,
+      "noiseSuppression": false,
+      "suppressionStrength": 0.5,
+      "noiseGate": false,
+      "gateThresholdDbfs": -52,
+      "limiterEnabled": true,
+      "limiterCeilingDbfs": -1,
+      "effectBypassed": false,
+      "voiceIntensity": 1,
+      "deEssStrength": 0.1,
+      "compressionRatio": 1.1
+    }
+  },
+  {
+    "schemaVersion": 2,
+    "id": "female-streamer",
+    "name": "Female Streamer",
+    "description": "Forward conversational tone with light leveling. Classic DSP approximation; result depends on the input voice.",
+    "category": "Female",
+    "pitchSemitones": 2.3,
+    "formantSemitones": 1.3,
+    "gain": {
+      "makeupDb": 0
+    },
+    "effects": [],
+    "builtIn": true,
+    "parameters": {
+      "inputGainPercent": 100,
+      "outputGainPercent": 100,
+      "bassDb": -1.2,
+      "trebleDb": 0.9,
+      "noiseSuppression": false,
+      "suppressionStrength": 0.5,
+      "noiseGate": false,
+      "gateThresholdDbfs": -52,
+      "limiterEnabled": true,
+      "limiterCeilingDbfs": -1,
+      "effectBypassed": false,
+      "voiceIntensity": 1,
+      "deEssStrength": 0.4,
+      "compressionRatio": 1.8
+    }
+  },
+  {
+    "schemaVersion": 2,
+    "id": "female-narrator",
+    "name": "Female Narrator",
+    "description": "Weighted low mids and even spoken dynamics. Classic DSP approximation; result depends on the input voice.",
+    "category": "Female",
+    "pitchSemitones": 1.1,
+    "formantSemitones": 0.7,
+    "gain": {
+      "makeupDb": 0
+    },
+    "effects": [],
+    "builtIn": true,
+    "parameters": {
+      "inputGainPercent": 100,
+      "outputGainPercent": 100,
+      "bassDb": 1.4,
+      "trebleDb": 0.2,
+      "noiseSuppression": false,
+      "suppressionStrength": 0.5,
+      "noiseGate": false,
+      "gateThresholdDbfs": -52,
+      "limiterEnabled": true,
+      "limiterCeilingDbfs": -1,
+      "effectBypassed": false,
+      "voiceIntensity": 1,
+      "deEssStrength": 0.3,
+      "compressionRatio": 1.9
+    }
+  },
+  {
+    "schemaVersion": 2,
+    "id": "female-asmr",
+    "name": "Female ASMR",
+    "description": "Soft intimate tone; no fabricated whisper or breathing. Classic DSP approximation; result depends on the input voice.",
+    "category": "Female",
+    "pitchSemitones": 0.5,
+    "formantSemitones": 0.9,
+    "gain": {
+      "makeupDb": 0
+    },
+    "effects": [],
+    "builtIn": true,
+    "parameters": {
+      "inputGainPercent": 100,
+      "outputGainPercent": 100,
+      "bassDb": 1.6,
+      "trebleDb": -2.2,
+      "noiseSuppression": false,
+      "suppressionStrength": 0.5,
+      "noiseGate": false,
+      "gateThresholdDbfs": -52,
+      "limiterEnabled": true,
+      "limiterCeilingDbfs": -1,
+      "effectBypassed": false,
+      "voiceIntensity": 1,
+      "deEssStrength": 0.55,
+      "compressionRatio": 1.05
+    }
+  },
+  {
+    "schemaVersion": 2,
+    "id": "female-singer",
+    "name": "Female Singer",
+    "description": "Wide-dynamics singing starting point; not a singing model. Classic DSP approximation; result depends on the input voice.",
+    "category": "Female",
+    "pitchSemitones": 2.4,
+    "formantSemitones": 1.6,
+    "gain": {
+      "makeupDb": 0
+    },
+    "effects": [],
+    "builtIn": true,
+    "parameters": {
+      "inputGainPercent": 100,
+      "outputGainPercent": 100,
+      "bassDb": 0.6,
+      "trebleDb": 0.6,
+      "noiseSuppression": false,
+      "suppressionStrength": 0.5,
+      "noiseGate": false,
+      "gateThresholdDbfs": -52,
+      "limiterEnabled": true,
+      "limiterCeilingDbfs": -1,
+      "effectBypassed": false,
+      "voiceIntensity": 1,
+      "deEssStrength": 0.2,
+      "compressionRatio": 1.15
+    }
+  },
+  {
+    "schemaVersion": 2,
+    "id": "female-studio",
+    "name": "Female Studio",
+    "description": "Controlled sibilance and studio-style leveling. Classic DSP approximation; result depends on the input voice.",
+    "category": "Female",
+    "pitchSemitones": 1.8,
+    "formantSemitones": 1.4,
+    "gain": {
+      "makeupDb": 0
+    },
+    "effects": [],
+    "builtIn": true,
+    "parameters": {
+      "inputGainPercent": 100,
+      "outputGainPercent": 100,
+      "bassDb": -0.2,
+      "trebleDb": 0.5,
+      "noiseSuppression": false,
+      "suppressionStrength": 0.5,
+      "noiseGate": false,
+      "gateThresholdDbfs": -52,
+      "limiterEnabled": true,
+      "limiterCeilingDbfs": -1,
+      "effectBypassed": false,
+      "voiceIntensity": 1,
+      "deEssStrength": 0.5,
+      "compressionRatio": 2.0
+    }
+  }
+]

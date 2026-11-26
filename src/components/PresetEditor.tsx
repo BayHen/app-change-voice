@@ -10,7 +10,7 @@ interface Props {
   onDuplicate: (id: string) => Promise<boolean>;
   onClose: () => void;
 }
-const categories: PresetCategory[] = ["Natural", "Character", "Creative", "Utility"];
+const categories: PresetCategory[] = ["Natural", "Character", "Creative", "Utility", "Female"];
 export function PresetEditor({ preset, mode, onSave, onDuplicate, onClose }: Props) {
   const [draft, setDraft] = useState(preset);
   const [error, setError] = useState<string | null>(null);

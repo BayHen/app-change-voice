@@ -1,7 +1,7 @@
 use super::meter::{MeterReading, amplitude_to_dbfs};
 use serde::{Deserialize, Serialize};
 use std::sync::{
-    Arc,
+    Arc, Mutex,
     atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
 };
 
@@ -13,6 +13,7 @@ struct AudioMetricAtoms {
     underruns: AtomicU64,
     overflows: AtomicU64,
     stream_errors: AtomicU64,
+    last_stream_error: Mutex<Option<String>>,
     processing_nanos: AtomicU64,
     processed_frames: AtomicU64,
     ring_depth: AtomicUsize,
@@ -24,6 +25,11 @@ struct AudioMetricAtoms {
     output_clipping: AtomicBool,
     stream_faulted: AtomicBool,
     protected_clips: AtomicU64,
+    output_callback_max_nanos: AtomicU64,
+    drift_ppm_bits: AtomicU64,
+    discarded_frames: AtomicU64,
+    capture_callback_max_nanos: AtomicU64,
+    playback_algorithm_frames: AtomicUsize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -36,6 +42,7 @@ pub struct AudioMetrics {
     pub underrun_count: u64,
     pub overflow_count: u64,
     pub stream_error_count: u64,
+    pub last_stream_error: Option<String>,
     pub average_processing_micros: f64,
     pub estimated_latency_ms: f64,
     pub ring_depth_frames: usize,
@@ -49,9 +56,60 @@ pub struct AudioMetrics {
     pub output_clipping: bool,
     pub stream_faulted: bool,
     pub protected_clip_count: u64,
+    pub output_callback_max_micros: f64,
+    pub drift_correction_ppm: f64,
+    pub discarded_frames: u64,
+    pub capture_callback_max_micros: f64,
+    pub playback_algorithm_frames: usize,
 }
 
 impl SharedAudioMetrics {
+    pub fn set_playback_algorithm_frames(&self, frames: usize) {
+        self.0
+            .playback_algorithm_frames
+            .store(frames, Ordering::Relaxed);
+    }
+    pub fn record_capture_callback(&self, nanos: u64) {
+        self.0
+            .capture_callback_max_nanos
+            .fetch_max(nanos, Ordering::Relaxed);
+    }
+    pub fn record_output_callback(&self, nanos: u64, ppm: f64, discarded: u64) {
+        self.0
+            .output_callback_max_nanos
+            .fetch_max(nanos, Ordering::Relaxed);
+        self.0
+            .drift_ppm_bits
+            .store(ppm.to_bits(), Ordering::Relaxed);
+        self.0.discarded_frames.store(discarded, Ordering::Relaxed);
+    }
+    /// CPAL reports recoverable notifications through the same callback as fatal errors.
+    pub fn record_driver_error(&self, error: cpal::Error, input: bool) {
+        match error.kind() {
+            cpal::ErrorKind::Xrun => {
+                if input {
+                    self.record_overflow();
+                } else {
+                    self.record_underrun();
+                }
+            }
+            cpal::ErrorKind::DeviceChanged | cpal::ErrorKind::RealtimeDenied => {}
+            _ => {
+                // Error callback only, never the sample-processing callback; do not wait on a lock.
+                if let Ok(mut detail) = self.0.last_stream_error.try_lock() {
+                    *detail = Some(format!(
+                        "{}: {error}",
+                        if input {
+                            "Microphone input"
+                        } else {
+                            "Audio output"
+                        }
+                    ));
+                }
+                self.record_stream_error();
+            }
+        }
+    }
     #[inline]
     pub fn record_overflow(&self) {
         self.0.overflows.fetch_add(1, Ordering::Relaxed);
@@ -110,6 +168,7 @@ impl SharedAudioMetrics {
         output_buffer_frames: u32,
         dsp_latency_frames: usize,
     ) -> AudioMetrics {
+        let stream_faulted = self.0.stream_faulted.load(Ordering::Acquire);
         let frames = self.0.processed_frames.load(Ordering::Relaxed);
         let nanos = self.0.processing_nanos.load(Ordering::Relaxed);
         let ring_depth_frames = self.0.ring_depth.load(Ordering::Relaxed);
@@ -125,6 +184,12 @@ impl SharedAudioMetrics {
             underrun_count: self.0.underruns.load(Ordering::Relaxed),
             overflow_count: self.0.overflows.load(Ordering::Relaxed),
             stream_error_count: self.0.stream_errors.load(Ordering::Relaxed),
+            last_stream_error: self
+                .0
+                .last_stream_error
+                .lock()
+                .ok()
+                .and_then(|detail| detail.clone()),
             average_processing_micros: if frames == 0 {
                 0.0
             } else {
@@ -136,7 +201,9 @@ impl SharedAudioMetrics {
                 (input_buffer_frames as usize
                     + output_buffer_frames as usize
                     + ring_depth_frames
-                    + dsp_latency_frames) as f64
+                    + dsp_latency_frames
+                    + self.0.playback_algorithm_frames.load(Ordering::Relaxed))
+                    as f64
                     * 1_000.0
                     / sample_rate as f64
             },
@@ -149,8 +216,41 @@ impl SharedAudioMetrics {
             output_rms_dbfs: amplitude_to_dbfs(output_rms),
             input_clipping: self.0.input_clipping.load(Ordering::Relaxed),
             output_clipping: self.0.output_clipping.load(Ordering::Relaxed),
-            stream_faulted: self.0.stream_faulted.load(Ordering::Acquire),
+            stream_faulted,
             protected_clip_count: self.0.protected_clips.load(Ordering::Relaxed),
+            output_callback_max_micros: self.0.output_callback_max_nanos.load(Ordering::Relaxed)
+                as f64
+                / 1000.0,
+            drift_correction_ppm: f64::from_bits(self.0.drift_ppm_bits.load(Ordering::Relaxed)),
+            discarded_frames: self.0.discarded_frames.load(Ordering::Relaxed),
+            capture_callback_max_micros: self.0.capture_callback_max_nanos.load(Ordering::Relaxed)
+                as f64
+                / 1000.0,
+            playback_algorithm_frames: self.0.playback_algorithm_frames.load(Ordering::Relaxed),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn recoverable_driver_notifications_do_not_latch_a_stream_failure() {
+        let metrics = SharedAudioMetrics::default();
+        metrics.record_driver_error(cpal::ErrorKind::Xrun.into(), true);
+        metrics.record_driver_error(cpal::ErrorKind::Xrun.into(), false);
+        metrics.record_driver_error(cpal::ErrorKind::DeviceChanged.into(), false);
+        metrics.record_driver_error(cpal::ErrorKind::RealtimeDenied.into(), true);
+        let status = metrics.snapshot(48000, 480, 480, 0);
+        assert_eq!(status.overflow_count, 1);
+        assert_eq!(status.underrun_count, 1);
+        assert!(!status.stream_faulted);
+        assert_eq!(status.stream_error_count, 0);
+        assert!(status.last_stream_error.is_none());
+        metrics.record_driver_error(cpal::ErrorKind::DeviceNotAvailable.into(), false);
+        let status = metrics.snapshot(48000, 480, 480, 0);
+        assert!(status.stream_faulted);
+        assert_eq!(status.stream_error_count, 1);
+        assert!(status.last_stream_error.unwrap().contains("Audio output"));
     }
 }

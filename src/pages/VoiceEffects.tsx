@@ -23,6 +23,7 @@ const categories: Array<"All" | PresetCategory> = [
   "Character",
   "Creative",
   "Utility",
+  "Female",
 ];
 
 function effectName(effect: PresetEffect) {

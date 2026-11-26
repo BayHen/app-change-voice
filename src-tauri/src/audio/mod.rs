@@ -1,5 +1,6 @@
 //! Nền tảng audio thuần Rust, không phụ thuộc API riêng của Windows.
 
+pub mod capture;
 pub mod config;
 pub mod devices;
 pub mod errors;
@@ -8,7 +9,11 @@ pub mod metrics;
 pub mod noise;
 pub mod pipeline;
 pub mod processor;
+pub mod quality;
+#[cfg(test)]
+mod quality_tests;
 pub mod recording;
+pub mod resample;
 pub mod stream;
 
 /// Hợp đồng tối thiểu của audio engine. Implementation thật sẽ được thêm sau Task 01.

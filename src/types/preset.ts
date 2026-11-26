@@ -1,4 +1,4 @@
-export type PresetCategory = "Natural" | "Character" | "Creative" | "Utility";
+export type PresetCategory = "Natural" | "Character" | "Creative" | "Utility" | "Female";
 
 export type PresetEffect =
   | { type: "ringModulator"; frequencyHz: number; mix: number }
@@ -31,6 +31,9 @@ export interface VoicePresetSummary {
     limiterEnabled: boolean;
     limiterCeilingDbfs: number;
     effectBypassed: boolean;
+    voiceIntensity?: number;
+    deEssStrength?: number;
+    compressionRatio?: number;
   };
   pluginRequirements: Array<{ id: string; compatibilityVersion: string }>;
 }

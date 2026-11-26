@@ -110,6 +110,9 @@ mod tests {
                 output_channels: None,
                 dsp_latency_frames: None,
                 metrics: None,
+                input_sample_format: None,
+                output_sample_format: None,
+                diagnostic_recording: false,
             },
             RoutingStatus {
                 state: RoutingState::NotConfigured,

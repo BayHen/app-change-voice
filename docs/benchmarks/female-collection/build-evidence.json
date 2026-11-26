@@ -1,0 +1,35 @@
+{
+  "dateLocal": "2026-11-26",
+  "timezone": "Asia/Saigon",
+  "branch": "feature/new-version",
+  "version": "0.1.0",
+  "command": "npm.cmd run tauri:build:windows -- --bundles nsis",
+  "result": "optimized Windows x64 EXE and NSIS succeeded",
+  "artifacts": [
+    {
+      "path": "src-tauri/target/x86_64-pc-windows-msvc/release/voicemorph-studio.exe",
+      "bytes": 9691648,
+      "sha256": "440500bbd3189730bc63635816a133e4ef7854b09c3b6ac344dfcb4ed9776fdf"
+    },
+    {
+      "path": "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/VoiceMorph Studio_0.1.0_x64-setup.exe",
+      "bytes": 3361818,
+      "sha256": "b7d4be2e42336369317b7106b32f2b0c5c1492b02f58437ec07cda315a7d9849"
+    }
+  ],
+  "rustTests": { "passed": 115, "failed": 0, "ignored": 14 },
+  "frontendTests": { "passed": 25, "failed": 0 },
+  "pythonTests": { "passed": 6, "failed": 0 },
+  "checks": ["ESLint", "TypeScript", "Vite", "rustfmt", "git diff --check"],
+  "nativeEvidence": "docs/screenshots/female-collection/native-report.json",
+  "loopbackEvidence": {
+    "buildLoad60Seconds": "docs/benchmarks/female-collection/loopback-build-load-60s.json",
+    "idle60Seconds": "docs/benchmarks/female-collection/loopback-idle-60s.json",
+    "buildLoadVirtualUnderruns": 1,
+    "idleVirtualUnderruns": 0,
+    "idleCaptureOverruns": 0
+  },
+  "runtimeManifestSha256": "69c600bd252be1fd47f5bf9246294c976c32e27dfb4796b1712e92312d6504f7",
+  "modelSha256": "d9caedd48ea81672946ce4896022da5e302996e1f5c1bf0ae2c141c2f7d3afe6",
+  "limits": "20 Classic DSP profiles and one reviewed AI identity, not twenty AI models. No Vietnamese/male-speaker naturalness or listening qualification. One virtual underrun was observed during build-load loopback. CPU realtime not qualified; runtime Python 3.10 EOL; unsigned local artifacts; no public release or commit."
+}

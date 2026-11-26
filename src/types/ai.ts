@@ -72,6 +72,9 @@ export interface AIEngineStatus {
   droppedOutputSamples: number;
   missingOutputSamples: number;
   completedChunks: number;
+  missedDeadlines?: number;
+  startupWaitSamples?: number;
+  inferenceBudgetMs?: number | null;
   restarts: number;
   message: string | null;
   config: AIEngineConfig;

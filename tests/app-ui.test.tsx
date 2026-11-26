@@ -1,10 +1,11 @@
-﻿import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../src/App";
 import { VoiceStudio } from "../src/pages/VoiceStudio";
 import { UpdateSettings } from "../src/components/UpdateSettings";
 import type { AudioRuntimeStatus } from "../src/types/audio";
+import femalePresets from "../src-tauri/presets/female.json";
 
 const audioMocks = vi.hoisted(() => ({
   refresh: vi.fn(),
@@ -18,6 +19,13 @@ const runtimeMocks = vi.hoisted(() => ({
   stop: vi.fn(),
   pause: vi.fn(),
   resume: vi.fn(),
+}));
+const qualityMocks = vi.hoisted(() => ({
+  get: vi.fn(),
+  set: vi.fn(),
+  capture: vi.fn(),
+  start: vi.fn(),
+  stop: vi.fn(),
 }));
 const volumeMocks = vi.hoisted(() => ({
   get: vi.fn(),
@@ -66,6 +74,11 @@ const profileMocks = vi.hoisted(() => ({
 }));
 const backupMocks = vi.hoisted(() => ({ status: vi.fn() }));
 const diagnosticsMocks = vi.hoisted(() => ({ get: vi.fn(), export: vi.fn() }));
+const previewMocks = vi.hoisted(() => ({ render: vi.fn(), open: vi.fn() }));
+vi.mock("@tauri-apps/plugin-dialog", () => ({
+  open: previewMocks.open,
+  save: vi.fn().mockResolvedValue(null),
+}));
 const updaterMocks = vi.hoisted(() => ({
   configuration: vi.fn(),
   check: vi.fn(),
@@ -158,6 +171,11 @@ const connectedSnapshot = {
 };
 
 vi.mock("../src/services/tauri", () => ({
+  getAudioQuality: qualityMocks.get,
+  setAudioQuality: qualityMocks.set,
+  getStageCaptureStatus: qualityMocks.capture,
+  startStageCapture: qualityMocks.start,
+  stopStageCapture: qualityMocks.stop,
   getAudioDiagnostics: diagnosticsMocks.get,
   exportAudioDiagnostics: diagnosticsMocks.export,
   getUpdateConfiguration: updaterMocks.configuration,
@@ -194,6 +212,8 @@ vi.mock("../src/services/tauri", () => ({
   resetEffectParameters: effectMocks.reset,
   getBuiltinPresets: presetMocks.list,
   getAllPresets: presetMocks.list,
+  renderVoicePreview: previewMocks.render,
+  renderAIVoicePreview: previewMocks.render,
   createUserPreset: presetMocks.create,
   getPresetWarnings: vi.fn().mockResolvedValue([]),
   getActivePresetId: presetMocks.active,
@@ -323,6 +343,16 @@ describe("desktop navigation", () => {
     expect(aiMocks.add).not.toHaveBeenCalled();
   });
   beforeEach(() => {
+    const capture = { running: false, folder: null, files: [], droppedSamples: 0, message: null };
+    qualityMocks.get.mockReset().mockResolvedValue({ profile: "balanced" });
+    qualityMocks.set.mockReset().mockImplementation(async (settings) => settings);
+    qualityMocks.capture.mockReset().mockResolvedValue(capture);
+    qualityMocks.start.mockReset().mockImplementation(async () => {
+      const active = { ...capture, running: true, folder: "test-local-capture" };
+      qualityMocks.capture.mockResolvedValue(active);
+      return active;
+    });
+    qualityMocks.stop.mockReset().mockResolvedValue(capture);
     const engine = {
       state: "notInstalled",
       mode: "classicDsp",
@@ -623,6 +653,145 @@ describe("desktop navigation", () => {
     window.dispatchEvent(new Event("resize"));
   });
 
+  it("browses female voices, persists favorites and never starts audio on browsing", async () => {
+    localStorage.clear();
+    presetMocks.list.mockResolvedValue([...builtInPresets, ...femalePresets]);
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Female collection" }));
+    expect(await screen.findByRole("heading", { name: "21 voices" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Play voice preview" })).toBeDisabled();
+    await user.type(screen.getByLabelText("Search female voices"), "Vietnamese Female");
+    const favorite = screen.getByRole("button", { name: "Favorite Vietnamese Female" });
+    await user.click(favorite);
+    expect(favorite).toHaveAttribute("aria-pressed", "true");
+    await user.selectOptions(screen.getByLabelText("Library scope"), "Favorites");
+    expect(screen.getByRole("heading", { name: "1 voices" })).toBeVisible();
+    expect(runtimeMocks.start).not.toHaveBeenCalled();
+    expect(aiMocks.startConversion).not.toHaveBeenCalled();
+    await user.click(screen.getAllByRole("button", { name: "Voice Lab" })[1]);
+    await user.click(await screen.findByRole("button", { name: "Female collection" }));
+    expect(
+      await screen.findByRole("button", { name: "Favorite Vietnamese Female" }),
+    ).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("applies the selected female DSP and keeps regional claims unverified", async () => {
+    localStorage.clear();
+    presetMocks.list.mockResolvedValue(femalePresets);
+    const voice = femalePresets.find((v) => v.name === "Soft Female")!;
+    const parameters = {
+      ...(await effectMocks.get()),
+      pitchSemitones: voice.pitchSemitones,
+      formantSemitones: voice.formantSemitones,
+    };
+    presetMocks.apply.mockImplementation(async () => {
+      effectMocks.get.mockResolvedValue(parameters);
+      return { preset: voice, parameters };
+    });
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Female collection" }));
+    await user.click(await screen.findByRole("button", { name: "Select Soft Female" }));
+    await user.click(screen.getByRole("button", { name: "Use DSP voice" }));
+    expect(presetMocks.apply).toHaveBeenCalledWith(voice.id);
+    await waitFor(() => expect(screen.getByLabelText("Female pitch")).toHaveValue("1.4"));
+    fireEvent.change(screen.getByLabelText("Female pitch"), { target: { value: "2" } });
+    await waitFor(() =>
+      expect(effectMocks.set).toHaveBeenCalledWith(expect.objectContaining({ pitchSemitones: 2 })),
+    );
+    await waitFor(() => expect(screen.getByLabelText("Female formant")).not.toBeDisabled());
+    fireEvent.change(screen.getByLabelText("Female formant"), { target: { value: "1.5" } });
+    expect(effectMocks.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pitchSemitones: 2,
+        formantSemitones: 1.5,
+      }),
+    );
+    expect(presetMocks.apply).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(/Vietnamese intelligibility is not yet verified/)).toBeVisible();
+    expect(runtimeMocks.start).not.toHaveBeenCalled();
+  });
+
+  it("does not play a delayed file preview after leaving the collection", async () => {
+    localStorage.clear();
+    presetMocks.list.mockResolvedValue(femalePresets);
+    previewMocks.open.mockResolvedValue("D:/local/consented.wav");
+    let complete!: (value: unknown) => void;
+    previewMocks.render.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          complete = resolve;
+        }),
+    );
+    const play = vi.fn().mockResolvedValue(undefined),
+      AudioConstructor = vi.fn(function () {
+        return { play, pause: vi.fn(), onended: null };
+      });
+    const create = URL.createObjectURL,
+      revoke = URL.revokeObjectURL;
+    URL.createObjectURL = vi.fn(() => "blob:test");
+    URL.revokeObjectURL = vi.fn();
+    vi.stubGlobal("Audio", AudioConstructor);
+    try {
+      const user = userEvent.setup();
+      render(<App />);
+      await user.click(await screen.findByRole("button", { name: "Female collection" }));
+      await user.click(await screen.findByRole("button", { name: "Choose preview WAV" }));
+      await screen.findByText("D:/local/consented.wav");
+      await user.click(screen.getByLabelText("I have permission to use this sample."));
+      await waitFor(() =>
+        expect(screen.getByRole("button", { name: "Play voice preview" })).toBeEnabled(),
+      );
+      await user.click(screen.getByRole("button", { name: "Play voice preview" }));
+      expect(previewMocks.render).toHaveBeenCalled();
+      await user.click(screen.getAllByRole("button", { name: "Voice Lab" })[1]);
+      await act(async () =>
+        complete({
+          wav: [82, 73, 70, 70],
+          peak: 0.1,
+          rms: 0.05,
+          frames: 1,
+          sampleRate: 48000,
+          fullScaleSamples: 0,
+          processingMs: 1,
+        }),
+      );
+      expect(AudioConstructor).not.toHaveBeenCalled();
+      expect(play).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+      URL.createObjectURL = create;
+      URL.revokeObjectURL = revoke;
+    }
+  });
+
+  it("blocks sound playback until the user explicitly starts the audio engine", async () => {
+    audioMocks.refresh.mockResolvedValue(connectedSnapshot);
+    soundboardMocks.list.mockResolvedValue([
+      {
+        id: "whoosh",
+        name: "Whoosh",
+        filePath: "D:/whoosh.wav",
+        category: "General",
+        favorite: false,
+        volumePercent: 80,
+        route: "headphones",
+        hotkey: null,
+        durationSeconds: 2.3,
+        missing: false,
+      },
+    ]);
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Soundboard" }));
+    expect(await screen.findByRole("button", { name: "Play" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Stop" })).toBeDisabled();
+    expect(runtimeMocks.start).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Start audio engine" }));
+    expect(runtimeMocks.start).toHaveBeenCalledWith("wasapi:microphone-1", "wasapi:speakers-1");
+  });
+
   it("navigates all five workspaces and preserves access to legacy capabilities", async () => {
     const user = userEvent.setup();
     render(<App />);
@@ -710,6 +879,95 @@ describe("desktop navigation", () => {
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();
+  });
+
+  it("rejects a saved headphone route and shares cable selection with the persistent audio session", async () => {
+    audioMocks.refresh.mockResolvedValue(connectedSnapshot);
+    const cable = (await routingMocks.devices())[0];
+    const headphones = { ...connectedSnapshot.outputDevices[0], likelyVirtual: false };
+    routingMocks.devices.mockResolvedValue([cable, headphones]);
+    routingMocks.configuration.mockResolvedValue({
+      outputDeviceId: headphones.id,
+      outputDeviceFingerprint: "headphones",
+    });
+    await runtimeMocks.start();
+    runtimeMocks.start.mockClear();
+    routingMocks.select.mockImplementation(async (id) => {
+      currentRuntime = stoppedRuntime;
+      return { outputDeviceId: id, outputDeviceFingerprint: "cable" };
+    });
+    const ready = await routingMocks.status();
+    routingMocks.start.mockImplementation(async () => {
+      const active = { ...ready, state: "active", endpointVerified: true };
+      routingMocks.status.mockResolvedValue(active);
+      return active;
+    });
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: /^Settings$/ }));
+    await user.click(screen.getByRole("button", { name: "Virtual microphone" }));
+    await screen.findByText(/The saved route points to headphones/);
+    expect(screen.getByRole("button", { name: "Start routing" })).toBeDisabled();
+    expect(screen.getByRole("option", { name: /^Desktop Speakers/ })).toBeDisabled();
+    await user.selectOptions(screen.getByLabelText("Virtual cable playback endpoint"), cable.id);
+    await screen.findByText("Audio engine idle");
+    expect(screen.getByRole("button", { name: "Start routing" })).toBeDisabled();
+    await user.click(screen.getByRole("switch", { name: "Monitor" }));
+    await screen.findByText("Audio engine running");
+    await user.click(screen.getByRole("button", { name: "Start routing" }));
+    await screen.findByText("Routing active");
+    expect(routingMocks.select).toHaveBeenCalledWith(cable.id);
+    expect(routingMocks.start).toHaveBeenCalledOnce();
+  });
+
+  it("requires explicit local WAV consent and a running session in Audio Quality Lab", async () => {
+    audioMocks.refresh.mockResolvedValue(connectedSnapshot);
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: /^Settings$/ }));
+    await user.click(screen.getByRole("button", { name: "Audio Quality Lab" }));
+    const record = await screen.findByRole("button", { name: "Record selected diagnostic stages" });
+    expect(record).toBeDisabled();
+    expect(qualityMocks.start).not.toHaveBeenCalled();
+    expect(runtimeMocks.start).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("switch", { name: "Monitor" }));
+    await screen.findByText("Audio engine running");
+    expect(record).toBeDisabled();
+    await user.click(screen.getByRole("checkbox", { name: /I explicitly allow recording/ }));
+    await user.click(record);
+    expect(qualityMocks.start).toHaveBeenCalledWith(["mixer", "virtualOutput"], 5, true);
+    expect(screen.getByRole("button", { name: "Stop diagnostic capture" })).toBeEnabled();
+    await user.selectOptions(screen.getByLabelText("Audio quality profile"), "highQuality");
+    expect(screen.getByRole("button", { name: "Apply audio quality" })).toBeDisabled();
+  });
+
+  it("shows a stopped engine after fatal driver failure and clears the alert on explicit retry", async () => {
+    audioMocks.refresh.mockResolvedValue(connectedSnapshot);
+    const running = await runtimeMocks.start();
+    currentRuntime = {
+      ...running,
+      state: "faulted",
+      metrics: {
+        ...running.metrics,
+        streamFaulted: true,
+        streamErrorCount: 1,
+        lastStreamError: "Audio output: device disconnected",
+      },
+    };
+    runtimeMocks.start.mockClear();
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByText("Audio engine stopped after error");
+    expect(screen.getByRole("switch", { name: "Monitor" })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+    expect(screen.getByRole("button", { name: /^Record$/ })).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent("Audio output: device disconnected");
+    expect(runtimeMocks.start).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("switch", { name: "Monitor" }));
+    await screen.findByText("Audio engine running");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("saves edited DSP settings and enables export for the newly created preset", async () => {

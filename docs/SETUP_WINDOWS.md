@@ -117,6 +117,14 @@ Service không truy cập được, kiểm tra service `msiserver` trong `servic
 Installer và chạy terminal với quyền phù hợp. Có thể dùng bộ cài NSIS x64 đã tạo trong khi sửa môi trường
 MSI; lỗi này xảy ra sau khi Rust executable đã link thành công.
 
+# Monitoring reports a driver error
+
+Recoverable WASAPI buffer underruns/overruns are counted without stopping the engine.
+For terminal failures, monitoring stops and the status bar identifies the input/output
+driver error. Refresh devices in Settings → Audio devices, check the selected endpoints,
+then explicitly enable Monitor to retry. No microphone restart occurs automatically.
+See [stream failure correction and hardware verification](AUDIO_STREAM_FAILURE_FIX.md).
+
 # Optional managed AI runtime
 
 Classic DSP works without AI dependencies. In **AI Voice Studio** or **Settings → AI runtime**,

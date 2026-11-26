@@ -1,0 +1,24 @@
+{
+  "captureRate": 48000,
+  "expectedFrequencyHz": 997,
+  "frequencyHz": 982.6088741966614,
+  "kind": "Actual local VoiceMorph soundboard -> VB-Cable playback -> paired capture",
+  "limit": "Not a Discord call or Discord Mic Test. Only synthetic tone was sent; no microphone audio saved.",
+  "microphoneMuted": true,
+  "peak": 0.03997802734375,
+  "physicalOutputMuted": true,
+  "receivedFrames": 84960,
+  "recordedMicrophonePcm": false,
+  "route": {
+    "channels": 2,
+    "endpointVerified": true,
+    "message": "Playback endpoint is open. Verify its paired capture endpoint in the target app.",
+    "outputDeviceId": "wasapi:{0.0.0.00000000}.{20165859-4fc4-4912-8f92-598d5254ac32}",
+    "outputDeviceName": "CABLE Input (VB-Audio Virtual Cable)",
+    "outputPeakDbfs": -96.0,
+    "overflowCount": 0,
+    "sampleRate": 48000,
+    "state": "active",
+    "underrunCount": 2
+  }
+}
