@@ -32,7 +32,7 @@ impl Default for NoiseSettings {
             enabled: false,
             bypassed: false,
             suppression_strength: 0.8,
-            gate_enabled: true,
+            gate_enabled: false,
             gate_threshold_dbfs: -52.0,
             limiter_enabled: true,
             limiter_ceiling_dbfs: -1.0,
@@ -139,8 +139,15 @@ pub struct NoiseProcessor {
     dry: [f32; FRAME],
     wet: [f32; FRAME],
     len: usize,
-    input_phase: u64,
-    output_phase: u64,
+    input_resampler: super::resample::StreamResampler,
+    output_resampler: super::resample::StreamResampler,
+    input_scratch: Vec<f32>,
+    output_scratch: Vec<f32>,
+    dry_previous: [f32; FRAME],
+    mix: f32,
+    noise_active: bool,
+    warmup_frames: usize,
+    gate_hold: usize,
     gate_gain: f32,
 }
 impl NoiseProcessor {
@@ -153,24 +160,36 @@ impl NoiseProcessor {
             dry: [0.0; FRAME],
             wet: [0.0; FRAME],
             len: 0,
-            input_phase: 0,
-            output_phase: 0,
+            input_resampler: super::resample::StreamResampler::new(sample_rate, RNNOISE_RATE)
+                .expect("validated device rate"),
+            output_resampler: super::resample::StreamResampler::new(RNNOISE_RATE, sample_rate)
+                .expect("validated device rate"),
+            input_scratch: Vec::with_capacity(4096),
+            output_scratch: Vec::with_capacity(4096),
+            dry_previous: [0.0; FRAME],
+            mix: 0.0,
+            noise_active: false,
+            warmup_frames: 0,
+            gate_hold: 0,
             gate_gain: 1.0,
         }
     }
     pub fn latency_frames(&self) -> usize {
-        ((FRAME as u64 * self.sample_rate as u64) / RNNOISE_RATE as u64) as usize
+        self.signal_latency_frames()
+            + (FRAME as u64 * self.sample_rate as u64 / RNNOISE_RATE as u64) as usize
+    }
+    pub fn signal_latency_frames(&self) -> usize {
+        ((FRAME + self.input_resampler.delay_frames()) as u64 * self.sample_rate as u64
+            / RNNOISE_RATE as u64) as usize
+            + self.output_resampler.delay_frames()
     }
     #[inline]
     pub fn push(&mut self, sample: f32, mut emit: impl FnMut(f32)) {
-        let clean = if sample.is_finite() {
-            sample.clamp(-1.0, 1.0)
-        } else {
-            0.0
-        };
-        self.input_phase += RNNOISE_RATE as u64;
-        while self.input_phase >= self.sample_rate as u64 {
-            self.input_phase -= self.sample_rate as u64;
+        let clean = if sample.is_finite() { sample } else { 0.0 };
+        self.input_scratch.clear();
+        self.input_resampler.push(clean, &mut self.input_scratch);
+        for n in 0..self.input_scratch.len() {
+            let clean = self.input_scratch[n];
             self.input[self.len] = clean * 32768.0;
             self.dry[self.len] = clean;
             self.len += 1;
@@ -182,32 +201,54 @@ impl NoiseProcessor {
     }
     fn process_frame(&mut self, emit: &mut impl FnMut(f32)) {
         let settings = self.controls.load();
-        let _speech_probability = self.state.process_frame(&mut self.wet, &self.input);
-        let target_mix = if settings.enabled && !settings.bypassed {
+        let mut target_mix = if settings.enabled && !settings.bypassed {
             settings.suppression_strength
         } else {
             0.0
         };
+        let active = target_mix > 0.0;
+        if active && !self.noise_active {
+            // The NN was intentionally idle. Replace stale overlap using fresh frames
+            // before fading its output in; never replay the previous enable period.
+            self.warmup_frames = 2;
+        }
+        self.noise_active = active;
+        if active || self.mix > 0.00001 {
+            let _ = self.state.process_frame(&mut self.wet, &self.input);
+        }
+        if active && self.warmup_frames > 0 {
+            self.warmup_frames -= 1;
+            target_mix = 0.0;
+        }
         let threshold = 10.0_f32.powf(settings.gate_threshold_dbfs / 20.0);
+        let rms = (self.dry_previous.iter().map(|v| v * v).sum::<f32>() / FRAME as f32).sqrt();
+        if rms >= threshold {
+            self.gate_hold = 4800;
+        } else if rms < threshold * 0.5 {
+            self.gate_hold = self.gate_hold.saturating_sub(FRAME);
+        }
+        let gate_target = if !settings.gate_enabled || self.gate_hold > 0 {
+            1.0
+        } else {
+            0.0
+        };
         for index in 0..FRAME {
             let denoised = (self.wet[index] / 32768.0).clamp(-1.0, 1.0);
-            let mut value = self.dry[index] + (denoised - self.dry[index]) * target_mix;
-            let gate_target = if !settings.gate_enabled || value.abs() >= threshold {
-                1.0
-            } else {
-                0.0
-            };
+            let dry = self.dry_previous[index];
+            self.dry_previous[index] = self.dry[index];
+            self.mix += (target_mix - self.mix) * 0.004;
+            let mut value = dry + (denoised - dry) * self.mix;
             self.gate_gain += (gate_target - self.gate_gain)
                 * if gate_target > self.gate_gain {
-                    0.08
+                    0.01
                 } else {
-                    0.003
+                    0.00026
                 };
             value *= self.gate_gain;
-            self.output_phase += self.sample_rate as u64;
-            while self.output_phase >= RNNOISE_RATE as u64 {
-                self.output_phase -= RNNOISE_RATE as u64;
-                emit(if value.is_finite() { value } else { 0.0 });
+            self.output_scratch.clear();
+            self.output_resampler.push(value, &mut self.output_scratch);
+            for sample in self.output_scratch.iter().copied() {
+                emit(if sample.is_finite() { sample } else { 0.0 });
             }
         }
     }
@@ -216,6 +257,26 @@ impl NoiseProcessor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn enabling_noise_primes_fresh_frames_before_crossfading() {
+        let settings = NoiseSettings {
+            enabled: true,
+            suppression_strength: 0.8,
+            gate_enabled: false,
+            ..Default::default()
+        };
+        let controls = SharedNoiseSettings::new(settings);
+        let mut processor = NoiseProcessor::new(48000, controls);
+        for _ in 0..FRAME * 2 {
+            processor.push(0.1, |_| {});
+        }
+        assert_eq!(processor.mix, 0.0);
+        assert_eq!(processor.warmup_frames, 0);
+        for _ in 0..FRAME {
+            processor.push(0.1, |_| {});
+        }
+        assert!(processor.mix > 0.5);
+    }
     #[test]
     fn validates_invalid_values() {
         let v = NoiseSettings {

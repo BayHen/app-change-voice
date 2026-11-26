@@ -61,6 +61,8 @@ pub trait VirtualOutputSink {
 
 #[derive(Default)]
 pub(crate) struct SharedRoutingMetrics {
+    pub route_generation: AtomicU64,
+    pub voice_guard: Arc<crate::ai::transport::SharedTransport>,
     pub active: AtomicBool,
     pub faulted: AtomicBool,
     pub underruns: AtomicU64,
@@ -92,14 +94,24 @@ impl RoutingProducer {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn routing_queue(
     sample_rate: u32,
+) -> (RoutingProducer, Consumer<f32>, Arc<SharedRoutingMetrics>) {
+    routing_queue_with_ai(sample_rate, Arc::default())
+}
+pub(crate) fn routing_queue_with_ai(
+    sample_rate: u32,
+    voice_guard: Arc<crate::ai::transport::SharedTransport>,
 ) -> (RoutingProducer, Consumer<f32>, Arc<SharedRoutingMetrics>) {
     let capacity = ((sample_rate * ROUTING_QUEUE_MILLISECONDS / 1_000) as usize)
         .max(1024)
         .next_power_of_two();
     let (producer, consumer) = RingBuffer::new(capacity);
-    let shared = Arc::new(SharedRoutingMetrics::default());
+    let shared = Arc::new(SharedRoutingMetrics {
+        voice_guard,
+        ..Default::default()
+    });
     (
         RoutingProducer {
             producer,
@@ -123,6 +135,17 @@ pub fn likely_virtual_device(name: &str) -> bool {
     ]
     .iter()
     .any(|marker| value.contains(marker))
+}
+
+pub fn validate_virtual_output(name: &str) -> Result<(), errors::RoutingError> {
+    if likely_virtual_device(name) {
+        Ok(())
+    } else {
+        Err(errors::RoutingError::new(
+            "notVirtualOutput",
+            "Select a virtual cable playback endpoint such as CABLE Input. Headphones and speakers do not create a microphone.",
+        ))
+    }
 }
 
 pub fn amplitude_to_dbfs(value: f32) -> f32 {
@@ -173,6 +196,8 @@ mod tests {
     use super::*;
     #[test]
     fn recognizes_common_virtual_endpoint_names_without_requiring_one_vendor() {
+        assert!(validate_virtual_output("CABLE Input (VB-Audio Virtual Cable)").is_ok());
+        assert!(validate_virtual_output("Headphones (High Definition Audio Device)").is_err());
         assert!(likely_virtual_device(
             "CABLE Input (VB-Audio Virtual Cable)"
         ));

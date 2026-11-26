@@ -91,8 +91,11 @@ Get-NetTCPConnection -LocalPort 1420 -State Listen
 `npm.cmd run tauri:dev` vì Tauri tự khởi động Vite.
 
 Nếu log có lỗi EPERM khi Vite xóa cache cũ, kiểm tra `cacheDir` trong `vite.config.ts`.
-Vite dùng thư mục con riêng cho từng tài khoản dưới `.vite-cache/` để tránh xung đột quyền.
-Giữ nguyên cache cũ và chạy lại:
+Vite dùng thư mục `session-<pid>-<uuid>` riêng cho mỗi lần chạy dưới `.vite-cache/`.
+Không dùng `USERNAME`/`USERDOMAIN` để phân biệt cache vì tiến trình sandbox có thể kế thừa
+biến môi trường của tài khoản khác. Cache cũ được giữ nguyên; không cần đổi ACL hoặc chạy
+terminal bằng Administrator. Mỗi phiên mới sẽ tối ưu dependency lại một lần.
+Chạy lại:
 
 ```powershell
 npm.cmd run tauri:dev
@@ -113,3 +116,37 @@ Nếu NSIS build thành công nhưng MSI dừng ở `light.exe` với `LGHT0217`
 Service không truy cập được, kiểm tra service `msiserver` trong `services.msc`, khởi động lại Windows
 Installer và chạy terminal với quyền phù hợp. Có thể dùng bộ cài NSIS x64 đã tạo trong khi sửa môi trường
 MSI; lỗi này xảy ra sau khi Rust executable đã link thành công.
+
+# Monitoring reports a driver error
+
+Recoverable WASAPI buffer underruns/overruns are counted without stopping the engine.
+For terminal failures, monitoring stops and the status bar identifies the input/output
+driver error. Refresh devices in Settings → Audio devices, check the selected endpoints,
+then explicitly enable Monitor to retry. No microphone restart occurs automatically.
+See [stream failure correction and hardware verification](AUDIO_STREAM_FAILURE_FIX.md).
+
+# Optional managed AI runtime
+
+Classic DSP works without AI dependencies. In **AI Voice Studio** or **Settings → AI runtime**,
+choose **Install recommended runtime**. Keep 13 GiB free; the pinned download is 3.90 GiB.
+The application installs its own embedded Python, dependencies and HuBERT, with progress,
+cancel/retry, integrity checks and atomic activation. End users do not install Python,
+open a terminal, run pip, install CUDA drivers or start w-okada separately.
+
+Choose **Detect hardware**, then optionally **Get official Tsukuyomi-chan voice**. Read
+and acknowledge the original owner's custom terms before downloading/preparing it.
+Select the voice and **Load & start AI**. This does not start the microphone; monitoring
+and virtual output remain explicit controls. **Stop AI** keeps the AI voice muted;
+**Use Classic DSP** explicitly restores the Classic voice. CPU fallback is opt-in.
+After assets are installed, inference stays offline through private process pipes.
+
+Runtime: `%APPDATA%\com.voicemorph.studio\ai-runtime`; models:
+`%APPDATA%\com.voicemorph.studio\ai-models`. A local trusted package import is also
+available. The base NSIS installer does not include the multi-GB runtime or voice weights.
+
+The validated compatibility recipe currently uses **Python 3.10.11 (end of support)**.
+A supported baseline and complete redistribution/security review remain release blockers.
+Real CUDA/CPU inference has now been exercised with an authorized original-owner model
+and sample; hardware loopback and conferencing tests remain separate. See
+[runtime guide](../ai-sidecar/README.md) and the current
+[execution, licensing and verification report](AI_RUNTIME_EXECUTION_REPORT.md).

@@ -460,3 +460,102 @@ cài Windows x64 đã được xác nhận trong quality gate ngày 22/10/2026.
   transitive hiện hữu (`atty`, `proc-macro-error`, `glib`).
 - `npm.cmd run tauri:dev`: PASS smoke launch; shortcut `Ctrl+Alt+M` bị ứng dụng khác chiếm nhưng lỗi được
   báo và app vẫn chạy, không tự mở microphone.
+
+# Managed w-okada integration candidate — 2026-11-25
+
+- Worked on `feature/new-version` as requested. Implemented managed optional runtime
+  install/cancel/rollback, bounded stdio process lifecycle, RVC adapter and backend contract,
+  bounded capture/converted PCM transport, and downstream privacy gates.
+- AI Voice Studio now exposes real configuration, model consent/import, explicit mode/stop
+  controls, runtime package trust and measured IPC/conversion counters. Existing DSP,
+  capture, soundboard, recording and output route remain in Rust.
+- Verified: Rust 98 passed / 7 manual ignored; frontend 15 passed; Python protocol 4 passed;
+  TypeScript/Vite, lint, formatting, optimized Windows EXE and NSIS build; Playwright 35
+  page/viewport checks plus native no-runtime Tauri smoke. No microphone auto-start.
+- Blocked/unverified: authorized runtime/model absent (confirmed by user), real RVC CPU/CUDA
+  conversion, quality, end-to-end latency and resource benchmarks, Discord/Zoom/OBS, and
+  signed native virtual microphone. No unlicensed weights or large assets downloaded.
+- Production AI approval is **not** granted by the passing build/contract tests.
+  See [audit](AI_ENGINE_IMPLEMENTATION.md), [ADR](adr/2026-11-25-managed-rvc-sidecar.md),
+  [verification and modified files](AI_ENGINE_VERIFICATION.md), and
+  [runtime packaging](../ai-sidecar/README.md).
+
+# Authorized managed runtime execution — 2026-11-26
+
+- Continued on `feature/new-version` after explicit authorization to download/install/run
+  official free runtime assets and verified voices. Installed project-scoped Python and
+  built/tested the actual portable CUDA runtime; host Python/PATH/security settings unchanged.
+- Added 69-component pinned installer/repair/update recipe, cache/resume, safe extraction,
+  atomic activation/rollback, hardware probe, original-owner model preparation and unified
+  runtime/model management in AI Voice Studio and Settings. No frontend dependencies added.
+- Actual CUDA and CPU RVC inference passed with original-owner Tsukuyomi-chan Normal 1
+  and authorized sample audio. Verified exact ONNX export, real Rust PCM transport,
+  CUDA-child crash → opted-in CPU recovery, same-stream restart and explicit privacy gates.
+- Fixed real cleared-profile model-load failure and lost transport endpoints on restart;
+  bounded Torch/ORT CPU threads and corrected full model-load telemetry.
+- Verified: Rust 103 passed / 10 default ignored, plus all 3 new real-AI acceptance tests
+  run explicitly; frontend 18 passed; Python 4 passed; production EXE/NSIS, lint/format,
+  35 browser layouts and actual native runtime/model/CUDA-ready smoke. No microphone started.
+- Quiet file test: CUDA median 28.84 ms/chunk, RTF 0.625; CPU 8,192-frame median 160.24 ms,
+  RTF 1.086; unavailable-CUDA fallback CPU RTF 1.190. These are not hardware-loopback latency.
+- Remaining release qualifications: Python 3.10 EOL, full binary redistribution/security
+  review, CPU real-time/quality/long-session validation, physical virtual-cable and
+  Discord/Zoom/OBS testing, signed native virtual-microphone driver. Existing VB-Audio
+  endpoints were enumerated only. Full [execution/licensing/evidence report](AI_RUNTIME_EXECUTION_REPORT.md).
+
+# Monitoring stream error correction — 2026-11-26
+
+- Corrected CPAL callback classification: recoverable Xrun/route/scheduling notifications
+  no longer latch a terminal error; virtual output follows the same classification.
+- Actual input/output driver details are retained. Terminal monitoring failures release
+  streams on the control thread and display `faulted`; explicit retry clears the banner.
+  No automatic microphone restart or device switch.
+- Verified 104 Rust tests, 20 frontend tests and an explicitly run muted 3-second hardware
+  diagnostic, including injected device-unavailable notification and stream cleanup.
+  See [monitoring correction](AUDIO_STREAM_FAILURE_FIX.md) for limits and build evidence.
+
+# Discord / virtual microphone usability review — 2026-11-26
+
+- Found saved virtual route pointing to physical headphones; corrected it to CABLE Input
+  via native UI/commands. Original volume/mute restored; test audio/routing stopped.
+- Added physical-route validation, explicit select → Monitor → Start routing guidance
+  and shared session state across virtual/Discord/game settings.
+- Verified 104 Rust / 21 frontend tests, explicit paired-capture synthetic-tone loopback,
+  production native UI and optimized EXE/NSIS build. Discord call/Mic Test remains manual.
+- Delivered [Vietnamese user guide](HUONG_DAN_SU_DUNG.md) and
+  [review/evidence/limits](VIRTUAL_MIC_REVIEW.md).
+
+# Audio quality / realtime engine review — 2026-11-26
+
+- Removed premature float clipping, separated capture and DSP worker, added persistent sinc conversion,
+  bounded clock correction, adaptive prefill, final lookahead limiter and symmetric PCM/i32 support.
+- Fixed optional noise gate/mix alignment and fresh-frame warmup; guarded upstream AI int16 conversion.
+- Added native Audio Quality Lab, three negotiated profiles, actual telemetry and consent-only local stage WAVs.
+- Verified 112 Rust / 22 frontend / 6 Python tests, real CUDA model inference, owned-child recovery,
+  three VB-Cable profiles and a 120-second Balanced synthetic loopback with zero virtual route underruns/overflows.
+  One capture overrun notification remains in the measured runs; no blanket zero-dropout claim.
+- Built optimized EXE/NSIS. MSI blocked by local Windows Installer/WiX ICE error; no system security changes.
+- Full data, source/runtime/model terms, artifact hashes and remaining CPU/EOL/listening/long-run limits:
+  [Audio Quality Report](AUDIO_QUALITY_REPORT.md). Changes remain uncommitted on `feature/new-version`.
+
+# Female Voice Collection — 2026-11-26
+
+- Added 20 distinct DSP configurations to the registry and one reviewed original-owner RVC identity
+  in Voice Lab → Female collection. AI and DSP are explicitly labeled; no TikTok audio was used.
+- Implemented smoothed intensity, split-band de-essing and RMS compression, backward-compatible parameters,
+  local consented WAV previews (including real AI inference/private numeric model slot), favorites/search/recent.
+- Fixed cumulative editing/reset behavior and prevented delayed preview playback after leaving/changing voice.
+- Verified 115 Rust / 25 frontend / 6 Python tests, 20 unique licensed-speech WAV renders, CPU/GPU inference
+  benchmarks and unchanged neutral/alias regression metrics. Native evidence and optimized EXE/NSIS hashes:
+  [Female collection report](FEMALE_VOICE_COLLECTION_REPORT.md).
+- Vietnamese/regional pronunciation, actual male-input naturalness, listening evaluations and live conferencing
+  remain unqualified. Build-load VB-Cable test recorded one virtual underrun and one capture overrun;
+  the measured counters are retained rather than described as perfect audio.
+
+# Soundboard idle playback correction — 2026-11-26
+
+- Render structured native error messages, block idle playback and offer explicit audio-engine start.
+- Check stopped state before clip lookup; stopping an idle mixer is idempotent.
+- Verified 116 Rust / 27 frontend tests, optimized EXE/NSIS and native Play/Stop with the existing
+  whoosh clip, input/output muted and no microphone recording/library changes.
+- Latest artifact hashes and screenshots: [Soundboard correction](SOUNDBOARD_PLAYBACK_FIX.md).

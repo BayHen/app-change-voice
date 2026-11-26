@@ -18,11 +18,7 @@ pub struct SignalMeter {
 impl SignalMeter {
     #[inline]
     pub fn push(&mut self, sample: f32) {
-        let safe = if sample.is_finite() {
-            sample.clamp(-1.0, 1.0)
-        } else {
-            0.0
-        };
+        let safe = if sample.is_finite() { sample } else { 0.0 };
         self.peak = self.peak.max(safe.abs());
         self.sum_squares += f64::from(safe) * f64::from(safe);
         self.sample_count += 1;
@@ -47,7 +43,7 @@ pub fn amplitude_to_dbfs(amplitude: f32) -> f32 {
     if !amplitude.is_finite() || amplitude <= 0.0 {
         DBFS_FLOOR
     } else {
-        (20.0 * amplitude.min(1.0).log10()).max(DBFS_FLOOR)
+        (20.0 * amplitude.log10()).max(DBFS_FLOOR)
     }
 }
 

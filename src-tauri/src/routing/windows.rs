@@ -27,12 +27,32 @@ pub(crate) struct WindowsVirtualOutputSink {
 }
 
 impl WindowsVirtualOutputSink {
+    #[cfg(test)]
     pub(crate) fn build(
         device_id: &str,
         source_rate: u32,
         consumer: Consumer<f32>,
         shared: Arc<SharedRoutingMetrics>,
         noise_controls: SharedNoiseSettings,
+    ) -> Result<Self, RoutingError> {
+        Self::build_with_quality(
+            device_id,
+            source_rate,
+            consumer,
+            shared,
+            noise_controls,
+            crate::audio::quality::QualityProfile::Balanced,
+            None,
+        )
+    }
+    pub(crate) fn build_with_quality(
+        device_id: &str,
+        source_rate: u32,
+        consumer: Consumer<f32>,
+        shared: Arc<SharedRoutingMetrics>,
+        noise_controls: SharedNoiseSettings,
+        quality: crate::audio::quality::QualityProfile,
+        tap: Option<crate::audio::capture::Tap>,
     ) -> Result<Self, RoutingError> {
         let host = cpal::default_host();
         let parsed = DeviceId::from_str(device_id)
@@ -79,7 +99,7 @@ impl WindowsVirtualOutputSink {
             sample_rate: rate,
             buffer_size: match fixed.buffer_size() {
                 SupportedBufferSize::Range { min, max } => {
-                    BufferSize::Fixed(256_u32.clamp(*min, *max))
+                    BufferSize::Fixed(quality.requested_frames(rate).clamp(*min, *max))
                 }
                 SupportedBufferSize::Unknown => BufferSize::Default,
             },
@@ -93,6 +113,8 @@ impl WindowsVirtualOutputSink {
             consumer,
             shared.clone(),
             noise_controls,
+            quality,
+            tap,
         )?;
         Ok(Self {
             stream,
@@ -122,14 +144,25 @@ impl RouteSample for f32 {
         value
     }
 }
+impl RouteSample for i32 {
+    fn from_f32(sample: f32) -> Self {
+        if sample.is_finite() {
+            (f64::from(sample).clamp(-1.0, 1.0) * 2147483648.0)
+                .round()
+                .clamp(i32::MIN as f64, i32::MAX as f64) as i32
+        } else {
+            0
+        }
+    }
+}
 impl RouteSample for i16 {
     fn from_f32(value: f32) -> Self {
-        (value.clamp(-1.0, 1.0) * i16::MAX as f32).round() as i16
+        crate::ai::transport::to_pcm16(value)
     }
 }
 impl RouteSample for u16 {
     fn from_f32(value: f32) -> Self {
-        ((value.clamp(-1.0, 1.0) + 1.0) * 0.5 * u16::MAX as f32).round() as u16
+        (i32::from(crate::ai::transport::to_pcm16(value)) + 32768) as u16
     }
 }
 
@@ -141,32 +174,28 @@ fn build_stream(
     consumer: Consumer<f32>,
     shared: Arc<SharedRoutingMetrics>,
     noise_controls: SharedNoiseSettings,
+    quality: crate::audio::quality::QualityProfile,
+    tap: Option<crate::audio::capture::Tap>,
 ) -> Result<Stream, RoutingError> {
+    macro_rules! build {
+        ($ty:ty) => {
+            build_typed::<$ty>(
+                device,
+                config,
+                source_rate,
+                consumer,
+                shared,
+                noise_controls,
+                quality,
+                tap,
+            )
+        };
+    }
     match format {
-        SampleFormat::F32 => build_typed::<f32>(
-            device,
-            config,
-            source_rate,
-            consumer,
-            shared,
-            noise_controls,
-        ),
-        SampleFormat::I16 => build_typed::<i16>(
-            device,
-            config,
-            source_rate,
-            consumer,
-            shared,
-            noise_controls,
-        ),
-        SampleFormat::U16 => build_typed::<u16>(
-            device,
-            config,
-            source_rate,
-            consumer,
-            shared,
-            noise_controls,
-        ),
+        SampleFormat::F32 => build!(f32),
+        SampleFormat::I32 => build!(i32),
+        SampleFormat::I16 => build!(i16),
+        SampleFormat::U16 => build!(u16),
         _ => Err(RoutingError::new(
             "unsupportedFormat",
             format!("Unsupported virtual output format: {format}"),
@@ -178,53 +207,79 @@ fn build_typed<T: RouteSample>(
     device: &Device,
     config: StreamConfig,
     source_rate: u32,
-    mut consumer: Consumer<f32>,
+    consumer: Consumer<f32>,
     shared: Arc<SharedRoutingMetrics>,
     noise_controls: SharedNoiseSettings,
+    quality: crate::audio::quality::QualityProfile,
+    mut tap: Option<crate::audio::capture::Tap>,
 ) -> Result<Stream, RoutingError> {
     let channels = usize::from(config.channels);
     let output_rate = config.sample_rate;
     let errors = shared.clone();
-    let mut phase = output_rate;
-    let mut held = 0.0_f32;
+    let mut reader = crate::audio::resample::ClockedReader::new(
+        consumer,
+        source_rate,
+        output_rate,
+        quality.negotiated_startup_ms(config.sample_rate, config.buffer_size),
+        quality.taps(),
+    )
+    .map_err(|e| RoutingError::new("resampler", e))?;
+    let mut route_epoch = shared.route_generation.load(Ordering::Acquire);
     let mut limiter = OutputLimiter::new(output_rate);
+    let mut privacy = crate::ai::transport::OutputPrivacyGate::new(shared.voice_guard.clone());
     device
         .build_output_stream(
             config,
             move |data: &mut [T], _| {
-                let mut underrun = false;
+                let underruns = reader.underruns;
                 let mut peak = 0.0_f32;
-                for frame in data.chunks_exact_mut(channels) {
-                    phase = phase.saturating_add(source_rate);
-                    while phase >= output_rate {
-                        phase -= output_rate;
-                        match consumer.pop() {
-                            Ok(sample) => held = sample,
-                            Err(_) => {
-                                held = 0.0;
-                                underrun = true;
-                            }
-                        }
+                let noise = noise_controls.load();
+                let generation = shared.route_generation.load(Ordering::Acquire);
+                if generation != route_epoch {
+                    route_epoch = generation;
+                    let queued = reader.consumer_mut().slots();
+                    for _ in 0..queued {
+                        let _ = reader.consumer_mut().pop();
                     }
-                    let sample = if held.is_finite() {
-                        held.clamp(-1.0, 1.0)
-                    } else {
-                        0.0
-                    };
-                    let noise = noise_controls.load();
+                    reader.reset();
+                }
+                if !shared.active.load(Ordering::Acquire) {
+                    data.fill(T::from_f32(0.0));
+                    shared.set_peak(0.0);
+                    return;
+                }
+                for frame in data.chunks_exact_mut(channels) {
+                    if privacy.discard_if_changed(reader.consumer_mut()) {
+                        reader.reset();
+                    }
+                    let held = privacy.filter(reader.next_sample());
+                    let sample = if held.is_finite() { held } else { 0.0 };
                     let (sample, _) =
                         limiter.process(sample, noise.limiter_enabled, noise.limiter_ceiling_dbfs);
                     peak = peak.max(sample.abs());
+                    if let Some(tap) = tap.as_mut() {
+                        tap.push(
+                            crate::audio::capture::Stage::VirtualOutput,
+                            output_rate,
+                            sample,
+                        );
+                    }
                     frame.fill(T::from_f32(sample));
                 }
-                if underrun {
+                if reader.underruns > underruns {
                     shared.underruns.fetch_add(1, Ordering::Relaxed);
                 }
                 shared.set_peak(peak);
             },
-            move |_| {
-                errors.faulted.store(true, Ordering::Release);
-                errors.active.store(false, Ordering::Release);
+            move |error| match error.kind() {
+                cpal::ErrorKind::Xrun => {
+                    errors.underruns.fetch_add(1, Ordering::Relaxed);
+                }
+                cpal::ErrorKind::DeviceChanged | cpal::ErrorKind::RealtimeDenied => {}
+                _ => {
+                    errors.faulted.store(true, Ordering::Release);
+                    errors.active.store(false, Ordering::Release);
+                }
             },
             None,
         )
@@ -233,7 +288,8 @@ fn build_typed<T: RouteSample>(
 
 fn format_rank(format: SampleFormat) -> u8 {
     match format {
-        SampleFormat::F32 => 3,
+        SampleFormat::F32 => 4,
+        SampleFormat::I32 => 3,
         SampleFormat::I16 => 2,
         SampleFormat::U16 => 1,
         _ => 0,

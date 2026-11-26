@@ -18,6 +18,9 @@ pub struct AdditionalEffectChain {
     treble_filter: LowPass,
     current_bass_gain: f32,
     current_treble_gain: f32,
+    target_bass_gain: f32,
+    target_treble_gain: f32,
+    dynamics: super::dynamics::VocalDynamics,
 }
 
 impl AdditionalEffectChain {
@@ -37,6 +40,9 @@ impl AdditionalEffectChain {
             treble_filter: LowPass::default(),
             current_bass_gain: 1.0,
             current_treble_gain: 1.0,
+            target_bass_gain: 1.0,
+            target_treble_gain: 1.0,
+            dynamics: super::dynamics::VocalDynamics::new(sample_rate),
         }
     }
 
@@ -46,6 +52,8 @@ impl AdditionalEffectChain {
         self.low_pass
             .set_cutoff(parameters.radio_low_pass_hz, self.sample_rate);
         self.target_makeup_gain = 10.0_f32.powf(parameters.makeup_gain_db / 20.0);
+        self.target_bass_gain = 10.0_f32.powf(parameters.bass_db / 20.0);
+        self.target_treble_gain = 10.0_f32.powf(parameters.treble_db / 20.0);
         self.bass_filter.set_cutoff(200.0, self.sample_rate);
         self.treble_filter.set_cutoff(4_000.0, self.sample_rate);
     }
@@ -58,10 +66,9 @@ impl AdditionalEffectChain {
             (target.tremolo_depth - self.current_tremolo_depth) * smoothing;
         self.current_makeup_gain +=
             (self.target_makeup_gain - self.current_makeup_gain) * smoothing;
-        self.current_bass_gain +=
-            (10.0_f32.powf(target.bass_db / 20.0) - self.current_bass_gain) * smoothing;
+        self.current_bass_gain += (self.target_bass_gain - self.current_bass_gain) * smoothing;
         self.current_treble_gain +=
-            (10.0_f32.powf(target.treble_db / 20.0) - self.current_treble_gain) * smoothing;
+            (self.target_treble_gain - self.current_treble_gain) * smoothing;
 
         self.ring_phase =
             (self.ring_phase + TAU * target.ring_mod_frequency_hz / self.sample_rate) % TAU;
@@ -79,7 +86,12 @@ impl AdditionalEffectChain {
         let low = self.bass_filter.process(output);
         let high = output - self.treble_filter.process(output);
         output += low * (self.current_bass_gain - 1.0) + high * (self.current_treble_gain - 1.0);
-        (output * tremolo_gain * self.current_makeup_gain).clamp(-1.0, 1.0)
+        self.dynamics.process(
+            output * tremolo_gain,
+            target.de_ess_strength,
+            target.compression_ratio,
+            smoothing,
+        ) * self.current_makeup_gain
     }
 }
 
@@ -143,7 +155,7 @@ mod tests {
         for index in 0..96_000 {
             let sample = (index as f32 * 0.03).sin();
             let output = chain.process_sample(sample, parameters, 0.01);
-            assert!(output.is_finite() && output.abs() <= 1.0);
+            assert!(output.is_finite() && output.abs() <= 16.0);
         }
     }
 

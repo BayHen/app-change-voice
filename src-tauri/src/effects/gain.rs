@@ -119,7 +119,8 @@ impl SmoothedGain {
             0.0
         };
         self.current += (safe_target - self.current) * self.coefficient;
-        (safe_sample * self.current).clamp(-1.0, 1.0)
+        let output = safe_sample * self.current;
+        if output.is_finite() { output } else { 0.0 }
     }
 }
 

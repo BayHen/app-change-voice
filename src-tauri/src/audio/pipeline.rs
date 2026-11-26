@@ -68,7 +68,7 @@ impl ProcessorChain {
         self.pitch.process(&self.input[..], &mut self.wet[..]);
         self.additional.prepare_block(target);
 
-        let target_mix = f32::from(target.enabled && !target.bypassed);
+        let target_mix = f32::from(target.enabled && !target.bypassed) * target.voice_intensity;
         let mix_step = 1.0 / (BYPASS_SMOOTH_SECONDS * self.sample_rate as f32).max(1.0);
         let effect_smoothing =
             1.0 - (-1.0 / (PARAMETER_SMOOTH_SECONDS * self.sample_rate as f32)).exp();
@@ -80,7 +80,8 @@ impl ProcessorChain {
             let wet = self
                 .additional
                 .process_sample(self.wet[index], target, effect_smoothing);
-            *sample = (dry + (wet - dry) * self.wet_mix).clamp(-1.0, 1.0);
+            let value = dry + (wet - dry) * self.wet_mix;
+            *sample = if value.is_finite() { value } else { 0.0 };
         }
     }
 }
@@ -110,6 +111,11 @@ impl AudioPipeline {
 
     pub fn latency_frames(&self) -> usize {
         self.noise.latency_frames() + self.chain.latency_frames() + DSP_BLOCK_FRAMES
+    }
+
+    /// Sample-index alignment excludes block scheduling, which delays dry and wet equally.
+    pub fn signal_latency_frames(&self) -> usize {
+        self.noise.signal_latency_frames() + self.chain.latency_frames()
     }
 
     #[inline]
@@ -302,7 +308,10 @@ mod tests {
                 pipeline.push(input, |sample| output.push(sample));
             }
         }
-        assert!(24_064 * registry.all().len() - output.len() < DenoiseState::FRAME_SIZE);
+        assert!(
+            24_064 * registry.all().len() - output.len()
+                < DenoiseState::FRAME_SIZE + DSP_BLOCK_FRAMES
+        );
         assert!(
             output
                 .iter()

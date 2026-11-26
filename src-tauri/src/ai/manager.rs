@@ -32,17 +32,11 @@ impl AIModelManager {
             if path.extension().and_then(|value| value.to_str()) != Some("json") {
                 continue;
             }
-            let status = fs::read(&path)
-                .map_err(|error| error.to_string())
-                .and_then(|bytes| {
-                    serde_json::from_slice::<AIModelMetadata>(&bytes)
-                        .map_err(|error| error.to_string())
-                })
-                .and_then(|metadata| {
-                    validate_metadata(&metadata)?;
-                    let model_path = self.root.join(&metadata.model_file);
+            let status = self
+                .resolve(path.file_stem().and_then(|s| s.to_str()).unwrap_or(""))
+                .map(|(metadata, model_path)| {
                     let verified = verify_model(&metadata, &model_path).is_ok();
-                    Ok(AIModelStatus {
+                    AIModelStatus {
                         enabled: self.active_model_id.as_deref() == Some(&metadata.id),
                         integrity_verified: verified,
                         runtime_available: false,
@@ -53,7 +47,7 @@ impl AIModelManager {
                             "Model missing or integrity verification failed".into()
                         },
                         metadata,
-                    })
+                    }
                 });
             if let Ok(status) = status {
                 models.push(status);
@@ -68,33 +62,66 @@ impl AIModelManager {
         manifest_path: &Path,
         model_path: &Path,
     ) -> Result<AIModelStatus, String> {
+        self.add_with_consent(manifest_path, model_path, false)
+    }
+
+    pub fn add_with_consent(
+        &mut self,
+        manifest_path: &Path,
+        model_path: &Path,
+        rights_confirmed: bool,
+    ) -> Result<AIModelStatus, String> {
+        if fs::metadata(manifest_path)
+            .map_err(|e| e.to_string())?
+            .len()
+            > 128 * 1024
+        {
+            return Err("Model manifest exceeds 128 KiB".into());
+        }
         let bytes = fs::read(manifest_path).map_err(|error| error.to_string())?;
         if bytes.len() > 128 * 1024 {
             return Err("Model manifest exceeds 128 KiB".into());
         }
-        let metadata: AIModelMetadata =
+        let mut metadata: AIModelMetadata =
             serde_json::from_slice(&bytes).map_err(|error| error.to_string())?;
+        if metadata.backend == "w-okada-rvc" {
+            if !rights_confirmed {
+                return Err("Acknowledge the model license and your right to use this voice before importing".into());
+            }
+            metadata.consent_confirmed = true;
+        }
         validate_metadata(&metadata)?;
         if model_path.file_name().and_then(|value| value.to_str()) != Some(&metadata.model_file) {
             return Err("Selected model filename does not match modelFile in the manifest".into());
         }
         verify_model(&metadata, model_path)?;
-        let target_model = self.root.join(&metadata.model_file);
         let target_manifest = self.root.join(format!("{}.json", metadata.id));
+        if target_manifest.exists() {
+            return Err(
+                "A model with this ID already exists; remove it explicitly before replacing it"
+                    .into(),
+            );
+        }
+        metadata.model_file = format!("{}-{}", metadata.id, metadata.model_file);
+        let target_model = self.root.join(&metadata.model_file);
+        if target_model.exists() {
+            return Err("Model storage collision; existing file was retained".into());
+        }
         let temporary_model = target_model.with_extension("onnx.tmp");
         let temporary_manifest = target_manifest.with_extension("json.tmp");
+        if temporary_model.exists() || temporary_manifest.exists() {
+            return Err(
+                "An interrupted import exists; inspect the temporary model files before retrying"
+                    .into(),
+            );
+        }
         fs::copy(model_path, &temporary_model).map_err(|error| error.to_string())?;
         fs::write(
             &temporary_manifest,
             serde_json::to_vec_pretty(&metadata).map_err(|error| error.to_string())?,
         )
         .map_err(|error| error.to_string())?;
-        if target_model.exists() {
-            fs::remove_file(&target_model).map_err(|error| error.to_string())?;
-        }
-        if target_manifest.exists() {
-            fs::remove_file(&target_manifest).map_err(|error| error.to_string())?;
-        }
+        verify_model(&metadata, &temporary_model)?;
         fs::rename(temporary_model, &target_model).map_err(|error| error.to_string())?;
         fs::rename(temporary_manifest, &target_manifest).map_err(|error| error.to_string())?;
         Ok(AIModelStatus {
@@ -108,12 +135,9 @@ impl AIModelManager {
     }
 
     pub fn remove(&mut self, id: &str) -> Result<(), String> {
+        validate_id(id)?;
         let manifest = self.root.join(format!("{id}.json"));
-        let bytes = fs::read(&manifest).map_err(|_| "AI model was not found".to_string())?;
-        let metadata: AIModelMetadata =
-            serde_json::from_slice(&bytes).map_err(|error| error.to_string())?;
-        validate_metadata(&metadata)?;
-        let model = self.root.join(metadata.model_file);
+        let (_, model) = self.resolve(id)?;
         if model.exists() {
             fs::remove_file(model).map_err(|error| error.to_string())?;
         }
@@ -122,6 +146,26 @@ impl AIModelManager {
             self.active_model_id = None;
         }
         Ok(())
+    }
+
+    pub fn resolve(&self, id: &str) -> Result<(AIModelMetadata, PathBuf), String> {
+        validate_id(id)?;
+        let path = super::runtime::package_path(&self.root, &format!("{id}.json"))?;
+        if fs::metadata(&path).map_err(|e| e.to_string())?.len() > 128 * 1024 {
+            return Err("Model manifest exceeds size limit".into());
+        }
+        let bytes = fs::read(path).map_err(|e| e.to_string())?;
+        if bytes.len() > 128 * 1024 {
+            return Err("Model manifest exceeds size limit".into());
+        }
+        let metadata: AIModelMetadata =
+            serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+        validate_metadata(&metadata)?;
+        if metadata.id != id {
+            return Err("Model manifest ID differs from its storage ID".into());
+        }
+        let model = super::runtime::package_path(&self.root, &metadata.model_file)?;
+        Ok((metadata, model))
     }
 
     pub fn set_enabled(&mut self, id: &str, enabled: bool) -> Result<AIProviderStatus, String> {
@@ -151,6 +195,19 @@ impl AIModelManager {
             fallback_active: true,
             message: "AI realtime is unavailable in this build; the realtime DSP chain is the safe fallback".into(),
         }
+    }
+}
+
+fn validate_id(id: &str) -> Result<(), String> {
+    if id.is_empty()
+        || id.len() > 80
+        || !id
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+    {
+        Err("Invalid model ID".into())
+    } else {
+        Ok(())
     }
 }
 
@@ -190,6 +247,9 @@ mod tests {
             input_sample_rate: 48_000,
             frame_samples: 2_048,
             supported_profiles: vec![],
+            consent_confirmed: false,
+            license_url: None,
+            attribution: None,
         };
         let manifest_path = source.join("manifest.json");
         fs::write(&manifest_path, serde_json::to_vec(&metadata).unwrap()).unwrap();
@@ -224,6 +284,9 @@ mod tests {
             input_sample_rate: 48_000,
             frame_samples: 2_048,
             supported_profiles: vec![],
+            consent_confirmed: false,
+            license_url: None,
+            attribution: None,
         };
         let manifest_path = root.join("manifest.json");
         fs::write(&manifest_path, serde_json::to_vec(&metadata).unwrap()).unwrap();

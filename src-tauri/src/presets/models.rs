@@ -10,6 +10,7 @@ pub enum PresetCategory {
     Character,
     Creative,
     Utility,
+    Female,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq)]
@@ -32,6 +33,9 @@ pub struct PresetParameters {
     pub limiter_enabled: bool,
     pub limiter_ceiling_dbfs: f32,
     pub effect_bypassed: bool,
+    pub voice_intensity: f32,
+    pub de_ess_strength: f32,
+    pub compression_ratio: f32,
 }
 
 impl Default for PresetParameters {
@@ -48,6 +52,9 @@ impl Default for PresetParameters {
             limiter_enabled: true,
             limiter_ceiling_dbfs: -1.0,
             effect_bypassed: false,
+            voice_intensity: 1.0,
+            de_ess_strength: 0.0,
+            compression_ratio: 1.0,
         }
     }
 }
@@ -117,6 +124,9 @@ impl VoicePreset {
             bypassed: self.parameters.effect_bypassed,
             bass_db: self.parameters.bass_db,
             treble_db: self.parameters.treble_db,
+            voice_intensity: self.parameters.voice_intensity,
+            de_ess_strength: self.parameters.de_ess_strength,
+            compression_ratio: self.parameters.compression_ratio,
             ..EffectParameters::default()
         };
         for effect in &self.effects {

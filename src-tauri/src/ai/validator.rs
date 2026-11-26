@@ -13,6 +13,7 @@ pub fn validate_metadata(metadata: &AIModelMetadata) -> Result<(), String> {
         ));
     }
     if metadata.id.is_empty()
+        || metadata.id.len() > 80
         || !metadata
             .id
             .chars()
@@ -23,10 +24,26 @@ pub fn validate_metadata(metadata: &AIModelMetadata) -> Result<(), String> {
     if metadata.name.trim().is_empty() || metadata.description.trim().is_empty() {
         return Err("Model name and description are required".into());
     }
-    if metadata.backend != "onnx-runtime" {
-        return Err("Only the declarative onnx-runtime backend is accepted".into());
+    if !["onnx-runtime", "w-okada-rvc"].contains(&metadata.backend.as_str()) {
+        return Err("Only ONNX storage or the pinned w-okada RVC backend is accepted".into());
     }
-    if !ALLOWED_LICENSES.contains(&metadata.license.as_str()) {
+    if metadata.backend == "w-okada-rvc"
+        && (metadata.architecture != "rvc"
+            || !metadata.consent_confirmed
+            || metadata.input_sample_rate != 48_000)
+    {
+        return Err(
+            "RVC requires architecture rvc, 48 kHz transport and acknowledged voice rights".into(),
+        );
+    }
+    let approved_owner_model = metadata.license == "LicenseRef-TsukuyomiChan-Official"
+        && metadata.sha256 == "d9caedd48ea81672946ce4896022da5e302996e1f5c1bf0ae2c141c2f7d3afe6"
+        && metadata.source_url == "https://tyc.rei-yumesaki.net/work/software/rvc/"
+        && metadata.license_url.as_deref()
+            == Some("https://tyc.rei-yumesaki.net/work/software/rvc/terms/")
+        && metadata.attribution.as_deref()
+            == Some("Tsukuyomi-chan official RVC model (CV. Rei Yumesaki)");
+    if !ALLOWED_LICENSES.contains(&metadata.license.as_str()) && !approved_owner_model {
         return Err(format!(
             "Model license is not allow-listed: {}",
             metadata.license
@@ -36,6 +53,7 @@ pub fn validate_metadata(metadata: &AIModelMetadata) -> Result<(), String> {
         return Err("Model source must be an HTTPS URL".into());
     }
     let file = Path::new(&metadata.model_file);
+    super::runtime::validate_relative(&metadata.model_file)?;
     if file.components().count() != 1
         || file.extension().and_then(|value| value.to_str()) != Some("onnx")
     {
@@ -104,6 +122,9 @@ mod tests {
             input_sample_rate: 48_000,
             frame_samples: 2_048,
             supported_profiles: vec!["deep".into()],
+            consent_confirmed: false,
+            license_url: None,
+            attribution: None,
         }
     }
 
