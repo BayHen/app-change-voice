@@ -76,6 +76,7 @@ fn validate_component(item: &Component) -> Result<(), String> {
                     | "download-r2.pytorch.org"
                     | "dl.fbaipublicfiles.com"
                     | "tyc.rei-yumesaki.net"
+                    | "huggingface.co"
             )
         )
         || item.bytes > MAX_DOWNLOAD
@@ -345,18 +346,23 @@ fn write_member(
     }
     Ok(())
 }
-fn extract(
+pub(super) fn extract(
     item: &Component,
     archive: &Path,
     root: &Path,
     expanded: &mut u64,
     cancel: &AtomicBool,
 ) -> Result<(), String> {
-    if item.kind == "hubert" {
+    if matches!(item.kind.as_str(), "hubert" | "rvc-contentvec") {
         let mut input = fs::File::open(archive).map_err(|e| e.to_string())?;
+        let destination = if item.kind == "hubert" {
+            "assets/hubert.pt"
+        } else {
+            runtime::RVC_CONTENTVEC_FILE
+        };
         return write_member(
             root,
-            "assets/hubert.pt",
+            destination,
             fs::metadata(archive).map_err(|e| e.to_string())?.len(),
             &mut input,
             expanded,
@@ -412,7 +418,7 @@ fn extract(
     Ok(())
 }
 
-fn collect(
+pub(super) fn collect(
     root: &Path,
     directory: &Path,
     files: &mut Vec<RuntimeFile>,

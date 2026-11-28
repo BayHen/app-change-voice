@@ -7,6 +7,7 @@ use std::sync::{
 
 #[derive(Default)]
 pub struct SharedTransport {
+    pub hybrid_dsp: AtomicBool,
     pub process_id: AtomicU64,
     pub ai_selected: AtomicBool,
     pub ready: AtomicBool,
@@ -73,6 +74,16 @@ pub fn ports(sample_rate: u32, shared: Arc<SharedTransport>) -> (RealtimePort, W
     )
 }
 impl RealtimePort {
+    pub fn post_processing(&self) -> (bool, u64) {
+        (
+            self.shared.hybrid_dsp.load(Ordering::Relaxed)
+                && self.shared.ready.load(Ordering::Acquire)
+                && !self.shared.faulted.load(Ordering::Acquire)
+                && self.shared.ai_selected.load(Ordering::Acquire),
+            self.shared.generation.load(Ordering::Acquire),
+        )
+    }
+
     /// None selects the existing Classic DSP path. AI warmup/faults return silence,
     /// except for a failure policy explicitly opted into by the user.
     #[inline]

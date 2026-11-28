@@ -18,6 +18,9 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 pub const MAX_MESSAGE_BYTES: usize = 256 * 1024;
+// -I ignores PYTHONIOENCODING/PYTHONUTF8 environment variables. Explicit UTF-8
+// mode is required for JSON paths on Windows legacy code-page installations.
+const PYTHON_ARGS: &[&str] = &["-I", "-X", "utf8", "-u"];
 pub fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -109,15 +112,60 @@ impl ManagedProcess {
         log: &Path,
         cancel: Arc<AtomicBool>,
     ) -> Result<Self, String> {
-        let python = package_path(&runtime.root, &runtime.manifest.python_executable)?;
         let entry = package_path(&runtime.root, &runtime.manifest.entry_point)?;
+        Self::spawn_entry(runtime, &entry, log, cancel, None)
+    }
+    pub fn spawn_converter(
+        runtime: &VerifiedRuntime,
+        work: &Path,
+        cancel: Arc<AtomicBool>,
+        safe_torch: &Path,
+    ) -> Result<Self, String> {
+        fs::create_dir_all(work).map_err(|e| e.to_string())?;
+        let script = work.join("convert_worker.py");
+        fs::write(
+            &script,
+            include_bytes!("../../../ai-sidecar/convert_worker.py"),
+        )
+        .map_err(|e| e.to_string())?;
+        let entry = script.canonicalize().map_err(|e| e.to_string())?;
+        Self::spawn_entry(
+            runtime,
+            &entry,
+            &work.join("conversion.log"),
+            cancel,
+            Some(safe_torch),
+        )
+    }
+    pub fn spawn_indexed(
+        runtime: &VerifiedRuntime,
+        slot: &Path,
+        log: &Path,
+        cancel: Arc<AtomicBool>,
+    ) -> Result<Self, String> {
+        let entry = slot.join("voicemorph-indexed-bridge.py");
+        fs::write(&entry, include_bytes!("../../../ai-sidecar/bridge.py"))
+            .map_err(|e| e.to_string())?;
+        Self::spawn_entry(runtime, &entry, log, cancel, None)
+    }
+    fn spawn_entry(
+        runtime: &VerifiedRuntime,
+        entry: &Path,
+        log: &Path,
+        cancel: Arc<AtomicBool>,
+        safe_torch: Option<&Path>,
+    ) -> Result<Self, String> {
+        let python = package_path(&runtime.root, &runtime.manifest.python_executable)?;
         let mut command = Command::new(python);
         command
-            .args(["-I", "-u"])
+            .args(PYTHON_ARGS)
             .arg(entry)
             .arg("--runtime-root")
             .arg(&runtime.root)
             .current_dir(&runtime.root);
+        if let Some(path) = safe_torch {
+            command.arg("--safe-torch-root").arg(path);
+        }
         command.env_clear();
         for key in ["SystemRoot", "WINDIR", "TEMP", "TMP"] {
             if let Some(value) = std::env::var_os(key) {
@@ -353,7 +401,7 @@ mod tests {
         let fixture =
             Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/fixtures/ai_sidecar_stub.py");
         let mut command = Command::new("python");
-        command.args(["-I", "-u"]).arg(fixture);
+        command.args(PYTHON_ARGS).arg(fixture);
         let cancel = Arc::new(AtomicBool::new(false));
         let log = std::env::temp_dir().join(format!("vm-child-{}.log", now_ms()));
         let mut process = ManagedProcess::spawn_command(command, &log, cancel).unwrap();
@@ -362,6 +410,20 @@ mod tests {
                 .call(serde_json::json!({"op":"hello"}), Duration::from_secs(3))
                 .unwrap()["testFixture"],
             true
+        );
+        let unicode_path = format!(
+            "C:/My recordings/gi{}ng n{}.onnx",
+            char::from_u32(0x1ecd).unwrap(),
+            char::from_u32(0x1eef).unwrap()
+        );
+        assert_eq!(
+            process
+                .call(
+                    serde_json::json!({"op":"echo","text":unicode_path}),
+                    Duration::from_secs(3)
+                )
+                .unwrap()["receivedText"],
+            unicode_path
         );
         assert!(
             process

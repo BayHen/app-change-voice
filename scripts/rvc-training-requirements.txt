@@ -1,0 +1,9 @@
+# RVC original voice training. Use after installing the matching upstream Torch/Torchaudio pair.
+av==15.1.0
+ffmpeg-python==0.2.0
+librosa==0.10.2.post1
+numpy==1.26.4
+praat-parselmouth==0.4.6
+scipy==1.14.1
+soundfile==0.13.1
+tensorboard==2.19.0

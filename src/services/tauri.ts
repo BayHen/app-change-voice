@@ -281,3 +281,58 @@ export const installAIRuntime = (
 ) => invoke<AIEngineStatus>("install_ai_runtime", { source, expectedSha256, publisherConfirmed });
 export const cancelAIRuntimeInstall = () => invoke<void>("cancel_ai_runtime_install");
 export const rollbackAIRuntime = () => invoke<AIEngineStatus>("rollback_ai_runtime");
+
+export const getAgentVoices = () => invoke<import("../types/ai").AgentVoice[]>("get_agent_voices");
+export const assignAgentVoice = (agentId: string, binding: import("../types/ai").AgentBinding) =>
+  invoke<void>("assign_agent_voice", { agentId, binding });
+export const removeAgentVoice = (agentId: string) =>
+  invoke<void>("remove_agent_voice", { agentId });
+export const startAgentVoice = (agentId: string) =>
+  invoke<AIEngineStatus>("start_agent_voice", { agentId });
+export const compareAgentVoice = (agentId: string, sourcePath: string, consentConfirmed: boolean) =>
+  invoke<import("../types/ai").AgentComparison>("compare_agent_voice", {
+    agentId,
+    sourcePath,
+    consentConfirmed,
+  });
+export const calibrateAgentVoice = (
+  agentId: string,
+  sourcePath: string,
+  consentConfirmed: boolean,
+) =>
+  invoke<import("../types/ai").VoiceAnalysis>("calibrate_agent_voice", {
+    agentId,
+    sourcePath,
+    consentConfirmed,
+  });
+
+export interface NeuralInspection {
+  compatibility: "candidate" | "incompatible";
+  issues: string[];
+  sha256: string;
+  metadata: Record<string, string>;
+  inputs: { name: string; elementType: number; shape: string[] }[];
+  outputs: { name: string; elementType: number; shape: string[] }[];
+}
+export const inspectVoiceModel = (modelPath: string) =>
+  invoke<NeuralInspection>("inspect_voice_model", { modelPath });
+export const registerRawVoiceModel = (
+  modelPath: string,
+  request: {
+    name: string;
+    sourceUrl: string;
+    licenseUrl: string;
+    attribution: string;
+    rightsConfirmed: boolean;
+    expectedSha256: string;
+  },
+) => invoke<AIModelStatus>("register_raw_voice_model", { modelPath, request });
+export const getVoicePackStatus = () =>
+  invoke<import("../types/ai").VoicePackStatus>("get_voice_pack_status");
+export const inspectHFVoice = (url: string) =>
+  invoke<import("../types/ai").VoicePackRemote>("inspect_hf_voice", { url });
+export const installVoicePack = (request: import("../types/ai").VoicePackInstallRequest) =>
+  invoke<import("../types/ai").VoicePackStatus>("install_voice_pack", { request });
+export const cancelVoicePack = () => invoke<void>("cancel_voice_pack");
+export const resetAgentRecommendations = (agentId: string) =>
+  invoke<AIEngineStatus>("reset_agent_recommendations", { agentId });

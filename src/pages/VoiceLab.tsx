@@ -16,6 +16,7 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 import { AppHeader } from "../components/AppHeader";
+import { AgentVoiceCollection } from "../components/AgentVoiceCollection";
 import { FemaleVoiceCollection } from "../components/FemaleVoiceCollection";
 import { Button, Card, Badge, Slider, StudioDialog } from "../components/ui";
 import { InputLevelMeter } from "../components/InputLevelMeter";
@@ -105,15 +106,25 @@ const templates = [
 ];
 
 export function VoiceLab() {
-  const [collection, setCollection] = useState(false);
-  return collection ? (
-    <FemaleVoiceCollection onBack={() => setCollection(false)} />
+  const [collection, setCollection] = useState<"female" | "agents" | null>(null);
+  if (collection === "agents") return <AgentVoiceCollection onBack={() => setCollection(null)} />;
+  return collection === "female" ? (
+    <FemaleVoiceCollection onBack={() => setCollection(null)} />
   ) : (
-    <VoiceLabWorkspace onCollection={() => setCollection(true)} />
+    <VoiceLabWorkspace
+      onCollection={() => setCollection("female")}
+      onAgents={() => setCollection("agents")}
+    />
   );
 }
-function VoiceLabWorkspace({ onCollection }: { onCollection: () => void }) {
-  const { runtime, devices, routing } = useAudioSession();
+function VoiceLabWorkspace({
+  onCollection,
+  onAgents,
+}: {
+  onCollection: () => void;
+  onAgents: () => void;
+}) {
+  const { runtime, devices, routing, ai } = useAudioSession();
   const effects = useEffectParameters(),
     noise = useNoiseSettings(),
     library = usePresets(),
@@ -149,6 +160,7 @@ function VoiceLabWorkspace({ onCollection }: { onCollection: () => void }) {
       if (template.name === "Stream Clean") preset.parameters.noiseSuppression = true;
       if (template.name === "Natural Boost") preset.gain.makeupDb = 3;
       await previewPreset(preset);
+      await ai.refresh();
       await effects.update(await getEffectParameters());
       await noise.commit({ ...noise.settings, enabled: preset.parameters.noiseSuppression });
     } catch (error) {
@@ -246,6 +258,7 @@ function VoiceLabWorkspace({ onCollection }: { onCollection: () => void }) {
               <div className="vm-actions">
                 <Badge>Realtime DSP</Badge>
                 <Button onClick={onCollection}>Female collection</Button>
+                <Button onClick={onAgents}>Agent Voices</Button>
               </div>
             </div>
             <div className="vm-preset-grid">

@@ -395,7 +395,14 @@ impl AudioStreamManager {
         let parameters = self.effect_controls.store(parameters);
         self.effect_parameters = parameters;
         self.active_preset_id = Some(id.to_owned());
+        self.ai.select_classic();
         parameters
+    }
+
+    pub fn preview_dsp_preset(&mut self, parameters: EffectParameters) -> EffectParameters {
+        let applied = self.set_effect_parameters(parameters);
+        self.ai.select_classic();
+        applied
     }
 
     pub fn active_preset_id(&self) -> Option<&str> {
@@ -978,6 +985,8 @@ fn build_input_typed<T: RealtimeSample>(
     let channels = usize::from(config.channels);
     let sample_rate = config.sample_rate;
     let error_metrics = metrics.clone();
+    let mut neural_post =
+        crate::ai::hybrid::NeuralPostProcessor::new(config.sample_rate, effect_controls.clone());
     let mut pipeline = AudioPipeline::new(config.sample_rate, effect_controls, noise_controls);
     let dsp_latency_frames = pipeline.latency_frames();
     let signal_latency_frames = pipeline.signal_latency_frames();
@@ -1046,7 +1055,12 @@ fn build_input_typed<T: RealtimeSample>(
                         overflowed |= producer.push(processed).is_err();
                     };
                     if let Some(converted) = converted {
-                        emit(converted);
+                        let (hybrid, generation) = ai_port.post_processing();
+                        emit(if hybrid {
+                            neural_post.process(converted, generation)
+                        } else {
+                            converted
+                        });
                     } else {
                         pipeline.push(frame.gained, &mut emit);
                     }
@@ -1240,6 +1254,50 @@ fn audio_error(error: cpal::Error) -> AudioDeviceError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn selecting_a_dsp_preset_restores_processed_audio_after_neural_voice() {
+        for preview in [false, true] {
+            let mut runtime = AudioStreamManager::default();
+            let mut input = runtime.ai.attach(48_000);
+            let mut output = crate::ai::transport::OutputPrivacyGate::new(runtime.ai.shared.clone());
+            let (mut tx, mut rx) = RingBuffer::new(32);
+            runtime.ai.begin_request("neural");
+            assert_eq!(input.process(0.2), Some(0.0));
+            assert_eq!(output.filter(0.2), 0.0);
+            output.discard_if_changed(&mut rx);
+            tx.push(0.6).unwrap();
+
+            let settings = EffectParameters {
+                pitch_semitones: -4.0,
+                ..EffectParameters::default()
+            };
+            // Shared effect editing is also used by Hybrid and must keep AI selected.
+            runtime.set_effect_parameters(settings);
+            assert_eq!(runtime.ai.status().mode, "wOkada");
+            if preview {
+                runtime.preview_dsp_preset(settings);
+            } else {
+                runtime.apply_preset("deep", settings);
+            }
+
+            assert!(output.discard_if_changed(&mut rx));
+            assert!(rx.pop().is_err(), "Old neural output must be discarded");
+            assert_eq!(runtime.ai.status().mode, "classicDsp");
+            assert!(input.process(0.2).is_none());
+            let mut pipeline = AudioPipeline::new(
+                48_000,
+                runtime.effect_controls.clone(),
+                runtime.noise_controls.clone(),
+            );
+            let mut peak: f32 = 0.0;
+            for frame in 0..12_000 {
+                let sample = (frame as f32 * std::f32::consts::TAU * 220.0 / 48_000.0).sin() * 0.2;
+                pipeline.push(sample, |value| peak = peak.max(output.filter(value).abs()));
+            }
+            assert!(peak > 0.01, "Classic DSP audio must reach the output gate");
+        }
+    }
     #[test]
     fn stopped_soundboard_explains_engine_state_before_clip_lookup() {
         let mut manager = AudioStreamManager::default();

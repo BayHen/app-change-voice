@@ -11,11 +11,12 @@ import {
   RefreshCw,
   Cpu,
 } from "lucide-react";
+import { NeuralModelImport } from "../components/NeuralModelImport";
 import { AppHeader } from "../components/AppHeader";
 import { Badge, Button, Card, EmptyState, Slider, StudioDialog } from "../components/ui";
 import { ToggleSwitch } from "../components/ToggleSwitch";
 import { useAudioSession } from "../hooks/AudioSession";
-import { addAIModel, getAIModels, removeAIModel } from "../services/tauri";
+import { getAIModels, removeAIModel } from "../services/tauri";
 import type { AIEngineConfig, AIModelStatus } from "../types/ai";
 
 const time = (value: number | null | undefined) =>
@@ -30,8 +31,7 @@ export function AIVoiceStudio() {
   const draft = localDraft ?? status?.config ?? null;
   const [busy, setBusy] = useState(false),
     [message, setMessage] = useState<string | null>(null);
-  const [importOpen, setImportOpen] = useState(false),
-    [rights, setRights] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [officialOpen, setOfficialOpen] = useState(false),
     [officialRights, setOfficialRights] = useState(false);
   const [runtimeOpen, setRuntimeOpen] = useState(false),
@@ -72,33 +72,6 @@ export function AIVoiceStudio() {
       setDirty(true);
     }
   }
-  async function importModel() {
-    setBusy(true);
-    setMessage(null);
-    try {
-      const manifest = await open({
-        multiple: false,
-        filters: [{ name: "Voice model manifest", extensions: ["json"] }],
-      });
-      if (typeof manifest !== "string") return;
-      const model = await open({
-        multiple: false,
-        filters: [{ name: "RVC ONNX model", extensions: ["onnx"] }],
-      });
-      if (typeof model !== "string") return;
-      const imported = await addAIModel(manifest, model, rights);
-      await refresh();
-      setSelectedId(imported.id);
-      setImportOpen(false);
-      setMessage(
-        "Model imported; checksum and declared license validated. Runtime compatibility is checked on load.",
-      );
-    } catch (error) {
-      setMessage(String(error));
-    } finally {
-      setBusy(false);
-    }
-  }
   async function install() {
     const result = await ai.install(runtimePath, digest.trim(), trusted);
     if (result) {
@@ -126,7 +99,6 @@ export function AIVoiceStudio() {
             variant="primary"
             disabled={busy}
             onClick={() => {
-              setRights(false);
               setImportOpen(true);
             }}
           >
@@ -344,9 +316,19 @@ export function AIVoiceStudio() {
                     >
                       <option value="dio">DIO</option>
                       <option value="harvest">Harvest</option>
-                      <option value="rmvpe_onnx">RMVPE ONNX (runtime asset required)</option>
+                      <option
+                        value="rmvpe_onnx"
+                        disabled={!status?.supportedF0Methods?.includes("rmvpe_onnx")}
+                      >
+                        RMVPE ONNX (runtime asset required)
+                      </option>
                     </select>
                   </label>
+                  <ToggleSwitch
+                    label="Apply optional DSP after neural conversion (Hybrid)"
+                    checked={draft.hybridDsp ?? false}
+                    onChange={(value) => update("hybridDsp", value)}
+                  />
                   <label className="vm-field">
                     Chunk size
                     <select
@@ -705,27 +687,15 @@ export function AIVoiceStudio() {
           Download & prepare official voice
         </Button>
       </StudioDialog>
-      <StudioDialog
-        open={importOpen}
-        onOpenChange={setImportOpen}
-        title="Import a licensed voice model"
-      >
-        <p className="vm-hint">
-          Choose a model manifest and matching ONNX file. Checkpoint/pickle voice models and
-          archives are unsupported.
-        </p>
-        <ToggleSwitch
-          label="I have permission to use this voice and accept its model license"
-          checked={rights}
-          onChange={setRights}
+      {importOpen && (
+        <NeuralModelImport
+          onClose={() => setImportOpen(false)}
+          onImported={async (id) => {
+            await refresh();
+            setSelectedId(id);
+          }}
         />
-        <div className="vm-actions mt-5">
-          <Button variant="primary" disabled={!rights || busy} onClick={() => void importModel()}>
-            <FileUp size={15} />
-            {busy ? "Importing…" : "Choose manifest & ONNX"}
-          </Button>
-        </div>
-      </StudioDialog>
+      )}
       <StudioDialog
         open={runtimeOpen}
         onOpenChange={setRuntimeOpen}

@@ -7,7 +7,7 @@ for line in sys.stdin:
     request = json.loads(line)
     if request["op"] == "hang":
         time.sleep(30)
-    response = {"id": request["id"], "protocol": 1, "ok": True, "testFixture": True}
+    response = {"id": request["id"], "protocol": 1, "ok": True, "testFixture": True, "receivedText": request.get("text")}
     print(json.dumps(response), flush=True)
     if request["op"] == "shutdown":
         break

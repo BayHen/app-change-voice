@@ -25,6 +25,10 @@ pub struct AIModelMetadata {
     pub license_url: Option<String>,
     #[serde(default)]
     pub attribution: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub feature_index_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub feature_encoder_sha256: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

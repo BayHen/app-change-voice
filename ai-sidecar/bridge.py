@@ -10,15 +10,110 @@ import argparse
 import contextlib
 import hashlib
 import json
+import logging
+import math
 import os
 from pathlib import Path
 import sys
 import time
+import struct
 
 PROTOCOL = 1
 UPSTREAM_COMMIT = "7e2ce5c4800010bbc7604968bd29b802534fac05"
 MAX_MESSAGE = 256 * 1024
 MAX_CHUNK = 16384
+RVC_CONTENTVEC_FILE = "assets/contentvec-rvc.pt"
+RVC_CONTENTVEC_SHA256 = "f54b40fd2802423a5643779c4861af1e9ee9c1564dc9d32f54f20b5ffba7db96"
+
+
+def resolve_content_encoder(root, manifest, expected, hash_file):
+    default = manifest["contentVecModel"]
+    if expected is None:
+        return contained(root, default)
+    # Imported pack metadata can select a verified asset, never supply a pickle path.
+    candidates = {default}
+    if expected == RVC_CONTENTVEC_SHA256:
+        candidates.add(RVC_CONTENTVEC_FILE)
+    for entry in manifest["files"]:
+        if entry["path"] in candidates and entry["sha256"].lower() == expected:
+            asset = contained(root, entry["path"])
+            if hash_file(asset) == expected:
+                return asset
+    raise ValueError("Required feature encoder is unavailable or failed verification; repair the managed runtime")
+
+
+def load_flat_index(path, expected_sha, np):
+    """Decode the bounded Phase 6 format, never FAISS's unrestricted deserializer."""
+    import faiss
+    with path.open("rb") as stream:
+        header = stream.read(45)
+        if len(header) != 45 or header[:4] != b"IxF2":
+            raise ValueError("Expected a FAISS IndexFlatL2")
+        dimension, rows = struct.unpack_from("<IQ", header, 4)
+        floats, = struct.unpack_from("<Q", header, 37)
+        if (dimension != 768 or not 8 <= rows <= 16000 or floats != rows * dimension
+                or header[32:37] != b"\x01\x01\x00\x00\x00"):
+            raise ValueError("Invalid RVC v2 feature index header")
+        values = stream.read(4 * floats + 1)
+    digest = hashlib.sha256(header)
+    digest.update(values)
+    if len(values) != 4 * floats or digest.hexdigest() != expected_sha:
+        raise ValueError("Feature index checksum or storage length mismatch")
+    matrix = np.frombuffer(values, dtype="<f4").reshape(rows, dimension)
+    if not np.isfinite(matrix).all() or float(np.max(np.abs(matrix))) > 1000:
+        raise ValueError("Invalid values in feature index")
+    index = faiss.IndexFlatL2(dimension)
+    index.add(matrix)
+    return index, matrix
+
+
+def align_indexed_pipeline(pipeline, np, torch):
+    """Keep rolling F0 on the audio clock and protect unvoiced, pre-retrieval features."""
+    extract_pitch = pipeline.extractPitch
+    extract_features = pipeline.extractFeatures
+    infer = pipeline.infer
+    execute = pipeline.exec
+    base_features = None
+    protection = None
+
+    def aligned_pitch(audio, uses_f0, history, shift, silence):
+        if uses_f0:
+            frames = audio.shape[0] // pipeline.window
+            history = np.asarray(history)
+            missing = frames - len(history)
+            history = np.pad(history, (missing, 0)) if missing > 0 else history[-frames:]
+        return extract_pitch(audio, uses_f0, history, shift, silence)
+
+    def capture_features(audio, layer, project):
+        nonlocal base_features
+        features = extract_features(audio, layer, project)
+        if protection is not None:
+            base_features = features
+        return features
+
+    def protect_unvoiced(features, length, pitch, f0, speaker, out_size):
+        if protection is not None and base_features is not None:
+            original = base_features.repeat_interleave(2, dim=1)[:, -features.shape[1]:, :]
+            mask = torch.where(f0 > 0, 1.0, protection).unsqueeze(-1)
+            features = (features * mask + original * (1 - mask)).to(features.dtype)
+        return infer(features, length, pitch, f0, speaker, out_size)
+
+    def run(sid, audio, pitchf, feature, shift, rate, uses_f0, silence, layer, project,
+            repeat, protect=0.5, out_size=None):
+        nonlocal protection, base_features
+        protection = protect if rate and uses_f0 and protect < 0.5 else None
+        try:
+            # The pinned upstream Protect block uses a post-retrieval copy and can
+            # broadcast mismatched frame counts. Apply Protect above at inference instead.
+            return execute(sid, audio, pitchf, feature, shift, rate, uses_f0, silence, layer,
+                           project, repeat, 0.5, out_size)
+        finally:
+            protection = base_features = None
+
+    pipeline.extractPitch = aligned_pitch
+    pipeline.extractFeatures = capture_features
+    pipeline.infer = protect_unvoiced
+    pipeline.exec = run
 
 
 def install_pcm_guards(model, np, torch):
@@ -42,6 +137,106 @@ def install_pcm_guards(model, np, torch):
         return np.clip(output, -32768, 32767)
     model.inference = bounded_inference
     return counters
+
+
+class ContextualRvcStream:
+    """RVC v2 with a sample-clock crop, past context and one block of lookahead."""
+
+    def __init__(self, model, config, np, torch):
+        from scipy import signal
+        self.model, self.config, self.np, self.torch = model, config, np, torch
+        self.signal = signal
+        self.highpass = signal.butter(5, 48, btype="highpass", fs=16000, output="sos")
+        self.history = np.zeros(max(14400, config["extraContextFrames"]), dtype=np.float32)
+        self.pending = None
+        self.tail = None
+        self.position = 0
+        self.overlap = config["crossfadeFrames"]
+        block = config["chunkFrames"]
+        self.right_context = min(block, max(2400, block // 2, self.overlap + 1440))
+        window = len(self.history) + block + self.right_context
+        # A fixed shape prevents the CUDA provider from choosing new convolution
+        # algorithms at each fractional hop position.
+        self.window_frames = ((window + 959 + 960 + 959) // 960) * 960
+        self.fade = np.linspace(0, 1, self.overlap, endpoint=False, dtype=np.float32)
+
+    def convert(self, pcm):
+        np, torch = self.np, self.torch
+        self.last_timing = {}
+        next_block = pcm.astype(np.float32) / 32768.0
+        current, self.pending = self.pending, next_block
+        if current is None:
+            return None
+        block = len(current)
+        left = len(self.history)
+        pad_left = (self.position - left) % 960
+        audio = np.concatenate((self.history, current, next_block[:self.right_context]))
+        # Anchor both the 20ms encoder hop and 10ms F0 hop to time zero.
+        audio = np.pad(audio, (pad_left, self.window_frames - pad_left - len(audio)), mode="reflect")
+        target_start = left + pad_left
+        old = np.concatenate((self.history, current))
+        self.history = old[-left:]
+        self.position += block
+        if max(np.max(np.abs(current)), np.max(np.abs(next_block[:self.overlap]))) <= self.config["noiseThreshold"]:
+            self.tail = None
+            return np.zeros(block, dtype=np.int16)
+
+        pipe = self.model.pipeline
+        started = time.perf_counter()
+        with torch.inference_mode():
+            at_16k = self.signal.resample_poly(audio, 1, 3)
+            at_16k = self.signal.sosfiltfilt(self.highpass, at_16k).astype(np.float32)
+            resampled = time.perf_counter()
+            pitch, pitchf = pipe.pitchExtractor.extract(
+                at_16k, np.zeros(len(at_16k)//160 + 1, np.float32),
+                self.config["pitchSemitones"], 16000, 160,
+            )
+            pitched = time.perf_counter()
+            # RMVPE returns an extra endpoint for a hop-aligned input. Its first
+            # frame belongs to sample zero; don't right-align it to a shorter tensor.
+            features = pipe.extractFeatures(torch.from_numpy(at_16k[None, :]).to(pipe.device), 12, False)
+            embedded = time.perf_counter()
+            aligned_frames = min(features.shape[1] * 2, len(pitch), len(at_16k)//160)
+            pitch = torch.as_tensor(pitch[None, :aligned_frames], device=pipe.device, dtype=torch.long)
+            pitchf = torch.as_tensor(pitchf[None, :aligned_frames], device=pipe.device)
+            original = features
+            if self.model.settings.indexRatio > 0:
+                query = features[0].float().cpu().numpy()
+                distances, neighbors = pipe.index.search(query, 8)
+                nearest = np.maximum(distances, 1e-6)
+                weights = np.square(nearest[:, :1] / nearest)
+                weights /= weights.sum(axis=1, keepdims=True)
+                retrieved = np.einsum("ij,ijk->ik", weights, pipe.big_npy[neighbors])
+                features = torch.lerp(original, torch.as_tensor(retrieved, device=pipe.device, dtype=original.dtype)[None],
+                                      self.model.settings.indexRatio)
+            features = features.repeat_interleave(2, dim=1)[:, :aligned_frames]
+            if self.model.settings.indexRatio > 0 and self.model.settings.protect < 0.5:
+                original = original.repeat_interleave(2, dim=1)[:, :aligned_frames]
+                strength = torch.where(pitchf > 0, 1.0, self.model.settings.protect).to(features.dtype)
+                features = torch.lerp(original, features, strength.unsqueeze(-1))
+            length = torch.tensor([aligned_frames], device=pipe.device, dtype=torch.long)
+            sid = torch.tensor([self.model.settings.dstId], device=pipe.device, dtype=torch.long)
+            prepared = time.perf_counter()
+            waveform = pipe.inferencer.infer(features, length, pitch, pitchf, sid, None).cpu().numpy()
+            generated = time.perf_counter()
+
+        rate = self.model.slotInfo.samplingRate
+        divisor = math.gcd(rate, 48000)
+        at_48k = self.signal.resample_poly(waveform, 48000//divisor, rate//divisor)
+        end = target_start + block + self.overlap
+        if end > len(at_48k):
+            raise RuntimeError("Neural context did not cover the requested audio interval")
+        output = at_48k[target_start:target_start+block].copy()
+        if self.tail is not None:
+            output[:self.overlap] = self.tail * (1-self.fade) + output[:self.overlap] * self.fade
+        self.tail = at_48k[target_start+block:end].copy()
+        pcm = np.clip(np.rint(output * 32768.0), -32768, 32767).astype(np.int16)
+        self.last_timing = {
+            "inputResample": resampled - started, "rmvpe": pitched - resampled,
+            "contentVecDispatch": embedded - pitched, "featuresAndFaiss": prepared - embedded,
+            "onnxAndTransfers": generated - prepared, "outputResampleAndOverlap": time.perf_counter() - generated,
+        }
+        return pcm
 
 
 def contained(root: Path, relative: str) -> Path:
@@ -73,6 +268,10 @@ def validate_config(value: dict) -> dict:
         raise ValueError("Invalid noise threshold")
     if value.get("failurePolicy") not in ("mute", "classicDsp"):
         raise ValueError("Invalid failure policy")
+    for name, upper in (("indexRate", 1), ("protect", 0.5)):
+        setting = value.get(name)
+        if setting is not None and (type(setting) not in (int, float) or not 0 <= setting <= upper):
+            raise ValueError(f"Invalid {name}; expected 0..{upper}")
     return value
 
 
@@ -87,6 +286,7 @@ class WOkadaEngine:
         self.config = None
         self.provider = None
         self.warmup_chunks = 0
+        self.context_stream = None
 
     def probe(self):
         import torch
@@ -144,6 +344,7 @@ class WOkadaEngine:
         if graph.functions or graph.training_info:
             raise ValueError("ONNX local functions and training graphs are unsupported")
         inspect_graph(graph.graph)
+        graph_metadata = {entry.key: entry.value for entry in graph.metadata_props}
         del graph
         import numpy as np
         import torch
@@ -177,19 +378,56 @@ class WOkadaEngine:
         from voice_changer.VoiceChangerV2 import VoiceChangerV2
         from voice_changer.utils.VoiceChangerParams import VoiceChangerParams
 
+        # The upstream worker installs a NullHandler for its warnings unless its web UI starts.
+        # Preserve that diagnostic channel for short/failed realtime chunks.
+        logger = logging.getLogger("vcclient")
+        if not logger.handlers:
+            handler = logging.StreamHandler(sys.stderr)
+            handler.setLevel(logging.WARNING)
+            logger.addHandler(handler)
+
         # The manager starts ServerDevice threads. Use only RVCr2 + VoiceChangerV2.
         # A private per-session model directory is supplied by Rust; no user path is synthesized.
         model_root = path.parent
         # createPipeline uses model_dir / slotIndex / basename(modelFile).
         slot = RVCModelSlot(slotIndex=0, modelFile=path.name, isONNX=True)
-        slot = RVCModelSlotGenerator._setInfoByONNX(str(path), slot)
+        if request.get("featureEncoderSha256") == RVC_CONTENTVEC_SHA256:
+            # The graph was already parsed above. Opening a second CPU inference
+            # session solely to read these fields delays every neural voice start.
+            from const import EnumInferenceTypes
+            metadata = json.loads(graph_metadata.get("metadata", "{}"))
+            if (metadata.get("embChannels") != 768 or metadata.get("embOutputLayer") != 12
+                    or metadata.get("useFinalProj") is not False or metadata.get("f0") is not True
+                    or metadata.get("version") not in ("2", "2.1", "2.2")):
+                raise ValueError("Expected RVC v2 F0 metadata for the verified ContentVec encoder")
+            slot.embChannels = 768
+            slot.embOutputLayer = 12
+            slot.useFinalProj = False
+            slot.embedder = metadata.get("embedder", "hubert_base")
+            slot.f0 = True
+            slot.modelType = EnumInferenceTypes.onnxRVC.value
+            slot.samplingRate = metadata.get("samplingRate")
+            slot.deprecated = False
+            slot.version = "v" + metadata["version"]
+        else:
+            slot = RVCModelSlotGenerator._setInfoByONNX(str(path), slot)
         if slot.deprecated or slot.embedder not in ("hubert_base", "contentvec") or slot.embChannels not in (256, 768) or slot.samplingRate not in (32000, 40000, 48000):
             raise ValueError("Unsupported RVC metadata")
         # Model is staged under session_root/0 by the Rust supervisor.
         if model_root.name != "0":
             raise ValueError("Expected managed model slot")
+        index_data = None
+        if request.get("featureIndexSha256") is not None:
+            if slot.embChannels != 768:
+                raise ValueError("Phase 6 retrieval requires RVC v2 features")
+            index_data = load_flat_index(path.with_suffix(".index"), request["featureIndexSha256"], np)
+            import faiss
+            faiss.omp_set_num_threads(config["cpuThreads"])
         assets = self.manifest
-        content = str(contained(self.root, assets["contentVecModel"]))
+        encoder_sha = request.get("featureEncoderSha256")
+        if encoder_sha is None and slot.embedder == "contentvec":
+            encoder_sha = RVC_CONTENTVEC_SHA256
+        content = str(resolve_content_encoder(self.root, assets, encoder_sha, self.hash_file))
         # OnnxContentvec.loadModel is a NotImplemented stub at the pinned revision.
         # Only the runtime publisher's digest-verified HuBERT checkpoint is permitted;
         # imported voice checkpoints and arbitrary pickle paths remain rejected.
@@ -228,7 +466,15 @@ class WOkadaEngine:
             if expected_provider not in actual_providers:
                 raise RuntimeError(f"Requested provider was not loaded: {expected_provider}")
             model.settings.tran = config["pitchSemitones"]
-            model.settings.indexRatio = 0  # No unvalidated FAISS archive/index is loaded.
+            model.settings.indexRatio = 0
+            if config.get("protect") is not None:
+                model.settings.protect = config["protect"]
+            if index_data is not None:
+                model.pipeline.index, model.pipeline.big_npy = index_data
+                model.settings.indexRatio = 0.25 if config.get("indexRate") is None else config["indexRate"]
+                align_indexed_pipeline(model.pipeline, np, torch)
+            elif config.get("indexRate"):
+                raise ValueError("An index rate requires a verified feature index")
             model.settings.extraConvertSize = config["extraContextFrames"]
             model.settings.silentThreshold = config["noiseThreshold"]
             self.pcm_guard_counters = install_pcm_guards(model, np, torch)
@@ -250,8 +496,15 @@ class WOkadaEngine:
         self.provider = "cuda" if gpu >= 0 else "cpu"
         self.config = config
         self.np = np
+        self.context_stream = (ContextualRvcStream(self.model, config, np, torch)
+                               if encoder_sha == RVC_CONTENTVEC_SHA256 and slot.embChannels == 768
+                               and slot.f0 and config["f0Method"] == "rmvpe_onnx" else None)
         return {"provider": self.provider, "loadingMs": (time.perf_counter() - start) * 1000,
-                "modelSampleRate": slot.samplingRate, "f0": slot.f0, "indexAvailable": False,
+                "modelSampleRate": slot.samplingRate, "f0": slot.f0, "indexAvailable": index_data is not None,
+                "featureEncoderSha256": encoder_sha,
+                "lookaheadFrames": config["chunkFrames"] if self.context_stream is not None else 0,
+                "indexRate": self.model.settings.indexRatio, "protect": self.model.settings.protect,
+                "f0Method": self.model.settings.f0Detector,
                 "torchCpuThreads": torch.get_num_threads(),
                 "onnxCpuThreads": self.model.pipeline.inferencer.model.get_session_options().intra_op_num_threads}
 
@@ -321,6 +574,11 @@ class WOkadaEngine:
         if any(type(value) is not int or not -32768 <= value <= 32767 for value in samples):
             raise ValueError("PCM must contain signed 16-bit samples")
         start = time.perf_counter()
+        if self.context_stream is not None:
+            output = self.context_stream.convert(self.np.asarray(samples, dtype=self.np.int16))
+            return {"samples": [0] * len(samples) if output is None else output.tolist(),
+                    "inferenceMs": (time.perf_counter() - start) * 1000, "warmingUp": output is None,
+                    "stageSeconds": self.context_stream.last_timing}
         had_sola = hasattr(self.vc, "sola_buffer")
         output, performance = self.vc.on_request(self.np.asarray(samples, dtype=self.np.int16))
         elapsed = (time.perf_counter() - start) * 1000
@@ -368,6 +626,7 @@ def serve(engine, source, destination):
             elif operation in ("unload", "shutdown"):
                 engine.vc = None
                 engine.model = None
+                engine.context_stream = None
                 shutdown = operation == "shutdown"
             else:
                 raise ValueError("Unknown operation")

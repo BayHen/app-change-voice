@@ -143,7 +143,6 @@ export function FemaleVoiceCollection({ onBack }: { onBack: () => void }) {
         if (!result) throw new Error("AI could not start; review the engine error below.");
       } else if (selected) {
         await api.applyPreset(selected.id);
-        await api.selectClassicVoice();
         await effects.refresh();
         await noise.commit({
           ...noise.settings,
@@ -167,9 +166,8 @@ export function FemaleVoiceCollection({ onBack }: { onBack: () => void }) {
     await run(async () => {
       // Editing an inactive card first applies that card, never another selected voice's values.
       if (!selected) return;
-      if (selectedId !== activeDspId) {
+      if (selectedId !== activeDspId || ai.status?.mode === "wOkada") {
         const applied = await api.applyPreset(selectedId);
-        await api.selectClassicVoice();
         await effects.update({ ...applied.parameters, ...patch });
         await ai.refresh();
       } else await effects.update({ ...effects.parameters, ...patch });
