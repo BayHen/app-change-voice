@@ -35,7 +35,11 @@ impl AIModelManager {
             let status = self
                 .resolve(path.file_stem().and_then(|s| s.to_str()).unwrap_or(""))
                 .map(|(metadata, model_path)| {
-                    let verified = verify_model(&metadata, &model_path).is_ok();
+                    let verified = verify_model(&metadata, &model_path).is_ok()
+                        && metadata.feature_index_sha256.as_deref().is_none_or(|hash| {
+                            super::original::verify_index(&model_path.with_extension("index"), hash)
+                                .is_ok()
+                        });
                     AIModelStatus {
                         enabled: self.active_model_id.as_deref() == Some(&metadata.id),
                         integrity_verified: verified,
@@ -95,6 +99,18 @@ impl AIModelManager {
             return Err("Selected model filename does not match modelFile in the manifest".into());
         }
         verify_model(&metadata, model_path)?;
+        if let Some(hash) = metadata.feature_index_sha256.as_deref() {
+            super::original::verify_index(&model_path.with_extension("index"), hash)?;
+        }
+        if metadata.backend == "w-okada-rvc" {
+            let report = super::onnx::inspect(model_path)?;
+            if report.compatibility != "candidate" {
+                return Err(format!(
+                    "Incompatible RVC model: {}",
+                    report.issues.join(" ")
+                ));
+            }
+        }
         let target_manifest = self.root.join(format!("{}.json", metadata.id));
         if target_manifest.exists() {
             return Err(
@@ -122,6 +138,19 @@ impl AIModelManager {
         )
         .map_err(|error| error.to_string())?;
         verify_model(&metadata, &temporary_model)?;
+        let temporary_index = temporary_model.with_extension("index");
+        let target_index = target_model.with_extension("index");
+        if metadata.feature_index_sha256.is_some() {
+            if target_index.exists() || temporary_index.exists() {
+                return Err("Feature index storage collision".into());
+            }
+            super::original::stage_index(
+                model_path,
+                &temporary_model,
+                metadata.feature_index_sha256.as_deref(),
+            )?;
+            fs::rename(temporary_index, target_index).map_err(|error| error.to_string())?;
+        }
         fs::rename(temporary_model, &target_model).map_err(|error| error.to_string())?;
         fs::rename(temporary_manifest, &target_manifest).map_err(|error| error.to_string())?;
         Ok(AIModelStatus {
@@ -137,10 +166,13 @@ impl AIModelManager {
     pub fn remove(&mut self, id: &str) -> Result<(), String> {
         validate_id(id)?;
         let manifest = self.root.join(format!("{id}.json"));
-        let (_, model) = self.resolve(id)?;
-        if model.exists() {
-            fs::remove_file(model).map_err(|error| error.to_string())?;
+        let metadata = self.read_metadata(id)?;
+        let model = self.root.join(&metadata.model_file);
+        let index = model.with_extension("index");
+        if metadata.feature_index_sha256.is_some() {
+            remove_optional_file(&index)?;
         }
+        remove_optional_file(&model)?;
         fs::remove_file(manifest).map_err(|error| error.to_string())?;
         if self.active_model_id.as_deref() == Some(id) {
             self.active_model_id = None;
@@ -149,6 +181,12 @@ impl AIModelManager {
     }
 
     pub fn resolve(&self, id: &str) -> Result<(AIModelMetadata, PathBuf), String> {
+        let metadata = self.read_metadata(id)?;
+        let model = super::runtime::package_path(&self.root, &metadata.model_file)?;
+        Ok((metadata, model))
+    }
+
+    fn read_metadata(&self, id: &str) -> Result<AIModelMetadata, String> {
         validate_id(id)?;
         let path = super::runtime::package_path(&self.root, &format!("{id}.json"))?;
         if fs::metadata(&path).map_err(|e| e.to_string())?.len() > 128 * 1024 {
@@ -164,8 +202,7 @@ impl AIModelManager {
         if metadata.id != id {
             return Err("Model manifest ID differs from its storage ID".into());
         }
-        let model = super::runtime::package_path(&self.root, &metadata.model_file)?;
-        Ok((metadata, model))
+        Ok(metadata)
     }
 
     pub fn set_enabled(&mut self, id: &str, enabled: bool) -> Result<AIProviderStatus, String> {
@@ -195,6 +232,14 @@ impl AIModelManager {
             fallback_active: true,
             message: "AI realtime is unavailable in this build; the realtime DSP chain is the safe fallback".into(),
         }
+    }
+}
+
+fn remove_optional_file(path: &Path) -> Result<(), String> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.to_string()),
     }
 }
 
@@ -250,6 +295,8 @@ mod tests {
             consent_confirmed: false,
             license_url: None,
             attribution: None,
+            feature_index_sha256: None,
+            feature_encoder_sha256: None,
         };
         let manifest_path = source.join("manifest.json");
         fs::write(&manifest_path, serde_json::to_vec(&metadata).unwrap()).unwrap();
@@ -287,6 +334,8 @@ mod tests {
             consent_confirmed: false,
             license_url: None,
             attribution: None,
+            feature_index_sha256: None,
+            feature_encoder_sha256: None,
         };
         let manifest_path = root.join("manifest.json");
         fs::write(&manifest_path, serde_json::to_vec(&metadata).unwrap()).unwrap();

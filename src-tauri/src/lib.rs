@@ -222,6 +222,8 @@ type PluginState = Mutex<EffectRegistry>;
 type ProfileState = Mutex<ProfileRepository>;
 type SoundboardState = Mutex<SoundboardRepository>;
 type AIModelState = Mutex<AIModelManager>;
+type AgentVoiceState = Mutex<ai::agents::AgentLibrary>;
+type VoicePackState = ai::packs::PackManager;
 struct VolumeConfigPath(PathBuf);
 struct NoiseConfigPath(PathBuf);
 struct RoutingConfigPath(PathBuf);
@@ -282,20 +284,344 @@ fn get_ai_provider_status(state: State<'_, AudioRuntimeState>) -> Result<AIProvi
 }
 
 #[tauri::command]
-fn add_ai_model(
+fn get_voice_pack_status(state: State<'_, VoicePackState>) -> ai::packs::PackStatus {
+    state.snapshot()
+}
+#[tauri::command]
+fn cancel_voice_pack(state: State<'_, VoicePackState>) -> Result<(), String> {
+    state.request_cancel()
+}
+
+#[tauri::command]
+async fn inspect_hf_voice(url: String) -> Result<ai::packs::RemoteArtifact, String> {
+    tauri::async_runtime::spawn_blocking(move || ai::packs::inspect_hf(&url))
+        .await
+        .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+async fn install_voice_pack(
+    app: AppHandle,
+    request: ai::packs::InstallRequest,
+) -> Result<ai::packs::PackStatus, String> {
+    let manager = app.state::<VoicePackState>().inner().clone();
+    let (root, config) = {
+        let state = app.state::<AudioRuntimeState>();
+        let audio = state.lock().map_err(|_| "Audio lock")?;
+        if audio
+            .ai
+            .installing
+            .load(std::sync::atomic::Ordering::Acquire)
+        {
+            return Err("Wait for the runtime operation before installing a voice pack".into());
+        }
+        if matches!(
+            audio.ai.status().state.as_str(),
+            "starting" | "ready" | "converting"
+        ) {
+            return Err("Stop live AI before installing or validating a voice pack".into());
+        }
+        manager.begin(&request)?;
+        (audio.ai.runtime_root(), audio.ai.status().config)
+    };
+    let snapshot = manager.snapshot();
+    tauri::async_runtime::spawn_blocking(move || {
+        let models = app.state::<AIModelState>();
+        let agents = app.state::<AgentVoiceState>();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            manager.install(request, &root, &config, &models, &agents)
+        }))
+        .unwrap_or_else(|_| {
+            Err("Voice pack worker stopped unexpectedly. Restart VoiceMorph and retry.".into())
+        });
+        manager.finish(result);
+    });
+    Ok(snapshot)
+}
+#[tauri::command]
+fn reset_agent_recommendations(
+    app: AppHandle,
+    agent_id: String,
+) -> Result<ai::engine::EngineStatus, String> {
+    let sha = {
+        let models = app.state::<AIModelState>();
+        let models = models.lock().map_err(|_| "Model lock")?;
+        let agents = app.state::<AgentVoiceState>();
+        let agents = agents.lock().map_err(|_| "Agent lock")?;
+        agents.resolve(&agent_id, &models)?.0.sha256
+    };
+    let audio = app.state::<AudioRuntimeState>();
+    let mut audio = audio.lock().map_err(|_| "Audio lock")?;
+    let runtime_root = audio.ai.runtime_root();
+    let manifest = ai::runtime::installed_manifest(&runtime_root)?;
+    let _ = manifest;
+    let digest: String = serde_json::from_slice(
+        &std::fs::read(runtime_root.join("current.json")).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    let receipt = app
+        .state::<VoicePackState>()
+        .receipt(&sha, &digest)
+        .ok_or("Run Voice Pack validation before resetting to measured settings")?;
+    audio.ai.save_config(receipt.config)?;
+    Ok(audio.ai.status())
+}
+
+#[tauri::command]
+async fn get_agent_voices(app: AppHandle) -> Result<Vec<ai::agents::AgentVoice>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let models = app.state::<AIModelState>();
+        let models = models.lock().map_err(|_| "Model lock")?;
+        let agents = app.state::<AgentVoiceState>();
+        let agents = agents.lock().map_err(|_| "Agent library lock")?;
+        let manager=app.state::<VoicePackState>();
+        let audio=app.state::<AudioRuntimeState>();let root=audio.lock().map_err(|_|"Audio lock")?.ai.runtime_root();
+        let digest=ai::runtime::installed_manifest(&root).ok().and_then(|_|std::fs::read(root.join("current.json")).ok()).and_then(|b|serde_json::from_slice::<String>(&b).ok());
+        let mut voices=agents.list(&models);
+        for voice in &mut voices {if let Some(binding)=&voice.binding {if digest.as_deref().is_some_and(|d|manager.receipt(&binding.sha256,d).is_some())&&voice.state!="error"{voice.state="ready".into();voice.message="Actual neural inference validated for this runtime; perceptual listening still required.".into();}}}
+        Ok(voices)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+async fn assign_agent_voice(
+    app: AppHandle,
+    agent_id: String,
+    binding: ai::agents::Binding,
+) -> Result<(), String> {
+    if ai::agents::original_name(&agent_id).is_some() {
+        return Err("Original profiles require a verified voice pack manifest".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let models = app.state::<AIModelState>();
+        let models = models.lock().map_err(|_| "Model lock")?;
+        let agents = app.state::<AgentVoiceState>();
+        let mut agents = agents.lock().map_err(|_| "Agent library lock")?;
+        agents.assign(&agent_id, binding, &models)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+fn remove_agent_voice(
+    agent_id: String,
+    state: State<'_, AgentVoiceState>,
+    packs: State<'_, VoicePackState>,
+) -> Result<(), String> {
+    if packs.busy.load(std::sync::atomic::Ordering::Acquire) {
+        return Err(
+            "Wait for the pack installation to finish before removing an assignment".into(),
+        );
+    }
+    state
+        .lock()
+        .map_err(|_| "Agent library lock")?
+        .remove(&agent_id)?;
+    if ai::agents::original_name(&agent_id).is_some() {
+        let path = packs
+            .root
+            .join("original-provenance")
+            .join(format!("{agent_id}.json"));
+        match std::fs::remove_file(path) {
+            Ok(()) => (),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
+            Err(error) => return Err(error.to_string()),
+        }
+    }
+    Ok(())
+}
+#[tauri::command]
+async fn compare_agent_voice(
+    app: AppHandle,
+    agent_id: String,
+    source_path: PathBuf,
+    consent_confirmed: bool,
+) -> Result<ai::comparison::Comparison, String> {
+    if !consent_confirmed {
+        return Err("Confirm permission to process the selected WAV locally".into());
+    }
+    let (root, base, effects) = {
+        let state = app.state::<AudioRuntimeState>();
+        let audio = state.lock().map_err(|_| "Audio lock")?;
+        if matches!(
+            audio.ai.status().state.as_str(),
+            "starting" | "ready" | "converting"
+        ) {
+            return Err(
+                "Stop live AI before file comparison to free the model session and GPU memory"
+                    .into(),
+            );
+        }
+        (
+            audio.ai.runtime_root(),
+            audio.ai.status().config,
+            audio.effect_parameters(),
+        )
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        let (model, path, binding) = {
+            let models = app.state::<AIModelState>();
+            let models = models.lock().map_err(|_| "Model lock")?;
+            let agents = app.state::<AgentVoiceState>();
+            let agents = agents.lock().map_err(|_| "Agent lock")?;
+            agents.resolve(&agent_id, &models)?
+        };
+        let mut config = ai::agents::quality_config(&base, &binding.quality_mode)?;
+        if ai::agents::original_name(&agent_id).is_some() {
+            let validated = agent_validation(&app, &agent_id, &model, &root)?;
+            apply_agent_validation(&mut config, validated.config);
+        }
+        ai::comparison::compare(&root, &model, &path, &source_path, true, &config, effects)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+async fn calibrate_agent_voice(
+    app: AppHandle,
+    agent_id: String,
+    source_path: PathBuf,
+    consent_confirmed: bool,
+) -> Result<ai::comparison::Analysis, String> {
+    if !consent_confirmed {
+        return Err("Confirm permission to analyze the selected recording locally".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let model = {
+            let models = app.state::<AIModelState>();
+            let models = models.lock().map_err(|_| "Model lock")?;
+            let agents = app.state::<AgentVoiceState>();
+            let agents = agents.lock().map_err(|_| "Agent lock")?;
+            agents.resolve(&agent_id, &models)?.0
+        };
+        let (rate, samples) = presets::preview::read_source(&source_path, true)?;
+        let report = ai::comparison::analyze(rate, &samples);
+        let root = app
+            .path()
+            .app_data_dir()
+            .map_err(|e| e.to_string())?
+            .join("voice-calibration");
+        std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+        let path = root.join(format!("{}-{}.json", agent_id, model.sha256));
+        let tmp = path.with_extension("json.new");
+        std::fs::write(
+            &tmp,
+            serde_json::to_vec_pretty(&report).map_err(|e| e.to_string())?,
+        )
+        .map_err(|e| e.to_string())?;
+        ai::runtime::replace_file(&tmp, &path)?;
+        Ok(report)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn agent_validation(
+    app: &AppHandle,
+    agent_id: &str,
+    model: &ai::models::AIModelMetadata,
+    root: &std::path::Path,
+) -> Result<ai::packs::Receipt, String> {
+    ai::runtime::installed_manifest(root)?;
+    let digest: String = serde_json::from_slice(
+        &std::fs::read(root.join("current.json")).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    let receipt = app
+        .state::<VoicePackState>()
+        .receipt(&model.sha256, &digest)
+        .ok_or("Validate this model in Voice Pack Manager first")?;
+    if ai::agents::original_name(agent_id).is_some()
+        && (receipt.detected["originalPack"]["profileId"] != agent_id
+            || receipt.detected["indexAvailable"] != true
+            || receipt.detected["originalPack"]["featureIndex"]["sha256"].as_str()
+                != model.feature_index_sha256.as_deref())
+    {
+        return Err("Revalidate the original voice pack and its feature index".into());
+    }
+    Ok(receipt)
+}
+
+fn apply_agent_validation(
+    config: &mut ai::config::EngineConfig,
+    validated: ai::config::EngineConfig,
+) {
+    config.f0_method = validated.f0_method;
+    config.index_rate = config.index_rate.or(validated.index_rate);
+    config.protect = config.protect.or(validated.protect);
+}
+
+#[tauri::command]
+async fn start_agent_voice(
+    app: AppHandle,
+    agent_id: String,
+) -> Result<ai::engine::EngineStatus, String> {
+    let (model_id, quality_mode, validated_config) = {
+        let models = app.state::<AIModelState>();
+        let models = models.lock().map_err(|_| "Model lock")?;
+        let agents = app.state::<AgentVoiceState>();
+        let agents = agents.lock().map_err(|_| "Agent library lock")?;
+        let (model, _, binding) = agents.resolve(&agent_id, &models)?;
+        let audio = app.state::<AudioRuntimeState>();
+        let root = audio.lock().map_err(|_| "Audio lock")?.ai.runtime_root();
+        let receipt = agent_validation(&app, &agent_id, &model, &root)?;
+        let original = ai::agents::original_name(&agent_id).is_some();
+        (
+            model.id,
+            binding.quality_mode,
+            original.then_some(receipt.config),
+        )
+    };
+    {
+        let audio = app.state::<AudioRuntimeState>();
+        let mut audio = audio.lock().map_err(|_| "Audio lock")?;
+        let mut config = ai::agents::quality_config(&audio.ai.status().config, &quality_mode)?;
+        if let Some(validated) = validated_config {
+            apply_agent_validation(&mut config, validated);
+        }
+        audio.ai.save_config(config)?;
+    }
+    start_ai_conversion(app, model_id).await
+}
+
+#[tauri::command]
+async fn inspect_voice_model(model_path: PathBuf) -> Result<ai::onnx::Inspection, String> {
+    tauri::async_runtime::spawn_blocking(move || ai::onnx::inspect(&model_path))
+        .await
+        .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+async fn register_raw_voice_model(
+    app: AppHandle,
+    model_path: PathBuf,
+    request: ai::import::ImportRequest,
+) -> Result<AIModelStatus, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AIModelState>();
+        let mut manager = state.lock().map_err(|_| "Model lock")?;
+        ai::import::register(&mut manager, &model_path, request)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+async fn add_ai_model(
+    app: AppHandle,
     manifest_path: PathBuf,
     model_path: PathBuf,
     rights_confirmed: Option<bool>,
-    state: State<'_, AIModelState>,
 ) -> Result<AIModelStatus, String> {
-    state
-        .lock()
-        .map_err(|_| "AI model lock was poisoned")?
-        .add_with_consent(
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AIModelState>();
+        let mut manager = state.lock().map_err(|_| "AI model lock")?;
+        manager.add_with_consent(
             &manifest_path,
             &model_path,
             rights_confirmed.unwrap_or(false),
         )
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -391,6 +717,15 @@ async fn start_ai_conversion(
             let mut audio = state
                 .lock()
                 .map_err(|_| "Audio runtime lock was poisoned")?;
+            if app
+                .state::<VoicePackState>()
+                .busy
+                .load(std::sync::atomic::Ordering::Acquire)
+            {
+                return Err(
+                    "Wait for Voice Pack validation, or cancel it before starting AI".into(),
+                );
+            }
             if audio
                 .ai
                 .installing
@@ -398,7 +733,7 @@ async fn start_ai_conversion(
             {
                 return Err("Runtime installation is in progress".into());
             }
-            let generation = audio.ai.begin_request();
+            let generation = audio.ai.begin_request(&model_id);
             (audio.ai.runtime_root(), generation)
         };
         // Hashing/runtime discovery is outside the audio-control mutex and callback.
@@ -479,6 +814,9 @@ async fn install_recommended_ai_runtime(
         let state = app.state::<AudioRuntimeState>();
         let (root, cancel, busy, snapshot) = {
             let audio = state.lock().map_err(|_| "Audio runtime lock was poisoned")?;
+            if app.state::<VoicePackState>().busy.load(std::sync::atomic::Ordering::Acquire) {
+                return Err("Wait for the voice pack job, or cancel it before changing the runtime".into());
+            }
             if matches!(audio.ai.status().state.as_str(), "starting" | "ready" | "converting") {
                 return Err("Stop AI before installing/updating its runtime".to_string());
             }
@@ -527,6 +865,9 @@ async fn install_official_ai_voice(
         let state = app.state::<AudioRuntimeState>();
         let (root, cancel, busy, snapshot) = {
             let audio = state.lock().map_err(|_| "Audio runtime lock was poisoned")?;
+            if app.state::<VoicePackState>().busy.load(std::sync::atomic::Ordering::Acquire) {
+                return Err("Wait for the voice pack job, or cancel it before changing the runtime".into());
+            }
             if matches!(audio.ai.status().state.as_str(), "starting" | "ready" | "converting") { return Err("Stop AI before preparing a voice model".to_string()); }
             audio.ai.installing.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).map_err(|_| "Another runtime operation is in progress")?;
             audio.ai.install_cancel.store(false, Ordering::Release);
@@ -573,6 +914,15 @@ async fn install_ai_runtime(
             let audio = state
                 .lock()
                 .map_err(|_| "Audio runtime lock was poisoned")?;
+            if app
+                .state::<VoicePackState>()
+                .busy
+                .load(std::sync::atomic::Ordering::Acquire)
+            {
+                return Err(
+                    "Wait for the voice pack job, or cancel it before changing the runtime".into(),
+                );
+            }
             let engine = &audio.ai;
             if matches!(
                 engine.status().state.as_str(),
@@ -661,6 +1011,15 @@ async fn rollback_ai_runtime(app: AppHandle) -> Result<ai::engine::EngineStatus,
             let audio = state
                 .lock()
                 .map_err(|_| "Audio runtime lock was poisoned")?;
+            if app
+                .state::<VoicePackState>()
+                .busy
+                .load(std::sync::atomic::Ordering::Acquire)
+            {
+                return Err(
+                    "Wait for the voice pack job, or cancel it before changing the runtime".into(),
+                );
+            }
             if matches!(
                 audio.ai.status().state.as_str(),
                 "starting" | "ready" | "converting"
@@ -1924,7 +2283,7 @@ fn preview_preset(
         noise.limiter_enabled = preset.parameters.limiter_enabled;
         noise.limiter_ceiling_dbfs = preset.parameters.limiter_ceiling_dbfs;
         runtime.set_noise_settings(noise);
-        Ok(runtime.set_effect_parameters(preset.effect_parameters()))
+        Ok(runtime.preview_dsp_preset(preset.effect_parameters()))
     })
 }
 
@@ -2073,6 +2432,16 @@ pub fn run() {
             app.manage(Mutex::new(
                 AIModelManager::new(ai_models_dir).map_err(std::io::Error::other)?,
             ));
+            app.manage(
+                ai::packs::PackManager::new(app.path().app_data_dir()?.join("voice-packs"))
+                    .map_err(std::io::Error::other)?,
+            );
+            app.manage(Mutex::new(
+                ai::agents::AgentLibrary::load(
+                    app.path().app_data_dir()?.join("agent-voices.json"),
+                )
+                .map_err(std::io::Error::other)?,
+            ));
             app.manage(Mutex::new(
                 EffectRegistry::built_in().map_err(std::io::Error::other)?,
             ));
@@ -2214,9 +2583,22 @@ pub fn run() {
             preview_backup,
             restore_backup,
             get_sync_status,
+            compare_agent_voice,
+            calibrate_agent_voice,
+            get_voice_pack_status,
+            cancel_voice_pack,
+            inspect_hf_voice,
+            install_voice_pack,
+            reset_agent_recommendations,
+            get_agent_voices,
+            assign_agent_voice,
+            remove_agent_voice,
+            start_agent_voice,
             get_ai_models,
             get_ai_provider_status,
             add_ai_model,
+            inspect_voice_model,
+            register_raw_voice_model,
             remove_ai_model,
             set_ai_model_enabled,
             get_ai_engine_status,

@@ -61,3 +61,4 @@ ai-benchmarks/results/*.wav
 ai-prototype/output/
 __pycache__/
 *.pyc
+.rvc-training/

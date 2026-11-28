@@ -14,3 +14,12 @@ pub mod validator;
 
 pub use manager::AIModelManager;
 pub use models::{AIModelMetadata, AIModelStatus, AIProviderStatus};
+pub mod agents;
+pub mod comparison;
+pub mod converter_runtime;
+pub mod hybrid;
+pub mod import;
+pub mod onnx;
+pub mod packs;
+pub mod warmup;
+pub mod original;

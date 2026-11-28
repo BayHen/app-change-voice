@@ -1,0 +1,175 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "VoiceMorph Original RVC Voice Pack",
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "profileId",
+    "speakerId",
+    "embedderSha256",
+    "license",
+    "licenseUrl",
+    "sourceUrl",
+    "attribution",
+    "architecture",
+    "sampleRate",
+    "checkpoint",
+    "onnx",
+    "featureIndex"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "profileId": {
+      "enum": ["wind-assassin", "jade-guardian"]
+    },
+    "speakerId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "pattern": "^[A-Za-z0-9_-]+$"
+    },
+    "datasetSha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "trainingRevision": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    },
+    "embedderSha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "license": {
+      "enum": ["LicenseRef-UserConfirmed", "Apache-2.0"]
+    },
+    "licenseUrl": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^https://"
+    },
+    "sourceUrl": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^https://"
+    },
+    "attribution": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "architecture": {
+      "const": "rvc-v2-f0"
+    },
+    "sampleRate": {
+      "const": 40000
+    },
+    "checkpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "sha256"],
+      "properties": {
+        "file": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "pattern": "^[^/\\\\:]+\\.pth$"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "onnx": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "sha256"],
+      "properties": {
+        "file": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "pattern": "^[^/\\\\:]+\\.onnx$"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "featureIndex": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "sha256"],
+      "properties": {
+        "file": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "pattern": "^[^/\\\\:]+\\.index$"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "pretrainedSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["revision", "datasetUrl", "upstreamIndexSha256"],
+      "properties": {
+        "revision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}$"
+        },
+        "datasetUrl": {
+          "type": "string",
+          "pattern": "^https://",
+          "maxLength": 1024
+        },
+        "upstreamIndexSha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    }
+  },
+  "oneOf": [
+    {
+      "required": ["datasetSha256", "trainingRevision"],
+      "not": {
+        "required": ["pretrainedSource"]
+      },
+      "properties": {
+        "license": {
+          "const": "LicenseRef-UserConfirmed"
+        }
+      }
+    },
+    {
+      "required": ["pretrainedSource"],
+      "not": {
+        "anyOf": [
+          {
+            "required": ["datasetSha256"]
+          },
+          {
+            "required": ["trainingRevision"]
+          }
+        ]
+      },
+      "properties": {
+        "license": {
+          "const": "Apache-2.0"
+        }
+      }
+    }
+  ]
+}

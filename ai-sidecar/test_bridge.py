@@ -1,10 +1,14 @@
 """Protocol/config tests only. No inference quality or model benchmark is simulated."""
 import io
+import hashlib
 import json
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from bridge import contained, serve, validate_config, MAX_MESSAGE
+from bridge import (
+    contained, resolve_content_encoder, serve, validate_config, MAX_MESSAGE,
+    RVC_CONTENTVEC_FILE, RVC_CONTENTVEC_SHA256,
+)
 
 
 def config():
@@ -21,12 +25,34 @@ class ProtocolFixture:
 
 
 class BridgeTests(unittest.TestCase):
+    def test_feature_encoder_selection_rejects_missing_or_changed_assets(self):
+        with TemporaryDirectory() as folder:
+            root = Path(folder)
+            default = root / "default.pt"
+            default.write_bytes(b"legacy encoder fixture")
+            manifest = {"contentVecModel": "default.pt", "files": [
+                {"path": "default.pt", "sha256": hashlib.sha256(default.read_bytes()).hexdigest()},
+                {"path": RVC_CONTENTVEC_FILE, "sha256": RVC_CONTENTVEC_SHA256},
+            ]}
+            hash_file = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
+            self.assertEqual(resolve_content_encoder(root, manifest, None, hash_file), default)
+            self.assertEqual(resolve_content_encoder(root, manifest, hash_file(default), hash_file), default)
+            alternate = root / RVC_CONTENTVEC_FILE
+            alternate.parent.mkdir()
+            alternate.write_bytes(b"does not match the pinned ContentVec")
+            with self.assertRaisesRegex(ValueError, "failed verification"):
+                resolve_content_encoder(root, manifest, RVC_CONTENTVEC_SHA256, hash_file)
+            with self.assertRaisesRegex(ValueError, "failed verification"):
+                resolve_content_encoder(root, manifest, hash_file(alternate), hash_file)
+
     def test_rejects_invalid_configuration(self):
         validate_config(config())
         for change in ({"provider": "directml"}, {"chunkFrames": 0}, {"noiseThreshold": float("nan")},
-                       {"pitchSemitones": 13}, {"cpuThreads": 100}, {"crossfadeFrames": 99999}):
+                       {"pitchSemitones": 13}, {"cpuThreads": 100}, {"crossfadeFrames": 99999},
+                       {"indexRate": 1.2}, {"indexRate": float("nan")}, {"protect": 0.51}):
             with self.assertRaises(ValueError):
                 validate_config({**config(), **change})
+        self.assertEqual(validate_config({**config(), "indexRate": 0.65, "protect": 0.33})["protect"], 0.33)
 
     def test_protocol_ids_errors_and_shutdown(self):
         requests = [{"id": 5, "protocol": 1, "op": "hello"},

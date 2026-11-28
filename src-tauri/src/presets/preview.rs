@@ -37,6 +37,11 @@ impl PreviewModel {
         std::fs::create_dir(staged.directory.join("0")).map_err(|e| e.to_string())?;
         std::fs::copy(source, &staged.path).map_err(|e| e.to_string())?;
         crate::ai::validator::verify_model(metadata, &staged.path)?;
+        crate::ai::original::stage_index(
+            source,
+            &staged.path,
+            metadata.feature_index_sha256.as_deref(),
+        )?;
         Ok(staged)
     }
 }

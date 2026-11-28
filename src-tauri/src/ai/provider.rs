@@ -24,7 +24,13 @@ pub trait VoiceConversionBackend {
     fn process_id(&self) -> Option<u32> {
         None
     }
+    fn uses_fixed_lookahead(&self) -> bool {
+        false
+    }
     fn convert(&mut self, input: &[i16]) -> Result<ConvertedChunk, String>;
+    fn resource_metrics(&mut self) -> Result<Option<Value>, String> {
+        Ok(None)
+    }
     fn health(&mut self) -> Result<(), String>;
     fn exited(&self) -> bool;
 }
@@ -32,6 +38,9 @@ pub trait VoiceConversionBackend {
 pub struct WOkadaBackend {
     process: ManagedProcess,
     frames: usize,
+    first_chunk: bool,
+    fixed_lookahead: bool,
+    last_metrics: Option<(Instant, f64)>,
 }
 impl WOkadaBackend {
     pub fn load(
@@ -42,7 +51,18 @@ impl WOkadaBackend {
         log: &Path,
         cancel: Arc<AtomicBool>,
     ) -> Result<(Self, Value), String> {
-        let mut process = ManagedProcess::spawn(runtime, log, cancel)?;
+        let mut process = if metadata.feature_index_sha256.is_some()
+            || metadata.feature_encoder_sha256.is_some()
+        {
+            ManagedProcess::spawn_indexed(
+                runtime,
+                model.parent().ok_or("Missing model slot")?,
+                log,
+                cancel,
+            )?
+        } else {
+            ManagedProcess::spawn(runtime, log, cancel)?
+        };
         let hello = process.call(json!({"op":"hello"}), Duration::from_secs(90))?;
         if hello["upstreamCommit"] != UPSTREAM_COMMIT
             || hello["sampleRate"] != AI_SAMPLE_RATE
@@ -52,9 +72,16 @@ impl WOkadaBackend {
             return Err("AI runtime negotiation is incompatible".into());
         }
         let loading = Instant::now();
+        let mut wire_config = config.clone();
+        if metadata.feature_index_sha256.is_none() {
+            wire_config.index_rate = None;
+            wire_config.protect = None;
+        }
         let mut loaded = process.call(
             json!({"op":"load", "modelPath":model, "sha256":metadata.sha256,
-            "consentConfirmed":metadata.consent_confirmed, "config":config}),
+            "consentConfirmed":metadata.consent_confirmed, "config":wire_config,
+            "featureIndexSha256":metadata.feature_index_sha256,
+            "featureEncoderSha256":metadata.feature_encoder_sha256}),
             Duration::from_secs(120),
         )?;
         loaded["initializationMs"] = loaded["loadingMs"].clone();
@@ -62,17 +89,31 @@ impl WOkadaBackend {
         if !matches!(loaded["provider"].as_str(), Some("cpu" | "cuda")) {
             return Err("AI runtime reported an unsupported loaded provider".into());
         }
+        if metadata.feature_index_sha256.is_some() && loaded["indexAvailable"] != true {
+            return Err("Runtime did not load the required RVC feature index".into());
+        }
+        if let Some(expected) = metadata.feature_encoder_sha256.as_deref() {
+            if loaded["featureEncoderSha256"].as_str() != Some(expected) {
+                return Err("Runtime did not load the model's verified feature encoder".into());
+            }
+        }
         loaded["hardware"] = hello;
         Ok((
             Self {
                 process,
                 frames: config.chunk_frames,
+                first_chunk: true,
+                fixed_lookahead: loaded["lookaheadFrames"].as_u64() == Some(config.chunk_frames as u64),
+                last_metrics: None,
             },
             loaded,
         ))
     }
 }
 impl VoiceConversionBackend for WOkadaBackend {
+    fn uses_fixed_lookahead(&self) -> bool {
+        self.fixed_lookahead
+    }
     fn process_id(&self) -> Option<u32> {
         self.process.process_id()
     }
@@ -80,11 +121,42 @@ impl VoiceConversionBackend for WOkadaBackend {
         if input.len() != self.frames {
             return Err("AI input chunk length mismatch".into());
         }
+        // A lookahead/priming response may return before running any kernels.
+        // Keep the cold-start allowance until a full conversion is returned.
+        let timeout = if self.first_chunk {
+            45
+        } else {
+            5
+        };
         let value = self.process.call(
             json!({"op":"infer", "samples":input}),
-            Duration::from_secs(5),
+            Duration::from_secs(timeout),
         )?;
-        decode_chunk(value, self.frames)
+        let converted = decode_chunk(value, self.frames)?;
+        if !converted.warming_up {
+            self.first_chunk = false;
+        }
+        Ok(converted)
+    }
+    fn resource_metrics(&mut self) -> Result<Option<Value>, String> {
+        let mut value = self
+            .process
+            .call(json!({"op":"metrics"}), Duration::from_secs(2))?;
+        let now = Instant::now();
+        let cpu = value["cpuSeconds"]
+            .as_f64()
+            .ok_or("Missing process CPU counter")?;
+        value["cpuCorePercent"] = match self.last_metrics {
+            Some((previous, seconds)) => json!(
+                ((cpu - seconds).max(0.0)
+                    / now.duration_since(previous).as_secs_f64().max(0.000001))
+                    * 100.0
+            ),
+            None => Value::Null,
+        };
+        value["gpuUtilizationPercent"] = Value::Null; // Not measured by this private bridge.
+        self.last_metrics = Some((now, cpu));
+        Ok(Some(value))
     }
     fn health(&mut self) -> Result<(), String> {
         let response = self

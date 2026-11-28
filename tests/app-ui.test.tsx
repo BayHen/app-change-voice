@@ -334,12 +334,12 @@ describe("desktop navigation", () => {
     await user.click(screen.getByRole("button", { name: "Use Classic DSP" }));
     expect(aiMocks.classic).toHaveBeenCalledOnce();
   });
-  it("requires voice rights acknowledgement before opening model files", async () => {
+  it("allows neural file inspection before rights acknowledgement", async () => {
     const user = userEvent.setup();
     render(<App />);
     await user.click(screen.getByRole("button", { name: "AI Voice Studio" }));
     await user.click(screen.getByRole("button", { name: "Import ONNX model" }));
-    expect(screen.getByRole("button", { name: "Choose manifest & ONNX" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Choose ONNX or JSON" })).toBeEnabled();
     expect(aiMocks.add).not.toHaveBeenCalled();
   });
   beforeEach(() => {
@@ -810,6 +810,28 @@ describe("desktop navigation", () => {
     expect(await screen.findByLabelText("Virtual cable playback endpoint")).toHaveValue(
       "wasapi:cable",
     );
+  });
+
+  it("fills the recording timeline at the exact fractional end time", async () => {
+    recordingMocks.status.mockResolvedValue({
+      recording: false,
+      playing: false,
+      hearMyself: false,
+      source: "processed",
+      durationSeconds: 5.8,
+      playbackSeconds: 5.8,
+      droppedFrames: 0,
+      hasRecording: true,
+      incomplete: false,
+      error: null,
+    });
+    render(<App />);
+    await userEvent.click(screen.getByRole("button", { name: "Recordings" }));
+    const timeline = (await screen.findByRole("progressbar", {
+      name: "Playback timeline",
+    })) as HTMLProgressElement;
+    await waitFor(() => expect(timeline.position).toBe(1));
+    expect(timeline).toHaveAttribute("aria-valuetext", "00:05.8 of 00:05.8");
   });
 
   it("renders disconnected microphone state without fake live data", async () => {

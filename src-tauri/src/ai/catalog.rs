@@ -28,7 +28,7 @@ pub fn metadata() -> AIModelMetadata {
         architecture: "rvc".into(), backend: "w-okada-rvc".into(), license: "LicenseRef-TsukuyomiChan-Official".into(),
         source_url: "https://tyc.rei-yumesaki.net/work/software/rvc/".into(), model_file: "tsukuyomi-normal1.onnx".into(),
         sha256: ONNX_SHA256.into(), input_sample_rate: 48000, frame_samples: 4096, supported_profiles: vec![],
-        consent_confirmed: true, license_url: Some(TERMS_URL.into()), attribution: Some(ATTRIBUTION.into()) }
+        consent_confirmed: true, license_url: Some(TERMS_URL.into()), attribution: Some(ATTRIBUTION.into()), feature_index_sha256: None, feature_encoder_sha256: None }
 }
 pub fn prepare(
     root: &Path,

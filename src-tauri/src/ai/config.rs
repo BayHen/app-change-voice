@@ -16,10 +16,16 @@ pub enum FailurePolicy {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct EngineConfig {
+    #[serde(default)]
+    pub hybrid_dsp: bool,
     pub provider: String,
     pub allow_cpu_fallback: bool,
     pub failure_policy: FailurePolicy,
     pub pitch_semitones: i32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub index_rate: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub protect: Option<f32>,
     pub f0_method: String,
     pub chunk_frames: usize,
     pub crossfade_frames: usize,
@@ -30,10 +36,13 @@ pub struct EngineConfig {
 impl Default for EngineConfig {
     fn default() -> Self {
         Self {
+            hybrid_dsp: false,
             provider: "auto".into(),
             allow_cpu_fallback: false,
             failure_policy: FailurePolicy::Mute,
             pitch_semitones: 0,
+            index_rate: None,
+            protect: None,
             f0_method: "dio".into(),
             chunk_frames: 4096,
             crossfade_frames: 1024,
@@ -50,6 +59,15 @@ impl EngineConfig {
         }
         if !(-12..=12).contains(&self.pitch_semitones) {
             return Err("Pitch must be between -12 and 12 semitones".into());
+        }
+        if self
+            .index_rate
+            .is_some_and(|value| !(0.0..=1.0).contains(&value))
+            || self
+                .protect
+                .is_some_and(|value| !(0.0..=0.5).contains(&value))
+        {
+            return Err("Index rate must be 0..1 and Protect must be 0..0.5".into());
         }
         if !["dio", "harvest", "rmvpe_onnx"].contains(&self.f0_method.as_str()) {
             return Err("Unsupported F0 method".into());

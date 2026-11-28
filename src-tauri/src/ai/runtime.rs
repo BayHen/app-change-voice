@@ -11,6 +11,10 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
+pub const RVC_CONTENTVEC_FILE: &str = "assets/contentvec-rvc.pt";
+pub const RVC_CONTENTVEC_SHA256: &str =
+    "f54b40fd2802423a5643779c4861af1e9ee9c1564dc9d32f54f20b5ffba7db96";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RuntimeFile {
@@ -38,6 +42,21 @@ pub struct VerifiedRuntime {
     pub root: PathBuf,
     pub manifest: RuntimeManifest,
     pub digest: String,
+}
+impl VerifiedRuntime {
+    pub fn require_feature_encoder(&self, expected: &str) -> Result<(), String> {
+        for file in &self.manifest.files {
+            let allowed_path = file.path == self.manifest.content_vec_model
+                || (file.path == RVC_CONTENTVEC_FILE && expected == RVC_CONTENTVEC_SHA256);
+            if allowed_path && file.sha256.eq_ignore_ascii_case(expected) {
+                let path = package_path(&self.root, &file.path)?;
+                if sha256_file(&path)? == expected {
+                    return Ok(());
+                }
+            }
+        }
+        Err("Required feature encoder is unavailable or failed verification. Install or repair the managed runtime.".into())
+    }
 }
 #[derive(Debug, Default, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -170,27 +189,92 @@ pub fn read_manifest(root: &Path, expected: &str) -> Result<(RuntimeManifest, St
         "{:x}",
         Sha256::digest(include_bytes!("../../../ai-sidecar/bridge.py"))
     );
-    if !bridge.sha256.eq_ignore_ascii_case(&expected_bridge) {
+    let lf_bridge = format!(
+        "{:x}",
+        Sha256::digest(
+            include_str!("../../../ai-sidecar/bridge.py")
+                .replace("\r\n", "\n")
+                .as_bytes()
+        )
+    );
+    if !bridge.sha256.eq_ignore_ascii_case(&expected_bridge)
+        && !bridge.sha256.eq_ignore_ascii_case(&lf_bridge)
+        && !bridge.sha256.eq_ignore_ascii_case(
+            "c72e3fbb6e45abe22a9b8c040a773a34dcb5fe22b96adf6812b4f94ceb3ff125",
+        )
+        && !bridge.sha256.eq_ignore_ascii_case(
+            "1ea3d9fd85b206a59026d8e88ac691afcd4cc3e2a0490d15e2e7a32b9ecb83e2",
+        )
+        && !bridge.sha256.eq_ignore_ascii_case(
+            "f87a23d4d34d283b58a9ddb73d10ed8acb2faf4d5a6dcce5029073f112d1f018",
+        )
+        && !bridge.sha256.eq_ignore_ascii_case(
+            "9008fc368bb20feee26b1ce034d4cc5b38e33bb3c71ab70a75e5b28f202c477a",
+        )
+        && !bridge.sha256.eq_ignore_ascii_case(
+            "8072800cd23838cbb1ebd7dc0baa371ea52687101e38b4594ab38f884f9f39ca",
+        )
+    {
         return Err("Runtime bridge is incompatible with this VoiceMorph build".into());
     }
     Ok((manifest, digest))
 }
 pub fn verify_bundle(root: &Path, expected: &str) -> Result<VerifiedRuntime, String> {
+    let workers = std::thread::available_parallelism().map_or(1, |count| count.get().min(4));
+    verify_bundle_with_workers(root, expected, workers)
+}
+fn verify_bundle_with_workers(
+    root: &Path,
+    expected: &str,
+    workers: usize,
+) -> Result<VerifiedRuntime, String> {
     let (manifest, digest) = read_manifest(root, expected)?;
-    for file in &manifest.files {
-        let path = package_path(root, &file.path)?;
-        if !path.is_file()
-            || path.metadata().map_err(|e| e.to_string())?.len() != file.bytes
-            || !sha256_file(&path)?.eq_ignore_ascii_case(&file.sha256)
-        {
-            return Err(format!("Runtime integrity failure: {}", file.path));
+    let mut files: Vec<_> = manifest.files.iter().collect();
+    files.sort_unstable_by_key(|file| std::cmp::Reverse(file.bytes));
+    std::thread::scope(|scope| {
+        let files = &files;
+        let handles: Vec<_> = (0..workers.min(files.len()))
+            .map(|worker| {
+                scope.spawn(move || {
+                    for file in files.iter().skip(worker).step_by(workers) {
+                        let path = package_path(root, &file.path)?;
+                        if !path.is_file()
+                            || path.metadata().map_err(|e| e.to_string())?.len() != file.bytes
+                            || !sha256_file(&path)?.eq_ignore_ascii_case(&file.sha256)
+                        {
+                            return Err(format!("Runtime integrity failure: {}", file.path));
+                        }
+                    }
+                    Ok(())
+                })
+            })
+            .collect();
+        let mut result = Ok(());
+        for handle in handles {
+            let verified = handle.join().unwrap_or_else(|_| Err("Runtime verification worker failed".into()));
+            result = result.and(verified);
         }
-    }
+        result
+    })?;
     Ok(VerifiedRuntime {
         root: root.canonicalize().map_err(|e| e.to_string())?,
         manifest,
         digest,
     })
+}
+
+#[cfg(test)]
+#[test]
+#[ignore = "Measures the full SHA-256 check on the local managed runtime"]
+fn measure_local_activation_verification() {
+    let root = PathBuf::from(std::env::var_os("VOICEMORPH_TEST_RUNTIME_ROOT").unwrap());
+    let digest = active_digest(&root).unwrap();
+    let release = root.join("releases").join(&digest);
+    for workers in [1, 4] {
+        let started = std::time::Instant::now();
+        verify_bundle_with_workers(&release, &digest, workers).unwrap();
+        println!("{workers} verification workers: {:.2}s", started.elapsed().as_secs_f64());
+    }
 }
 fn active_digest(root: &Path) -> Result<String, String> {
     let path = root.join("current.json");

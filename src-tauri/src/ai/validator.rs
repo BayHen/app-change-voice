@@ -43,7 +43,18 @@ pub fn validate_metadata(metadata: &AIModelMetadata) -> Result<(), String> {
             == Some("https://tyc.rei-yumesaki.net/work/software/rvc/terms/")
         && metadata.attribution.as_deref()
             == Some("Tsukuyomi-chan official RVC model (CV. Rei Yumesaki)");
-    if !ALLOWED_LICENSES.contains(&metadata.license.as_str()) && !approved_owner_model {
+    let declared = metadata.license == "LicenseRef-UserConfirmed"
+        && metadata.consent_confirmed
+        && metadata
+            .license_url
+            .as_deref()
+            .is_some_and(|url| url.starts_with("https://"))
+        && metadata
+            .attribution
+            .as_deref()
+            .is_some_and(|credit| !credit.trim().is_empty());
+    if !ALLOWED_LICENSES.contains(&metadata.license.as_str()) && !approved_owner_model && !declared
+    {
         return Err(format!(
             "Model license is not allow-listed: {}",
             metadata.license
@@ -52,10 +63,26 @@ pub fn validate_metadata(metadata: &AIModelMetadata) -> Result<(), String> {
     if !metadata.source_url.starts_with("https://") {
         return Err("Model source must be an HTTPS URL".into());
     }
+    if metadata
+        .feature_index_sha256
+        .as_deref()
+        .is_some_and(|hash| {
+            metadata.backend != "w-okada-rvc" || !super::original::valid_hex(hash, 64)
+        })
+    {
+        return Err("Invalid RVC feature index checksum".into());
+    }
+    if metadata.feature_encoder_sha256.as_deref().is_some_and(|hash| {
+        metadata.backend != "w-okada-rvc" || !super::original::valid_hex(hash, 64)
+    }) {
+        return Err("Invalid RVC feature encoder checksum".into());
+    }
     let file = Path::new(&metadata.model_file);
     super::runtime::validate_relative(&metadata.model_file)?;
     if file.components().count() != 1
-        || file.extension().and_then(|value| value.to_str()) != Some("onnx")
+        || !file
+            .extension()
+            .is_some_and(|value| value.eq_ignore_ascii_case("onnx"))
     {
         return Err("modelFile must be a relative .onnx filename without directories".into());
     }
@@ -125,6 +152,8 @@ mod tests {
             consent_confirmed: false,
             license_url: None,
             attribution: None,
+            feature_index_sha256: None,
+            feature_encoder_sha256: None,
         }
     }
 

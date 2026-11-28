@@ -90,3 +90,6 @@ docs/                    Tài liệu kỹ thuật
 - [Cài đặt Windows](docs/SETUP_WINDOWS.md)
 - [Tiến độ Task 01](docs/TASK_PROGRESS.md)
 - [Quyết định kỹ thuật](docs/DECISIONS.md)
+
+For the original Wind Assassin and Jade Guardian voice profiles, see the
+[Windows RVC training and import guide](docs/HUONG-DAN-RVC-GIONG-GOC.md).

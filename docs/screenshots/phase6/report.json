@@ -1,0 +1,7 @@
+{
+  "fixture": "Actual React app; model library and IPC mocked; no inference or audio devices in browser",
+  "screenshots": 3,
+  "visibleOriginalProfiles": 2,
+  "errors": [],
+  "overflow": false
+}

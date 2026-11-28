@@ -48,6 +48,13 @@ components = [
     local("w-okada pinned source", f"https://codeload.github.com/w-okada/voice-changer/zip/{COMMIT}", DOWNLOADS / "w-okada-source.zip", "upstream"),
     local("fairseq 0.12.2 inference modules", "https://files.pythonhosted.org/packages/30/36/db42846570f479ac859be3b48d8b47f2ae9b0b9c77487a512f2f2ecbcb6b/fairseq-0.12.2.tar.gz", DOWNLOADS / "fairseq-0.12.2.tar.gz", "fairseq"),
     local("HuBERT Base embedding", "https://dl.fbaipublicfiles.com/hubert/hubert_base_ls960.pt", ROOT / ".ai-runtime-build" / "assets" / "hubert_base_ls960.pt", "hubert"),
+    {
+        "name": "RVC ContentVec embedding",
+        "url": "https://huggingface.co/lj1995/VoiceConversionWebUI/resolve/fc74318833d751ccd0b7a8885291b1b290c8881b/hubert_base.pt",
+        "sha256": "f54b40fd2802423a5643779c4861af1e9ee9c1564dc9d32f54f20b5ffba7db96",
+        "bytes": 189507909,
+        "kind": "rvc-contentvec",
+    },
 ]
 for distribution in sorted(metadata.distributions(), key=lambda d: d.metadata["Name"].lower()):
     name, version = distribution.metadata["Name"], distribution.version

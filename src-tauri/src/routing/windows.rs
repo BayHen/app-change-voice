@@ -363,4 +363,137 @@ mod manual_hardware_tests {
         .expect("Virtual output did not accept/adapt a 44.1 kHz source");
         assert!(sink.sample_rate > 0);
     }
+
+    #[test]
+    #[ignore = "Manual VCTK WAV loopback: requires an idle VB-Cable capture endpoint"]
+    fn vctk_wavs_reach_the_virtual_microphone() {
+        use cpal::{FromSample, SizedSample};
+        use std::{path::Path, sync::Mutex, time::Instant};
+        assert_eq!(
+            std::env::var("VOICEMORPH_TEST_IDLE_VB_CABLE").as_deref(),
+            Ok("1"),
+            "Check that VB-Audio capture is idle before enabling this test"
+        );
+        fn capture<T: SizedSample + Send + Copy>(
+            device: &Device,
+            config: &StreamConfig,
+            values: Arc<Mutex<Vec<f32>>>,
+        ) -> Stream
+        where
+            f32: FromSample<T>,
+        {
+            let channels = usize::from(config.channels);
+            device
+                .build_input_stream(
+                    *config,
+                    move |data: &[T], _| {
+                        values.lock().unwrap().extend(
+                            data.chunks_exact(channels)
+                                .map(|frame| frame[0].to_sample::<f32>()),
+                        );
+                    },
+                    |error| eprintln!("VB-Cable capture: {error}"),
+                    None,
+                )
+                .expect("Could not open CABLE Output capture stream")
+        }
+        let host = cpal::default_host();
+        let render =
+            host.output_devices()
+                .unwrap()
+                .find(|device| {
+                    device.description().ok().is_some_and(|d| {
+                        d.name().starts_with("CABLE Input (VB-Audio Virtual Cable)")
+                    })
+                })
+                .expect("Exact CABLE Input playback endpoint missing");
+        let device = host
+            .input_devices()
+            .unwrap()
+            .find(|device| {
+                device.description().ok().is_some_and(|d| {
+                    d.name()
+                        .starts_with("CABLE Output (VB-Audio Virtual Cable)")
+                })
+            })
+            .expect("Exact CABLE Output capture endpoint missing");
+        let supported = device.default_input_config().unwrap();
+        assert_eq!(supported.sample_rate(), 48_000);
+        let config: StreamConfig = supported.clone().into();
+        let folder =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../.ai-runtime-build/phase6-vctk-test");
+        for name in ["wind_assassin", "jade_guardian"] {
+            let waveform: Vec<_> =
+                hound::WavReader::open(folder.join(format!("{name}_output.wav")))
+                    .unwrap()
+                    .samples::<i16>()
+                    .skip(48_000)
+                    .take(3 * 48_000)
+                    .map(|v| (f32::from(v.unwrap()) / 32768.0).clamp(-0.10, 0.10))
+                    .collect();
+            assert_eq!(waveform.len(), 3 * 48_000);
+            let values = Arc::new(Mutex::new(Vec::with_capacity(5 * 48_000)));
+            let recording = match supported.sample_format() {
+                SampleFormat::F32 => capture::<f32>(&device, &config, values.clone()),
+                SampleFormat::I16 => capture::<i16>(&device, &config, values.clone()),
+                SampleFormat::I32 => capture::<i32>(&device, &config, values.clone()),
+                format => panic!("Unsupported VB-Cable capture format: {format:?}"),
+            };
+            let (mut producer, consumer, shared) = routing_queue(48_000);
+            let sink = WindowsVirtualOutputSink::build(
+                &render.id().unwrap().to_string(),
+                48_000,
+                consumer,
+                shared.clone(),
+                SharedNoiseSettings::new(NoiseSettings::default()),
+            )
+            .unwrap();
+            recording
+                .play()
+                .expect("Could not start CABLE Output capture");
+            sink.play().expect("Could not start CABLE Input playback");
+            shared.active.store(true, Ordering::Release);
+            thread::sleep(Duration::from_millis(250));
+            let started = Instant::now();
+            for (index, frame) in waveform.chunks(480).enumerate() {
+                for value in frame {
+                    producer.push(*value);
+                }
+                if let Some(delay) = (started + Duration::from_millis((index + 1) as u64 * 10))
+                    .checked_duration_since(Instant::now())
+                {
+                    thread::sleep(delay);
+                }
+            }
+            thread::sleep(Duration::from_millis(400));
+            sink.pause().unwrap();
+            recording.pause().unwrap();
+            let audio = values.lock().unwrap();
+            let pcm = hound::WavSpec {
+                channels: 1,
+                sample_rate: 48_000,
+                bits_per_sample: 16,
+                sample_format: hound::SampleFormat::Int,
+            };
+            let mut writer =
+                hound::WavWriter::create(folder.join(format!("{name}_cable_capture.wav")), pcm)
+                    .unwrap();
+            let peak = audio.iter().map(|v| v.abs()).fold(0.0, f32::max);
+            for value in audio.iter() {
+                writer
+                    .write_sample(crate::ai::transport::to_pcm16(*value))
+                    .unwrap();
+            }
+            writer.finalize().unwrap();
+            println!(
+                "{name} captured {} samples, peak {peak:.5}, overruns {}",
+                audio.len(),
+                shared.overflows.load(Ordering::Relaxed)
+            );
+            assert!(
+                peak > 0.001 && !shared.faulted.load(Ordering::Acquire),
+                "No neural WAV signal reached CABLE Output"
+            );
+        }
+    }
 }

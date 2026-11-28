@@ -26,6 +26,8 @@ pub struct EngineStatus {
     pub mode: String,
     pub classic_fallback_active: bool,
     pub hardware: Option<serde_json::Value>,
+    pub resources: Option<serde_json::Value>,
+    pub supported_f0_methods: Vec<String>,
     pub runtime_version: Option<String>,
     pub recommended_runtime_version: String,
     pub recommended_download_bytes: u64,
@@ -59,6 +61,8 @@ impl Default for EngineStatus {
             mode: "classicDsp".into(),
             classic_fallback_active: false,
             hardware: None,
+            resources: None,
+            supported_f0_methods: vec!["dio".into(), "harvest".into()],
             runtime_version: None,
             recommended_runtime_version: recipe
                 .as_ref()
@@ -135,6 +139,9 @@ impl AIEngine {
             self.config.failure_policy == FailurePolicy::ClassicDsp,
             Ordering::Release,
         );
+        self.shared
+            .hybrid_dsp
+            .store(self.config.hybrid_dsp, Ordering::Release);
         let manifest = super::runtime::installed_manifest(&self.runtime_root).ok();
         let installed = manifest.is_some();
         let needs_adapter_update = !installed && self.runtime_root.join("current.json").exists();
@@ -142,6 +149,8 @@ impl AIEngine {
         self.update(|s| {
             s.config = config;
             s.runtime_installed = installed;
+            s.supported_f0_methods=vec!["dio".into(),"harvest".into()];
+            if manifest.as_ref().is_some_and(|m|m.rmvpe_model.is_some()) {s.supported_f0_methods.push("rmvpe_onnx".into());}
             s.runtime_version = manifest.as_ref().map(|m| m.version.clone());
             s.install.installed = installed;
             s.install.version = s.runtime_version.clone();
@@ -206,7 +215,7 @@ impl AIEngine {
         }
         rt
     }
-    pub fn begin_request(&mut self) -> u64 {
+    pub fn begin_request(&mut self, model_id: &str) -> u64 {
         self.shared.ai_selected.store(true, Ordering::Release);
         self.stop();
         self.shared.ready.store(false, Ordering::Release);
@@ -214,7 +223,9 @@ impl AIEngine {
         let generation = self.shared.generation.fetch_add(1, Ordering::AcqRel) + 1;
         self.update(|s| {
             s.state = "starting".into();
-            s.message = None;
+            s.resources = None;
+            s.model_id = Some(model_id.to_owned());
+            s.message = Some("Verifying the local AI runtime…".into());
         });
         generation
     }
@@ -235,6 +246,9 @@ impl AIEngine {
             config.failure_policy == FailurePolicy::ClassicDsp,
             Ordering::Release,
         );
+        self.shared
+            .hybrid_dsp
+            .store(config.hybrid_dsp, Ordering::Release);
         self.config = config.clone();
         self.update(|s| s.config = config);
         Ok(())
@@ -279,9 +293,10 @@ impl AIEngine {
         let id = metadata.id.clone();
         self.update(|s| {
             s.state = "starting".into();
+            s.resources = None;
             s.runtime_installed = true;
             s.model_id = Some(id);
-            s.message = None;
+            s.message = Some("Loading the neural model…".into());
             s.provider = None;
             s.restarts = 0;
             s.loading_ms = None;
@@ -315,6 +330,11 @@ impl AIEngine {
                 }
                 drop(output);
                 super::validator::verify_model(&metadata, &target)?;
+                super::original::stage_index(
+                    &path,
+                    &target,
+                    metadata.feature_index_sha256.as_deref(),
+                )?;
                 Ok::<_, String>(target)
             })();
             // Ring endpoints belong to the audio stream, not to one sidecar process.
@@ -357,6 +377,7 @@ impl AIEngine {
                         .err()
                         .is_some_and(|message| message.starts_with("Real-time budget:"));
                     if let Err(message) = result {
+                        eprintln!("AI engine ({}, attempt {}): {message}", metadata.id, attempt + 1);
                         shared.faulted.store(true, Ordering::Release);
                         if let Ok(mut state) = snapshot.lock() {
                             state.state = "faulted".into();
@@ -375,6 +396,7 @@ impl AIEngine {
                     }
                 }
             } else if let Err(error) = staged {
+                eprintln!("AI engine ({}): model staging failed: {error}", metadata.id);
                 shared.faulted.store(true, Ordering::Release);
                 if let Ok(mut state) = snapshot.lock() {
                     state.state = "faulted".into();
@@ -418,9 +440,15 @@ impl AIEngine {
         });
     }
     pub fn select_classic(&mut self) {
+        if !self.shared.ai_selected.load(Ordering::Acquire) {
+            return;
+        }
         self.stop();
         self.shared.ai_selected.store(false, Ordering::Release);
-        self.shared.faulted.store(false, Ordering::Release);
+        // Flush output once more at the mode boundary, including audio queued
+        // while the previous worker was shutting down.
+        self.shared.generation.fetch_add(1, Ordering::AcqRel);
+        self.update(|state| state.model_id = None);
     }
 }
 impl Drop for AIEngine {
@@ -451,10 +479,14 @@ fn run_worker(
         Ordering::Release,
     );
     if let Ok(mut state) = snapshot.lock() {
+        state.message = Some("Preparing the audio engine…".into());
+    }
+    let warmup_ms = super::warmup::warm_up(&mut backend, config, stop)?;
+    if let Ok(mut state) = snapshot.lock() {
         state.state = "ready".into();
         state.provider = loaded["provider"].as_str().map(str::to_owned);
         state.hardware = Some(loaded["hardware"].clone());
-        state.loading_ms = loaded["loadingMs"].as_f64();
+        state.loading_ms = loaded["loadingMs"].as_f64().map(|ms| ms + warmup_ms);
         state.message = if state.provider.as_deref() == Some("cpu")
             && state.config.provider != "cpu"
             && (state.restarts > 0 || state.config.provider == "cuda")
@@ -515,6 +547,11 @@ fn run_worker(
         }
         if health.elapsed() > Duration::from_secs(2) {
             backend.health()?;
+            if let Ok(resources) = backend.resource_metrics() {
+                if let Ok(mut state) = snapshot.lock() {
+                    state.resources = resources;
+                }
+            }
             health = Instant::now();
         }
         let Some(port) = port.as_mut() else {
@@ -807,7 +844,7 @@ mod tests {
     #[test]
     fn cancelling_a_pending_start_invalidates_its_generation() {
         let mut engine = AIEngine::default();
-        let generation = engine.begin_request();
+        let generation = engine.begin_request("test-model");
         engine.stop();
         assert_ne!(generation, engine.shared.generation.load(Ordering::Acquire));
         assert_eq!(engine.status().mode, "wOkada");

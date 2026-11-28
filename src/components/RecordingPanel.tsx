@@ -22,6 +22,10 @@ const time = (seconds: number) =>
     .padStart(2, "0")}:${Math.floor(seconds % 60)
     .toString()
     .padStart(2, "0")}`;
+const playbackTime = (seconds: number) => {
+  const tenths = Math.floor(seconds * 10 + 1e-8);
+  return `${time(Math.floor(tenths / 10))}.${tenths % 10}`;
+};
 export function RecordingPanel({
   status,
   busy,
@@ -36,6 +40,7 @@ export function RecordingPanel({
   onDelete,
 }: Props) {
   const [source, setSource] = useState<RecordingSource>("processed");
+  const position = Math.min(status.playbackSeconds, status.durationSeconds);
   return (
     <section
       className="mt-5 rounded-2xl border border-white/[0.08] bg-[var(--surface)] p-5 sm:p-6"
@@ -51,7 +56,7 @@ export function RecordingPanel({
         <span
           className={`rounded-full px-3 py-1 text-xs ${status.recording ? "bg-rose-400/10 text-rose-300" : "bg-white/[0.04] text-zinc-500"}`}
         >
-          {status.recording ? "● Recording" : "Idle"} · {time(status.durationSeconds)}
+          {status.recording ? "● Recording" : "Idle"} · {playbackTime(status.durationSeconds)}
         </span>
       </div>
       <div className="mt-5 grid gap-5 lg:grid-cols-[0.8fr_1.2fr]">
@@ -117,18 +122,16 @@ export function RecordingPanel({
               Delete
             </button>
           </div>
-          <input
+          <progress
             aria-label="Playback timeline"
-            className="mt-5 w-full accent-cyan-300"
-            type="range"
-            min="0"
-            max={Math.max(status.durationSeconds, 0.01)}
-            value={Math.min(status.playbackSeconds, status.durationSeconds)}
-            readOnly
+            aria-valuetext={`${playbackTime(position)} of ${playbackTime(status.durationSeconds)}`}
+            className="vm-progress-track mt-5 w-full"
+            max={status.durationSeconds || 1}
+            value={position}
           />
           <div className="mt-1 flex justify-between font-mono text-[11px] text-zinc-600">
-            <span>{time(status.playbackSeconds)}</span>
-            <span>{time(status.durationSeconds)}</span>
+            <span>{playbackTime(position)}</span>
+            <span>{playbackTime(status.durationSeconds)}</span>
           </div>
         </div>
       </div>
